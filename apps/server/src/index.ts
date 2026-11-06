@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { planSettlement, type Pending } from "./batch.ts";
+import { campaignView, petView } from "./views.ts";
 
 type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string };
 type Store = {
@@ -10,13 +11,17 @@ type Store = {
   nullifiers: string[];
   pending: Record<string, Pending>; // campaign id -> pet key -> count
   lines: Record<string, string>; // lineHash -> ad line text (the chain only stores the hash)
+  brands: Record<string, string>; // brand address -> display name
+  today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
 };
 
 // shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
 const STORE_FILE = new URL("../data.json", import.meta.url);
-const store: Store = existsSync(STORE_FILE)
-  ? JSON.parse(readFileSync(STORE_FILE, "utf8"))
-  : { pets: {}, nullifiers: [], pending: {}, lines: {} };
+const store: Store = {
+  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {},
+  ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
+};
+const utcDay = () => new Date().toISOString().slice(0, 10);
 const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
 
 const MAX_COUNT = 1000; // per impression entry; the Mac app rate-limits far below this
@@ -56,7 +61,7 @@ async function registerPet(body: any) {
   const owner = addr(body.ownerAddress, "ownerAddress");
   const payout = addr(body.payoutAddress, "payoutAddress");
   const name = body.name ?? petKey.toLowerCase();
-  if (typeof name !== "string" || !/^[a-z0-9-]{1,42}$/.test(name)) throw bad("name must be a-z, 0-9 or -");
+  if (typeof name !== "string" || !/^[a-z0-9.-]{1,64}$/.test(name)) throw bad("name must be a-z, 0-9, . or -");
   const nullifier = body.worldProof?.nullifier_hash;
   if (typeof nullifier !== "string" || !nullifier) throw bad("worldProof.nullifier_hash required");
 
@@ -85,6 +90,8 @@ function addImpressions(body: any) {
   for (const r of rows) {
     const p = (store.pending[r.id] ??= {});
     p[r.petKey] = (p[r.petKey] ?? 0) + r.count;
+    const t = store.today[r.petKey];
+    store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + r.count };
   }
   save();
   return { accepted: rows.length, pending: store.pending };
@@ -121,70 +128,36 @@ async function settle(id: string) {
   }
 }
 
-async function activeCampaigns() {
+/** The campaign the pet shows: the first live one that can still pay for an impression, or null. */
+async function activeCampaign() {
   const [created, block] = await Promise.all([
     pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
     pub.getBlock(),
   ]);
-  const campaigns = [];
   for (const ev of created) {
     const id = ev.args.id!;
     const [brand, budget, spent, rate, endTime, closed, lineHash] = await pub.readContract({
       address: vault, abi, functionName: "campaigns", args: [id],
     });
-    if (closed || endTime <= block.timestamp) continue;
-    campaigns.push({
-      id: id.toString(),
-      brand,
-      line: store.lines[lineHash] ?? null,
-      lineHash,
-      rate: rate.toString(),
-      budget: budget.toString(),
-      spent: spent.toString(),
-      remaining: (budget - spent).toString(),
-      endTime: Number(endTime),
-      createdTx: ev.transactionHash,
-      seeded,
-    });
+    if (closed || endTime <= block.timestamp || budget - spent < rate) continue;
+    return campaignView({ id, brand, lineHash, rate }, store);
   }
-  return { chainId: chain.id, campaigns };
+  return null;
 }
 
 async function getPet(key: string) {
   const rec = findPet(key);
   if (!rec && !isAddress(key)) throw new HttpError(404, "unknown pet");
   const petKey = getAddress(rec?.petKey ?? key);
-  const [owner, payout, verified] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
+  const [owner, payout] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
   if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
-  const [events, payoutBalance] = await Promise.all([
-    pub.getContractEvents({ address: vault, abi, eventName: "ImpressionsSettled", args: { pet: petKey }, fromBlock: deployBlock }),
-    pub.getBalance({ address: payout }),
-  ]);
-  let earned = 0n;
-  let impressions = 0n;
-  const settlements = events.map((e) => {
-    earned += e.args.amount!;
-    impressions += e.args.count!;
-    return {
-      campaignId: e.args.id!.toString(),
-      count: e.args.count!.toString(),
-      amount: e.args.amount!.toString(),
-      txHash: e.transactionHash,
-      blockNumber: e.blockNumber.toString(),
-    };
-  });
-  const pending: Record<string, number> = {};
-  for (const [id, p] of Object.entries(store.pending)) if (p[petKey]) pending[id] = p[petKey];
-  return {
+  const t = store.today[petKey];
+  return petView({
     name: rec?.name ?? petKey.toLowerCase(),
-    petKey, owner, payout, verified,
-    payoutBalance: payoutBalance.toString(),
-    earned: earned.toString(),
-    impressionsSettled: impressions.toString(),
-    settlements,
-    pending,
+    walletBalance: await pub.getBalance({ address: payout }), // payout is where the pet's earnings land
+    impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
-  };
+  });
 }
 
 async function route(req: IncomingMessage) {
@@ -193,7 +166,7 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
-  if (m === "GET" && pathname === "/campaigns/active") return activeCampaigns();
+  if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }

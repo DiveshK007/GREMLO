@@ -26,7 +26,6 @@ export const abi = parseAbi([
   "function campaigns(uint256) view returns (address brand, uint128 budget, uint128 spent, uint96 rate, uint64 endTime, bool closed, bytes32 lineHash)",
   "function pets(address) view returns (address owner, address payout, bool verified)",
   "event CampaignCreated(uint256 indexed id, address indexed brand, uint256 budget, uint256 rate, uint64 endTime, bytes32 lineHash)",
-  "event ImpressionsSettled(uint256 indexed id, address indexed pet, address indexed payout, uint256 count, uint256 amount)",
 ]);
 
 export const pub = createPublicClient({ chain, transport: http() });

@@ -20,20 +20,17 @@ Amounts are wei as decimal strings. `seeded: true` means the data comes from loc
 
 `POST /settle/:campaignId` -> `{ campaignId, settled: [{ petKey, count, amount, txHash }], pending, error?, seeded }`. Never pays more than the campaign has left; the rest stays pending.
 
-`GET /campaigns/active`
+`GET /campaigns/active` -> the campaign the pet shows (first live one that can still pay for an impression), or `null`:
 ```json
-{ "chainId": 31337, "campaigns": [{ "id": "1", "brand": "0x..", "line": null, "lineHash": "0x..",
-  "rate": "1000000000000000", "budget": "...", "spent": "...", "remaining": "...",
-  "endTime": 1794061885, "createdTx": "0x..", "seeded": true }] }
+{ "campaignId": "1", "line": "Ship faster with Acme CI", "brand": "Acme", "ratePerImpression": "1000" }
 ```
-`line` is the ad text, looked up from `lines` in `data.json` by hash (the chain only stores the hash); `null` if unknown.
+The chain stores only a hash of the line and the brand's address. `line` and `brand` are looked up in `lines` (by hash) and `brands` (by address) in `data.json`. If there's no match, `line` is `null` and `brand` is the address.
 
-`GET /pets/:name` (name or pet key)
+`GET /pets/:name` (name or pet key):
 ```json
-{ "name": "mochi", "petKey": "0x..", "owner": "0x..", "payout": "0x..", "verified": true,
-  "payoutBalance": "...", "earned": "...", "impressionsSettled": "7",
-  "settlements": [{ "campaignId": "1", "count": "7", "amount": "...", "txHash": "0x..", "blockNumber": "4" }],
-  "pending": { "1": 2 }, "seeded": true }
+{ "name": "mochi.notchi.eth", "mood": "asleep", "walletBalance": "1250000", "computeBalance": null,
+  "impressionsToday": 42, "lastThoughts": [], "lastMeal": null, "seeded": true }
 ```
+`walletBalance` is the onchain balance of the pet's payout address. `impressionsToday` counts impressions accepted since 00:00 UTC. The brain does not report to the server yet, so `computeBalance` is `null`, `lastThoughts` is empty, `lastMeal` is `null` and `mood` is `asleep`. None of these are made up.
 
 Impressions are client-reported and unsigned in v1. World's one-human-one-pet rule is the defence.
