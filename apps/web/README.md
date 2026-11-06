@@ -25,6 +25,7 @@ All server calls are in `lib/api.ts`. Change that one file if a route differs.
 | `GET /world/sign?action=register-pet` | — | `{ sig, nonce, created_at, expires_at }` from `signRequest` |
 | `POST /pets/register` | `{ name, petKey, ownerAddress, payoutAddress, worldProof }` (`worldProof` = IDKit `completion.result`) | `{ ok, txHash?, name? }`; **409** if the nullifier was used |
 | `POST /campaigns/lines` | `{ brief }` | `{ lines: [{ text, requestId }] }` (3 lines, real 0G request IDs) |
+| `POST /settle/:id` | — | `{ txHash, count, amount, settled[], error? }`: pays queued impressions onchain (amount in wei) |
 | `POST /campaigns` | `{ campaignId, line, lineHash, brand, txHash }` | anything 2xx. Server should check `keccak256(line) == lineHash` against the onchain campaign before showing it |
 
 The server also needs CORS for `http://localhost:3000`.

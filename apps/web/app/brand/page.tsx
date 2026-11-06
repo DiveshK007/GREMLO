@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatEther, parseEther, type Address, type Hash } from "viem";
-import { ApiError, recordCampaign, suggestLines, type SuggestedLine } from "@/lib/api";
+import { ApiError, recordCampaign, settleImpressions, suggestLines, type Settlement, type SuggestedLine } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
 import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
 
@@ -26,6 +26,7 @@ export default function FundCampaign() {
   const [lookupId, setLookupId] = useState("");
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [refund, setRefund] = useState<{ txHash: Hash; amount: bigint } | null>(null);
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
 
   const chosenLine = picked !== null ? lines[picked]?.text ?? "" : ownLine.trim();
 
@@ -110,6 +111,21 @@ export default function FundCampaign() {
     if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
     setBusy("lookup");
     try {
+      setLookup(await readCampaign(BigInt(lookupId)));
+    } catch (e) {
+      setError((e as Error).message.split("\n")[0]);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onSettle() {
+    setError("");
+    setSettlement(null);
+    if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
+    setBusy("settle");
+    try {
+      setSettlement(await settleImpressions(lookupId));
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
       setError((e as Error).message.split("\n")[0]);
@@ -247,8 +263,31 @@ export default function FundCampaign() {
         <p>
           <button className="ghost" onClick={onLookup} disabled={busy === "lookup"}>
             Check
+          </button>{" "}
+          <button className="ghost" onClick={onSettle} disabled={busy === "settle"}>
+            {busy === "settle" ? "Settling onchain..." : "Settle impressions"}
           </button>
         </p>
+        {settlement && (
+          <>
+            {settlement.count === 0 && !settlement.error && <p className="muted">No impressions queued for this campaign yet.</p>}
+            {settlement.count > 0 && (
+              <p className="ok">
+                Paid {settlement.count} impression{settlement.count === 1 ? "" : "s"}, {formatEther(BigInt(settlement.amount))} 0G
+                {settlement.seeded ? " [seeded, local chain]" : ""}
+              </p>
+            )}
+            {settlement.settled.map((s) => (
+              <p key={s.txHash} className="muted">
+                {s.count} to pet <span className="mono">{s.petKey}</span>:{" "}
+                <a className="mono" href={txLink(s.txHash)} target="_blank" rel="noreferrer">
+                  {s.txHash}
+                </a>
+              </p>
+            ))}
+            {settlement.error && <p className="bad">Settlement stopped: {settlement.error}</p>}
+          </>
+        )}
         {lookup && (
           <>
             <p>

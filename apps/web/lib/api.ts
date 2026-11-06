@@ -65,3 +65,15 @@ export const suggestLines = (brief: string) =>
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
 export const recordCampaign = (body: { campaignId: string; line: string; lineHash: string; brand: string; txHash: string }) =>
   call<unknown>(`/campaigns`, { method: "POST", body: JSON.stringify(body) });
+
+/** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is wei as a string. */
+export type Settlement = {
+  txHash: string | null;
+  count: number;
+  amount: string;
+  settled: { petKey: string; count: number; amount: string; txHash: string }[];
+  error?: string;
+  seeded?: boolean;
+};
+export const settleImpressions = (campaignId: string) =>
+  call<Settlement>(`/settle/${encodeURIComponent(campaignId)}`, { method: "POST" });
