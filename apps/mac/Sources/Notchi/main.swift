@@ -164,44 +164,72 @@ func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
 
 enum DoorState: String, CaseIterable { case closed, glowing, open, locked }
 
-// A small arched door hanging under the notch. Uses the pet's door_<state>.png art if it has it, else drawn in code.
+// A hidden arched door under the notch. Invisible at rest so the notch looks stock; it only appears while
+// the pet crosses: fade + scale in (55% to 100%), Signal glow, leaf swings open to the right, then closes and fades.
+// Uses the pet's door_<state>.png art instead of the drawn leaf if it has all four.
 final class Door {
     let size: CGSize
     let art: [DoorState: CGImage]
-    let artLayer = CALayer()
     let panel: NSPanel
-    let arch = CAShapeLayer()
+    let body = CALayer()
+    let glow = CAShapeLayer()
+    let leaf = CAShapeLayer()
     let lockBody = CAShapeLayer()
     let lockShackle = CAShapeLayer()
-    let amber = CGColor(red: 0.95, green: 0.72, blue: 0.29, alpha: 1)
-    let brown = CGColor(red: 0.23, green: 0.18, blue: 0.15, alpha: 1)
+    let artLayer = CALayer()
+    let signal = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
+    let paper = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
     var state = DoorState.closed
+    var gen = 0  // bumps on every open/close so a stale animation step can't reopen the door
 
     init(art: [DoorState: CGImage], scale: CGFloat) {
         self.art = art
-        size = art[.closed].map { CGSize(width: CGFloat($0.width) * scale, height: CGFloat($0.height) * scale) } ?? CGSize(width: 16, height: 20)
+        size = art[.closed].map { CGSize(width: CGFloat($0.width) * scale, height: CGFloat($0.height) * scale) } ?? CGSize(width: 14, height: 18)
         panel = overlayPanel(size, level: NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1))
+        let bounds = CGRect(origin: .zero, size: size)
         let path = CGMutablePath()
-        path.move(to: CGPoint(x: 1, y: 1))
-        path.addLine(to: CGPoint(x: size.width - 1, y: 1))
-        path.addLine(to: CGPoint(x: size.width - 1, y: size.height - size.width / 2))
+        path.move(to: CGPoint(x: 0.5, y: 0.5))
+        path.addLine(to: CGPoint(x: size.width - 0.5, y: 0.5))
+        path.addLine(to: CGPoint(x: size.width - 0.5, y: size.height - size.width / 2))
         path.addArc(center: CGPoint(x: size.width / 2, y: size.height - size.width / 2),
-                    radius: size.width / 2 - 1, startAngle: 0, endAngle: .pi, clockwise: false)
+                    radius: size.width / 2 - 0.5, startAngle: 0, endAngle: .pi, clockwise: false)
         path.closeSubpath()
-        arch.path = path
-        arch.lineWidth = 1
-        lockBody.path = CGPath(rect: CGRect(x: 5, y: 4, width: 6, height: 5), transform: nil)
+        body.frame = bounds
+        glow.frame = bounds
+        glow.path = path
+        glow.fillColor = signal
+        glow.shadowColor = signal
+        glow.shadowRadius = 5
+        glow.shadowOffset = .zero
+        glow.shadowOpacity = 1
+        glow.opacity = 0
+        leaf.anchorPoint = CGPoint(x: 1, y: 0.5)  // hinge on the right edge
+        leaf.frame = bounds
+        leaf.path = path
+        leaf.fillColor = CGColor(gray: 0, alpha: 1)
+        leaf.strokeColor = CGColor(gray: 1, alpha: 0.16)
+        leaf.lineWidth = 1
+        let mid = size.width / 2
+        lockBody.path = CGPath(rect: CGRect(x: mid - 3, y: 4, width: 6, height: 5), transform: nil)
+        lockBody.fillColor = paper
         let shackle = CGMutablePath()
-        shackle.addArc(center: CGPoint(x: 8, y: 9), radius: 2, startAngle: 0, endAngle: .pi, clockwise: false)
+        shackle.addArc(center: CGPoint(x: mid, y: 9), radius: 2, startAngle: 0, endAngle: .pi, clockwise: false)
         lockShackle.path = shackle
         lockShackle.fillColor = nil
+        lockShackle.strokeColor = paper
         lockShackle.lineWidth = 1
-        artLayer.frame = CGRect(origin: .zero, size: size)
+        artLayer.frame = bounds
         artLayer.magnificationFilter = .nearest
         artLayer.contentsGravity = .resizeAspect
-        for layer in art.isEmpty ? [arch, lockBody, lockShackle] : [artLayer] { panel.contentView?.layer?.addSublayer(layer) }
+        let parts = art.isEmpty ? [glow, leaf, lockBody, lockShackle] : [artLayer]
+        for layer in parts { body.addSublayer(layer) }
+        panel.contentView?.layer?.addSublayer(body)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        hide()
+        showLock(false)
+        CATransaction.commit()
         place()
-        set(.closed)
         panel.orderFrontRegardless()
     }
 
@@ -217,23 +245,60 @@ final class Door {
 
     var center: CGPoint { CGPoint(x: panel.frame.midX, y: panel.frame.midY) }
 
-    func set(_ s: DoorState) {
+    func log(_ s: DoorState) {
         if s != state { print("door \(state.rawValue) -> \(s.rawValue)") }
         state = s
+    }
+
+    func hide() {
+        body.opacity = 0
+        body.transform = CATransform3DMakeScale(0.55, 0.55, 1)
+    }
+
+    func showLock(_ on: Bool) {
+        lockBody.isHidden = !on
+        lockShackle.isHidden = !on
+        if !art.isEmpty, on { artLayer.contents = art[.locked] }
+    }
+
+    // One eased step; `then` runs only if no newer open/close started meanwhile.
+    func step(_ seconds: Double, _ g: Int, _ change: () -> Void, then: (() -> Void)? = nil) {
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        artLayer.contents = art[s]
-        arch.fillColor = s == .open ? amber : CGColor(gray: 0, alpha: 1)
-        arch.strokeColor = s == .glowing ? amber : brown
-        arch.shadowColor = amber
-        arch.shadowRadius = 4
-        arch.shadowOffset = .zero
-        arch.shadowOpacity = s == .glowing ? 0.9 : 0
-        lockBody.fillColor = amber
-        lockShackle.strokeColor = amber
-        lockBody.isHidden = s != .locked
-        lockShackle.isHidden = s != .locked
+        CATransaction.setAnimationDuration(seconds)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setCompletionBlock { [weak self] in if self?.gen == g { then?() } }
+        change()
         CATransaction.commit()
+    }
+
+    // Appear, glow, swing open. About 0.26s.
+    func open() {
+        gen += 1
+        let g = gen
+        log(.open)
+        showLock(false)
+        artLayer.contents = art[.closed]
+        step(0.12, g, { body.opacity = 1; body.transform = CATransform3DIdentity }) {
+            self.artLayer.contents = self.art[.glowing]
+            self.step(0.06, g, { self.glow.opacity = 1 }) {
+                self.artLayer.contents = self.art[.open]
+                self.step(0.08, g, { self.leaf.transform = CATransform3DMakeScale(0.12, 1, 1) })
+            }
+        }
+    }
+
+    // Swing shut, show the padlock for a beat if locking, then fade and shrink away. About 0.14s, 0.5s with the lock.
+    func close(lock: Bool) {
+        gen += 1
+        let g = gen
+        log(lock ? .locked : .closed)
+        artLayer.contents = art[.closed]
+        step(0.08, g, { leaf.transform = CATransform3DIdentity; glow.opacity = 0; body.opacity = 1; body.transform = CATransform3DIdentity }) {
+            self.showLock(lock)
+            self.step(lock ? 0.35 : 0.0, g, {}) {
+                self.step(0.12, g, { self.hide() }) { self.showLock(false) }
+            }
+        }
     }
 }
 
@@ -256,6 +321,7 @@ final class Pet {
     var lastActive = Date()
     var sessionLive = false
     var lockWhenHome = false
+    var holdUntil = Date.distantPast
     // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
     let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let signLabel = NSTextField(labelWithString: "")
@@ -322,12 +388,14 @@ final class Pet {
         case .falling:
             return
         case .home:
-            door.set(.open)
+            // The pet drops once the door has swung open, then the door closes behind it.
+            door.open()
             pos = CGPoint(x: doorX, y: door.panel.frame.minY - size.height + 8)
-            panel.orderFrontRegardless()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                guard let self, self.path != .home else { return }
-                self.door.set(self.sessionLive ? .glowing : .closed)
+            holdUntil = Date().addingTimeInterval(0.26)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
+                guard let self else { return }
+                if self.path == .falling { self.panel.orderFrontRegardless() }
+                self.door.close(lock: false)
             }
         case .toWall, .climbing, .ceiling, .entering:
             break
@@ -342,7 +410,7 @@ final class Pet {
     func goHome(lock: Bool) {
         lockWhenHome = lock
         switch path {
-        case .home: if lock { door.set(.locked) }
+        case .home: if lock { door.close(lock: true) }
         case .floor:
             dir = 1
             set(.walk)
@@ -358,6 +426,7 @@ final class Pet {
             placeBubble()
             return
         case .falling:
+            if Date() < holdUntil { return }
             vy += 2400 * dt
             pos.y -= vy * dt
             if pos.y <= floorY {
@@ -383,14 +452,18 @@ final class Pet {
             if pos.y >= topY { pos.y = topY; dir = -1; set(.walk); go(.ceiling) }
         case .ceiling:
             pos.x -= 140 * dt
-            if pos.x <= doorX { pos.x = doorX; door.set(.open); go(.entering) }
+            if pos.x <= doorX { pos.x = doorX; door.open(); go(.entering) }
         case .entering:
             shrink -= 2.5 * dt
             if shrink <= 0 {
                 shrink = 1
                 panel.orderOut(nil)
                 go(.home)
-                door.set(lockWhenHome ? .locked : (sessionLive ? .glowing : .closed))
+                // One frame after the pet is fully inside.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1 / tickHz) { [weak self] in
+                    guard let self, self.path == .home else { return }
+                    self.door.close(lock: self.lockWhenHome)
+                }
                 return
             }
         }
@@ -495,7 +568,6 @@ final class Pet {
         switch event {
         case "SessionStart":
             sessionLive = true
-            if path == .home { door.set(.glowing) }
         case "UserPromptSubmit":
             sessionLive = true
             if path == .floor { lastActive = Date(); set(.greet, then: .sign) } else { comeOut(then: .sign) }
