@@ -94,7 +94,10 @@ button.ghost:disabled { background: transparent; }
 .audiences h2 { font-size: 20px; }
 .audiences .card { display: flex; flex-direction: column; }
 .audiences .card p { flex: 1; }
-.card > button, .card > p > button { margin-top: 8px; }
+.card > button { margin-top: 16px; }
+.card p:has(> button) { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+input + p, .row + p { margin-top: 8px; }
+button + p { margin-top: 12px; }
 .card > .muted { font-size: 15px; }
 
 .thinking { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 4px 0 8px; border-radius: 10px; background: color-mix(in srgb, var(--pet) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--pet) 40%, var(--line)); }
