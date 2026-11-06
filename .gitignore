@@ -5,3 +5,8 @@ node_modules/
 DerivedData/
 out/
 cache/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
