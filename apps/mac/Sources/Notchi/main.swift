@@ -556,8 +556,23 @@ final class Pet {
         // Climb frames face left; mirror them so the feet are on the right wall.
         if state == .climb { t = t.scaledBy(x: -1, y: 1) }
         if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
+        let phase = Double(frame) + animClock
         if mood == "thriving" && path == .floor && state == .walk {
-            t = t.translatedBy(x: 0, y: abs(sin((Double(frame) + animClock) * .pi / 2)) * 3)
+            t = t.translatedBy(x: 0, y: abs(sin(phase * .pi / 2)) * 3)
+        }
+        // Emotions from hooks: happy = squash + bounce, sad = slump, approval = jump.
+        if path == .floor {
+            switch state {
+            case .celebrate:
+                let up = abs(sin(phase * .pi / 2))
+                let squash = (1 - up) * 0.1
+                t = t.translatedBy(x: 0, y: up * 6 - size.height * squash / 2).scaledBy(x: 1 + squash, y: 1 - squash)
+            case .fail:
+                t = t.translatedBy(x: 0, y: -size.height * 0.05).scaledBy(x: 1.04, y: 0.9)
+            case .flag:
+                t = t.translatedBy(x: 0, y: abs(sin(phase * .pi / 3)) * 8)
+            default: break
+            }
         }
         if path == .entering {
             // Shrink towards the top centre, into the door.
@@ -805,6 +820,8 @@ final class Backend: NSObject {
             else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
                 let id = r.requestId.map { "request \($0)" } ?? "no request ID"
                 self.lastThink = r.action == "sleep" ? "sleep: \(r.reason ?? "") (\(id))" : "\(r.action) \"\(r.say ?? "")\" (\(id))"
+                // Exactly what 0G said, only when it said something. Never invent a line.
+                if let say = r.say?.trimmingCharacters(in: .whitespacesAndNewlines), !say.isEmpty { self.pet.say(say, for: 4) }
             }
             self.refresh()
         }
