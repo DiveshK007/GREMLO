@@ -89,7 +89,7 @@ export default function GetYourPet() {
       });
       setPhase({ kind: "done", name: res.name ?? fullName, txHash: res.txHash });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setPhase({ kind: "denied" });
+      if (e instanceof ApiError && e.status === 409 && e.message === "already has a pet") setPhase({ kind: "denied" });
       else setPhase({ kind: "error", message: (e as Error).message });
     } finally {
       setBusy(false);
