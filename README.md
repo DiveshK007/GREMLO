@@ -6,7 +6,7 @@ Notchi is a tiny desktop pet that lives behind a door in your MacBook notch. Whe
 
 Built from scratch at ETHGlobal Mumbai 2026.
 
-> Our team spent **\<HOURS\>** this weekend waiting on Claude Code, measured by Notchi's own hook log.
+> On one laptop, during this hackathon, we spent 1.6 hours waiting on Claude Code (1,589 agent events), measured by Notchi's own hook log.
 
 ## What it does
 
