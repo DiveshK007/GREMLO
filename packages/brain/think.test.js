@@ -54,3 +54,33 @@ test('suggestLines returns 3 lines with the real request id, throws otherwise', 
   await assert.rejects(suggestLines('x', { fetch: reply(200, { choices: [{ message: { content: '{"lines":["only one"]}' } }], x_0g_trace: { request_id: 'L2' } }) }), /3 lines/);
   await assert.rejects(suggestLines('x', { fetch: reply(402, { error: 'insufficient balance' }) }), /402/);
 });
+
+test('suggestLines retries once for JSON, then falls back to the reply text, never inventing lines', async () => {
+  const { suggestLines } = await import('./index.js');
+  const turn = (content, id) => new Response(JSON.stringify({ choices: [{ message: { content } }], x_0g_trace: { request_id: id } }));
+  const queue = (...replies) => {
+    const sent = [];
+    return { sent, fetch: async (u, init) => { sent.push(JSON.parse(init.body).messages[0].content); return replies.shift(); } };
+  };
+
+  // no JSON, then the stricter retry gives JSON: those lines, with the retry's request id
+  let q = queue(turn('Sure, here you go!', 'A1'), turn('{"lines":["One","Two","Three"]}', 'A2'));
+  assert.deepEqual((await suggestLines('x', { fetch: q.fetch })).map((l) => l.requestId), ['A2', 'A2', 'A2']);
+  assert.equal(q.sent.length, 2);
+  assert.match(q.sent[1], /JSON only/);
+
+  // still no JSON: up to 3 lines from the retry's text; preamble, markers and quotes dropped, a 4th ignored
+  q = queue(turn('prose', 'B1'), turn('Here are your lines:\n1. Ship faster\n2. "Fewer red builds"\n- Cache it all\n4. One too many', 'B2'));
+  assert.deepEqual(await suggestLines('x', { fetch: q.fetch }), [
+    { text: 'Ship faster', requestId: 'B2' }, { text: 'Fewer red builds', requestId: 'B2' }, { text: 'Cache it all', requestId: 'B2' },
+  ]);
+
+  // nothing usable in the text: throws, carrying the real request id
+  q = queue(turn('Here you go:', 'C1'), turn('Sorry:', 'C2'));
+  await assert.rejects(suggestLines('x', { fetch: q.fetch }), (e) => /no usable lines/.test(e.message) && e.requestId === 'C2');
+
+  // JSON on the first try: no retry
+  q = queue(turn('{"lines":["a","b","c"]}', 'D1'));
+  await suggestLines('x', { fetch: q.fetch });
+  assert.equal(q.sent.length, 1);
+});
