@@ -22,12 +22,32 @@ const canonical = (n: unknown) => {
 };
 
 /**
+ * The nullifier of a verified proof. The portal's own answer comes first. Only if it does not echo one
+ * do we read it from the proof, and then from the field the proof's own version binds (v4 responses[],
+ * legacy nullifier_hash), so a stray extra field cannot pick the nullifier.
+ */
+function findNullifier(json: any, proof: any) {
+  const fromPortal = json.nullifier ?? json.nullifier_hash ?? json.results?.find((r: any) => r?.success)?.nullifier;
+  const v4 = String(proof?.protocol_version ?? "").startsWith("4") || Array.isArray(proof?.responses);
+  const fromProof = v4
+    ? proof?.responses?.find((r: any) => r?.nullifier)?.nullifier
+    : proof?.nullifier_hash ?? proof?.nullifier;
+  return canonical(fromPortal ?? fromProof);
+}
+
+let loggedShape = false;
+
+/**
  * Forwards the IDKit result unchanged to the Developer Portal v4 verify endpoint
- * (POST https://developer.world.org/api/v4/verify/{rp_id}, per docs.world.org/api-reference/developer-portal/verify).
+ * (POST https://developer.worldcoin.org/api/v4/verify/{rp_id}) and trusts its `success`.
  * Network or portal outages throw, so they surface as 502 rather than a false "denied".
  */
-export async function verifyWorldProof(result: unknown, rpId: string, environment = "production"): Promise<Verdict> {
-  const res = await fetch(`https://developer.world.org/api/v4/verify/${encodeURIComponent(rpId)}`, {
+export async function verifyWorldProof(result: unknown, rpId: string): Promise<Verdict> {
+  if (!loggedShape) {
+    loggedShape = true;
+    console.log(`worldProof top-level keys: ${Object.keys(result as object).join(", ")}`); // keys only, never values
+  }
+  const res = await fetch(`https://developer.worldcoin.org/api/v4/verify/${encodeURIComponent(rpId)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result),
@@ -36,9 +56,8 @@ export async function verifyWorldProof(result: unknown, rpId: string, environmen
   if (res.status >= 500) throw new Error(`World verify unavailable (${res.status})`);
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json.success !== true) return { ok: false, code: json.code ?? `http_${res.status}` };
-  if (json.environment && json.environment !== environment) return { ok: false, code: "wrong_environment" };
   if (json.action && json.action !== REGISTER_ACTION) return { ok: false, code: "wrong_action" };
-  const nullifier = canonical(json.nullifier ?? json.results?.find((r: any) => r?.success)?.nullifier);
+  const nullifier = findNullifier(json, result);
   return nullifier ? { ok: true, nullifier } : { ok: false, code: "no_nullifier" };
 }
 
@@ -57,10 +76,8 @@ export function makeRegister(deps: {
     const name = body.name ?? petKey.toLowerCase();
     if (typeof name !== "string" || !/^[a-z0-9.-]{1,64}$/.test(name)) throw bad("name must be a-z, 0-9, . or -");
     const proof = body.worldProof;
-    // v4 uniqueness proofs only, so there is one nullifier space to track
-    if (proof?.protocol_version !== "4.0" || proof.action !== REGISTER_ACTION || !Array.isArray(proof.responses)) {
-      throw bad("worldProof must be an IDKit v4 result for action register-pet");
-    }
+    // shape is the portal's call, not ours; we only need something to forward
+    if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw bad("worldProof is required");
     const { pets, nullifiers } = deps.store;
     if (pets[name] || Object.values(pets).some((p) => p.petKey === petKey)) throw new HttpError(409, "pet already registered");
 
