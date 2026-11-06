@@ -20,3 +20,10 @@ export function planSettlement(pending: Pending, rate: bigint, remaining: bigint
   }
   return { settle, leftover };
 }
+
+/** One impression per pet per campaign per window (BUILD_GUIDE section 8). Records the time when it counts. */
+export function countImpression(last: Record<string, number>, key: string, now: number, windowMs: number) {
+  if (last[key] !== undefined && now - last[key] < windowMs) return false;
+  last[key] = now;
+  return true;
+}

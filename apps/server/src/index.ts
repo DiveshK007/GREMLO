@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { planSettlement, type Pending } from "./batch.ts";
+import { countImpression, planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -18,18 +18,20 @@ type Store = {
   brands: Record<string, string>; // brand address -> display name
   today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
   thoughts: Record<string, Thought[]>; // pet key -> last 0G decisions with request IDs
+  lastImpression: Record<string, number>; // "campaignId:petKey" -> ms of the last counted impression
 };
 
 // shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
 const STORE_FILE = new URL("../data.json", import.meta.url);
 const store: Store = {
-  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {},
+  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
 const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
 
-const MAX_COUNT = 1000; // per impression entry; the Mac app rate-limits far below this
+// Impressions are client-reported; this window plus one-human-one-pet is the defence. Mac app uses the same value.
+const IMPRESSION_WINDOW_MS = 60_000;
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
 const RP_ID = process.env.RP_ID;
@@ -78,6 +80,7 @@ async function readBody(req: IncomingMessage) {
   try { return raw ? JSON.parse(raw) : {}; } catch { throw bad("invalid JSON"); }
 }
 
+/** Each entry is one sign-shown event. Only registered (World-verified) pets, at most one per campaign per window. */
 function addImpressions(body: any) {
   if (!Array.isArray(body.impressions) || body.impressions.length === 0) throw bad("impressions must be a non-empty array");
   // validate all entries before touching the store so a bad batch changes nothing
@@ -86,17 +89,19 @@ function addImpressions(body: any) {
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
     const id = String(i.campaignId);
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
-    if (!Number.isInteger(i.count) || i.count < 1 || i.count > MAX_COUNT) throw bad(`count must be 1..${MAX_COUNT}`);
-    return { id, petKey: pet.petKey, count: i.count as number };
+    return { id, petKey: pet.petKey };
   });
+  let accepted = 0;
   for (const r of rows) {
+    if (!countImpression(store.lastImpression, `${r.id}:${r.petKey}`, Date.now(), IMPRESSION_WINDOW_MS)) continue;
+    accepted++;
     const p = (store.pending[r.id] ??= {});
-    p[r.petKey] = (p[r.petKey] ?? 0) + r.count;
+    p[r.petKey] = (p[r.petKey] ?? 0) + 1;
     const t = store.today[r.petKey];
-    store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + r.count };
+    store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
   }
   save();
-  return { accepted: rows.length, pending: store.pending };
+  return { accepted, pending: store.pending };
 }
 
 async function settle(id: string) {
@@ -124,7 +129,10 @@ async function settle(id: string) {
         break;
       }
     }
-    return { campaignId: id, settled, pending: store.pending[id] ?? {}, error, seeded };
+    // one tx per pet; txHash is the first so a one-pet demo gets a single link
+    const count = settled.reduce((n, x) => n + x.count, 0);
+    const amount = settled.reduce((n, x) => n + BigInt(x.amount), 0n).toString();
+    return { txHash: settled[0]?.txHash ?? null, count, amount, campaignId: id, settled, pending: store.pending[id] ?? {}, error, seeded };
   } finally {
     settling.delete(id);
   }

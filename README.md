@@ -90,7 +90,7 @@ cd apps/mac && swift run
 
 ## Known limits
 
-- Impressions are reported by the client in v1. World ID's one-human-one-pet rule and rate limits are the defence.
+- Impressions are reported by the client in v1. World ID's one-human-one-pet rule and a one-per-minute limit per pet per campaign (checked on the server) are the defence. Reports are not signed yet.
 - The pet does not yet top up its own 0G compute account from its earnings. Its 0G calls are paid from the team's account. Next step: the pet's wallet deposits into its own 0G Router balance.
 - The World flow was tested with World ID staging.
 

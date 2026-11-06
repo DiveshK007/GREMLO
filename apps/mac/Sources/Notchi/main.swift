@@ -149,6 +149,7 @@ final class Pet {
     // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
     let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let signLabel = NSTextField(labelWithString: "")
+    var signShownAt: Date?
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -285,7 +286,8 @@ final class Pet {
 
     func placeSign() {
         let show = path == .floor && state == .sign && !signLabel.stringValue.isEmpty
-        if !show { if signPanel.isVisible { signPanel.orderOut(nil) }; return }
+        if !show { signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return }
+        if signShownAt == nil { signShownAt = Date() }
         let w = signPanel.frame.width
         let x = min(max(pos.x + size.width / 2 - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
         signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + size.height - 6))
@@ -435,6 +437,7 @@ final class Backend: NSObject {
     var lastThink = "no think yet"
     var serverError: String?
     var thinking = false
+    var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
 
     init(pet: Pet) {
         self.pet = pet
@@ -453,6 +456,18 @@ final class Backend: NSObject {
         popover.behavior = .transient
         refresh()
         Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refresh() }
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reportImpression() }
+    }
+
+    // BUILD_GUIDE section 8: working state, sign visible 5s, once per campaign per minute.
+    func reportImpression() {
+        guard let c = campaign, c.line != nil, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
+        if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
+        lastImpression[c.campaignId] = Date()
+        request("/impressions", body: ["impressions": [["petKey": petName, "campaignId": c.campaignId]]]) { _, err in
+            if let err { print("impression not sent: \(err)") }
+            self.refresh()
+        }
     }
 
     @objc func toggle() {
