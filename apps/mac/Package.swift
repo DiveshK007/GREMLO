@@ -5,6 +5,6 @@ let package = Package(
     name: "Notchi",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "Notchi", resources: [.process("Resources")])
+        .executableTarget(name: "Notchi")
     ]
 )

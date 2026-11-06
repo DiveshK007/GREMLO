@@ -1,45 +1,79 @@
 import AppKit
 import Network
 
-// Sheet layout comes from Resources/rows.json: 192x208 cells, 8 columns, 9 rows.
-let cellSize = CGSize(width: 192, height: 208)
-let sheetCols = 8, sheetRows = 9
-// One art pixel is 7 sheet pixels; draw it at 2 points.
-let drawScale: CGFloat = 2.0 / 7.0
-// Empty sheet pixels under the feet (cell height 208, baseline 190).
-let footPadding = (208.0 - 190.0) * drawScale
 let tickHz = 30.0
-let animFps = 8.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
 let homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? 75
 
-enum PetState: String { case greet, walk, idle, sign, flag, celebrate, fail, climb }
+enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat }
 
-struct Anim { let row: Int; let frames: [Int]; let loops: Bool }
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag]
 
-let anims: [PetState: Anim] = [
-    .greet: Anim(row: 3, frames: [0, 1, 2, 3], loops: false),
-    .walk: Anim(row: 1, frames: Array(0..<8), loops: true),
-    .climb: Anim(row: 2, frames: Array(0..<8), loops: true),
-    .idle: Anim(row: 5, frames: [0, 0, 1, 1, 0, 0, 2, 0], loops: true),
-    .sign: Anim(row: 6, frames: Array(0..<6), loops: true),
-    .flag: Anim(row: 7, frames: Array(0..<6), loops: true),
-    .celebrate: Anim(row: 4, frames: Array(0..<5) + Array(0..<5), loops: false),
-    .fail: Anim(row: 8, frames: Array(0..<6), loops: false),
-]
+// Frame order within a state's strip of n frames.
+func sequence(_ s: PetState, _ n: Int) -> [Int] {
+    switch s {
+    case .idle where n >= 3: return [0, 0, 1, 1, 0, 0, 2, 0]
+    case .celebrate: return Array(0..<n) + Array(0..<n)
+    default: return Array(0..<n)
+    }
+}
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
 
-func loadFrames(_ url: URL) -> [[CGImage]]? {
-    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
-    return (0..<sheetRows).map { r in
-        (0..<sheetCols).compactMap { c in
-            img.cropping(to: CGRect(x: CGFloat(c) * cellSize.width, y: CGFloat(r) * cellSize.height,
-                                    width: cellSize.width, height: cellSize.height))
-        }
+// A pet folder: <state>.png horizontal strips plus pet.json, e.g. assets/pets/mochi/.
+struct SkinInfo: Decodable {
+    let fps: Double
+    let frames: [String: Int]
+    let pixel: Double     // strip pixels per art pixel; one art pixel draws at 2 points
+    let baseline: Double  // strip row the feet stand on
+}
+
+struct Skin {
+    let name: String
+    let fps: Double
+    let size: CGSize
+    let footPadding: CGFloat
+    let strips: [PetState: [CGImage]]
+}
+
+// assets/demo-pets/ (gitignored) wins over assets/pets/ when it exists. NOTCHI_SKIN picks a folder by name, else the first one.
+func loadSkin() -> Skin? {
+    let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("assets")
+    let fm = FileManager.default
+    let demo = assets.appendingPathComponent("demo-pets")
+    let root = fm.fileExists(atPath: demo.path) ? demo : assets.appendingPathComponent("pets")
+    let names = ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+    guard let name = ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? names.first else {
+        print("no pet folders in \(root.path)")
+        return nil
     }
+    let dir = root.appendingPathComponent(name)
+    guard let data = try? Data(contentsOf: dir.appendingPathComponent("pet.json")),
+          let info = try? JSONDecoder().decode(SkinInfo.self, from: data) else {
+        print("\(dir.path)/pet.json missing or invalid")
+        return nil
+    }
+    var strips: [PetState: [CGImage]] = [:]
+    var cell = CGSize.zero
+    for s in PetState.allCases {
+        guard let n = info.frames[s.rawValue], n > 0,
+              let src = CGImageSourceCreateWithURL(dir.appendingPathComponent(s.rawValue + ".png") as CFURL, nil),
+              let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { continue }
+        let w = img.width / n
+        strips[s] = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
+        cell = CGSize(width: w, height: img.height)
+    }
+    guard strips[.walk] != nil else {
+        print("\(dir.path) has no walk.png")
+        return nil
+    }
+    for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) strip, using walk") }
+    let scale = 2 / info.pixel
+    print("pet skin \(dir.path)")
+    return Skin(name: name, fps: info.fps, size: CGSize(width: cell.width * scale, height: cell.height * scale),
+                footPadding: (cell.height - info.baseline) * scale, strips: strips)
 }
 
 // The screen with the menu bar (and the notch, if there is one).
@@ -128,11 +162,11 @@ final class Door {
 }
 
 final class Pet {
-    let frames: [[CGImage]]
+    let skin: Skin
     let door: Door
     let panel: NSPanel
     let sprite = CALayer()
-    let size = CGSize(width: cellSize.width * drawScale, height: cellSize.height * drawScale)
+    var size: CGSize { skin.size }
     var state = PetState.walk
     var next = PetState.walk
     var frame = 0
@@ -150,17 +184,25 @@ final class Pet {
     let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let signLabel = NSTextField(labelWithString: "")
     var signShownAt: Date?
+    // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
+    let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
+    let bubbleLabel = NSTextField(labelWithString: "")
+    var bubbleUntil = Date.distantPast
+    // From GET /pets/:name. Asleep keeps the pet home with sleepNote under the door.
+    var mood = "stable"
+    var sleepNote: String?
+    var speed: Double { mood == "thriving" ? 1.4 : mood == "hungry" ? 0.6 : 1 }
 
-    var floorY: CGFloat { mainScreen.visibleFrame.minY - footPadding }
+    var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
     var leftX: CGFloat { mainScreen.visibleFrame.minX }
     var rightX: CGFloat { mainScreen.visibleFrame.maxX - size.width }
     var doorX: CGFloat { door.center.x - size.width / 2 }
 
-    init(frames: [[CGImage]], door: Door) {
-        self.frames = frames
+    init(skin: Skin, door: Door) {
+        self.skin = skin
         self.door = door
-        panel = overlayPanel(size, level: .statusBar)
+        panel = overlayPanel(skin.size, level: .statusBar)
         sprite.frame = CGRect(origin: .zero, size: size)
         sprite.magnificationFilter = .nearest
         sprite.minificationFilter = .nearest
@@ -171,6 +213,11 @@ final class Pet {
         signLabel.drawsBackground = true
         signLabel.backgroundColor = NSColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 1)
         signPanel.contentView?.addSubview(signLabel)
+        bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
+        bubbleLabel.textColor = .black
+        bubbleLabel.drawsBackground = true
+        bubbleLabel.backgroundColor = .white
+        bubblePanel.contentView?.addSubview(bubbleLabel)
         Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
     }
 
@@ -189,6 +236,7 @@ final class Pet {
 
     // Leave the house (or drop off the wall) and land on the floor, then show `s`.
     func comeOut(then s: PetState) {
+        if mood == "asleep" { return }
         lastActive = Date()
         afterLanding = s
         switch path {
@@ -231,6 +279,7 @@ final class Pet {
         let dt = 1 / tickHz
         switch path {
         case .home:
+            placeBubble()
             return
         case .falling:
             vy += 2400 * dt
@@ -241,8 +290,9 @@ final class Pet {
                 set(.greet, then: afterLanding)
             }
         case .floor:
+            if mood == "asleep" { goHome(lock: false) }
             if state == .walk {
-                pos.x += dir * 24 * dt
+                pos.x += dir * 24 * speed * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }
             }
@@ -268,7 +318,7 @@ final class Pet {
                 return
             }
         }
-        animClock += animFps * dt
+        animClock += skin.fps * speed * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -276,6 +326,46 @@ final class Pet {
         panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
         draw()
         placeSign()
+        placeBubble()
+    }
+
+    func setMood(_ m: String, reason: String?) {
+        if m != mood { print("mood \(mood) -> \(m)") }
+        mood = m
+        sleepNote = m == "asleep" ? "zzz  " + (reason ?? "wallet too low to pay for 0G calls") : nil
+        placeBubble()
+    }
+
+    func setBubble(_ text: String) {
+        bubbleLabel.stringValue = text
+        bubbleLabel.sizeToFit()
+        bubblePanel.setContentSize(bubbleLabel.frame.size)
+    }
+
+    func say(_ text: String, for seconds: TimeInterval) {
+        setBubble(text)
+        bubbleUntil = Date().addingTimeInterval(seconds)
+        placeBubble()
+    }
+
+    // Money landed in the wallet: play eat (on screen only) and show the amount.
+    func eat(_ amount: String) {
+        say(amount, for: 4)
+        if path == .floor && state != .eat { set(.eat, then: next) }
+    }
+
+    func placeBubble() {
+        if Date() >= bubbleUntil {
+            guard let note = sleepNote else { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
+            if bubbleLabel.stringValue != note { setBubble(note) }
+        }
+        let w = bubblePanel.frame.width, h = bubblePanel.frame.height
+        var x = pos.x + size.width / 2 - w / 2
+        var y = pos.y + size.height - 6 + (signPanel.isVisible ? signPanel.frame.height + 2 : 0)
+        if path == .home { x = door.center.x - w / 2; y = door.panel.frame.minY - h - 2 }
+        x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
+        bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
+        if !bubblePanel.isVisible { bubblePanel.orderFrontRegardless() }
     }
 
     func setSign(_ text: String?) {
@@ -296,26 +386,30 @@ final class Pet {
 
     func advanceFrame() {
         if path == .falling { return }  // hold the first greet frame mid-air
-        guard let anim = anims[state] else { return }
         frame += 1
-        if frame >= anim.frames.count {
-            if anim.loops { frame = 0 } else { set(next) }
+        if frame >= sequence(state, strip.count).count {
+            if loopingStates.contains(state) { frame = 0 } else { set(next) }
         }
     }
 
+    var strip: [CGImage] { skin.strips[state] ?? skin.strips[.walk]! }
+
     func draw() {
-        guard let anim = anims[state] else { return }
         var t = CGAffineTransform.identity
         if state == .walk && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
         if state == .climb { t = t.scaledBy(x: -1, y: 1) }
+        if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
+        if mood == "thriving" && path == .floor && state == .walk {
+            t = t.translatedBy(x: 0, y: abs(sin((Double(frame) + animClock) * .pi / 2)) * 3)
+        }
         if path == .entering {
             // Shrink towards the top centre, into the door.
             t = CGAffineTransform(translationX: 0, y: size.height / 2 * (1 - shrink)).scaledBy(x: shrink, y: shrink)
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        sprite.contents = frames[anim.row][anim.frames[frame]]
+        sprite.contents = strip[sequence(state, strip.count)[frame]]
         sprite.setAffineTransform(t)
         CATransaction.commit()
     }
@@ -414,14 +508,22 @@ struct Campaign: Decodable { let campaignId: String; let line: String?; let bran
 struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
 struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
 struct PetInfo: Decodable {
-    let name: String; let mood: String; let walletBalance: String?; let computeBalance: String?
+    let name: String; let mood: String; let moodReason: String?; let walletBalance: String?; let computeBalance: String?
     let impressionsToday: Int; let lastThoughts: [Thought]; let lastMeal: Meal?; let seeded: Bool
 }
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
 func og(_ wei: String?) -> String {
     guard let wei, let d = Decimal(string: wei) else { return "unknown" }
-    return "\(d / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G"
+    return og(d)
+}
+
+func og(_ wei: Decimal) -> String { "\(wei / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G" }
+
+// "+0.005 0G" when the wei balance went up, nil otherwise (first poll, unknown, same or down).
+func ogGain(_ old: String?, _ new: String?) -> String? {
+    guard let o = old.flatMap({ Decimal(string: $0) }), let n = new.flatMap({ Decimal(string: $0) }), n > o else { return nil }
+    return "+" + og(n - o)
 }
 
 // Talks to apps/server. Server down means the popover says so; nothing is invented.
@@ -455,7 +557,7 @@ final class Backend: NSObject {
         popover.contentViewController = vc
         popover.behavior = .transient
         refresh()
-        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refresh() }
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.refresh() }
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reportImpression() }
     }
 
@@ -498,7 +600,10 @@ final class Backend: NSObject {
         }
         request(petPath) { data, err in
             if let err { self.serverError = "pet \(self.petName): \(err)" }
-            if let data { self.info = try? JSONDecoder().decode(PetInfo.self, from: data) }
+            if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
+                if let gain = ogGain(self.info?.walletBalance, new.walletBalance) { self.pet.eat(gain + (new.seeded ? " [seeded]" : "")) }
+                self.info = new
+            }
             self.render()
         }
     }
@@ -524,6 +629,7 @@ final class Backend: NSObject {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
         pet.setSign(campaign?.line.map { $0 + tag })
+        if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
         var lines: [String] = []
         if seeded { lines.append("SEEDED DATA: not real 0G tokens") }
         if let e = serverError { lines.append("server: \(e)") }
@@ -540,16 +646,15 @@ final class Backend: NSObject {
     }
 }
 
+assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
+assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
+assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-guard let url = Bundle.module.url(forResource: "spritesheet", withExtension: "webp"),
-      let frames = loadFrames(url) else {
-    print("spritesheet missing or unreadable")
-    exit(1)
-}
+guard let skin = loadSkin() else { exit(1) }
 let door = Door()
-let pet = Pet(frames: frames, door: door)
+let pet = Pet(skin: skin, door: door)
 let backend = Backend(pet: pet)
 let server: HookServer
 do {

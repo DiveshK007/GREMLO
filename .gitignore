@@ -20,3 +20,6 @@ node_modules/
 
 .next/
 node_modules/
+
+# Local-only pet skins for demo recordings
+apps/mac/assets/demo-pets/
