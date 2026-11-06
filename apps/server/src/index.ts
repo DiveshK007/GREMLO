@@ -138,19 +138,20 @@ async function settle(id: string) {
   }
 }
 
-/** The campaign the pet shows: the first live one that can still pay for an impression, or null. */
+/** The campaign the pet shows: the newest live one with a known line that can still pay for an impression, or null. */
 async function activeCampaign() {
   const [created, block] = await Promise.all([
     pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
     pub.getBlock(),
   ]);
-  for (const ev of created) {
+  for (const ev of [...created].reverse()) { // newest first: a campaign funded mid-demo shows on the next poll
     const id = ev.args.id!;
     const [brand, budget, spent, rate, endTime, closed, lineHash] = await pub.readContract({
       address: vault, abi, functionName: "campaigns", args: [id],
     });
     if (closed || endTime <= block.timestamp || budget - spent < rate) continue;
-    return campaignView({ id, brand, lineHash, rate }, store);
+    const view = campaignView({ id, brand, lineHash, rate }, store);
+    if (view.line) return view; // a line the server never got can't go on the sign
   }
   return null;
 }
