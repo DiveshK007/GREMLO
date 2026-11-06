@@ -286,6 +286,7 @@ export default function FundCampaign() {
           <div>
             <label>Campaign ID</label>
             <input value={lookupId} onChange={(e) => setLookupId(e.target.value)} placeholder="1" />
+            <p className="hint">Shown after you fund, as Campaign #N.</p>
           </div>
         </div>
         <p>
