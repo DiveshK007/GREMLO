@@ -67,7 +67,7 @@ export default function GetYourPet() {
           expires_at: Number(sig.expires_at),
           signature: sig.sig,
         },
-        allow_legacy_proofs: true,
+        allow_legacy_proofs: false,
         environment: WORLD_ENV,
       } as Parameters<typeof IDKit.request>[0]).preset(preset);
 
