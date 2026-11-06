@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatEther, parseEther, type Address, type Hash } from "viem";
 import { ApiError, recordCampaign, settleImpressions, suggestLines, type Settlement, type SuggestedLine } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
 import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
+import { PetSmall } from "@/components/PetArt";
+
+/** Seconds since mount, so a long 0G call visibly moves. */
+function Elapsed() {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setS((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{s}s</>;
+}
 
 type Funded = { campaignId: bigint; txHash: Hash; line: string; recordWarning?: string };
 type Lookup = Awaited<ReturnType<typeof readCampaign>>;
@@ -18,8 +29,10 @@ export default function FundCampaign() {
   const [budget, setBudget] = useState("0.02");
   const [rate, setRate] = useState("0.0001");
   const [hours, setHours] = useState("1");
+  const [walletError, setWalletError] = useState(""); // shown next to Connect wallet
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [campaignError, setCampaignError] = useState(""); // lookup, settle and close, shown in "Your campaign"
   const [linesError, setLinesError] = useState("");
   const [funded, setFunded] = useState<Funded | null>(null);
 
@@ -31,11 +44,11 @@ export default function FundCampaign() {
   const chosenLine = picked !== null ? lines[picked]?.text ?? "" : ownLine.trim();
 
   async function onConnect() {
-    setError("");
+    setWalletError("");
     try {
       setAccount(await connectWallet());
     } catch (e) {
-      setError((e as Error).message);
+      setWalletError((e as Error).message);
     }
   }
 
@@ -56,7 +69,7 @@ export default function FundCampaign() {
       setLinesError(
         e instanceof ApiError && e.status === 404
           ? "The server doesn't have the line-writing route yet. Write your own line below."
-          : (e as Error).message,
+          : `Notchi couldn't write lines: ${(e as Error).message}. Try again, or write your own line below.`,
       );
     } finally {
       setBusy("");
@@ -106,44 +119,44 @@ export default function FundCampaign() {
   }
 
   async function onLookup() {
-    setError("");
+    setCampaignError("");
     setRefund(null);
-    if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("lookup");
     try {
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
   }
 
   async function onSettle() {
-    setError("");
+    setCampaignError("");
     setSettlement(null);
-    if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("settle");
     try {
       setSettlement(await settleImpressions(lookupId));
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
   }
 
   async function onClose() {
-    setError("");
-    if (!account) return setError("Connect your wallet first.");
+    setCampaignError("");
+    if (!account) return setCampaignError("Connect your wallet first.");
     setBusy("close");
     try {
       const res = await closeCampaign(account, BigInt(lookupId));
       setRefund({ txHash: res.txHash, amount: res.refund });
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
@@ -157,7 +170,10 @@ export default function FundCampaign() {
       <p className="lead">Your line, held up by a tiny pet while developers wait on their AI agent. Pay per real impression.</p>
 
       {!account ? (
-        <button onClick={onConnect}>Connect wallet</button>
+        <>
+          <button onClick={onConnect}>Connect wallet</button>
+          {walletError && <p className="bad">{walletError}</p>}
+        </>
       ) : (
         <p className="muted">
           Paying from <span className="mono">{account}</span>
@@ -170,10 +186,21 @@ export default function FundCampaign() {
             <h2>1. What do you sell?</h2>
             <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="CI that runs in 30 seconds for TypeScript monorepos." />
             <p>
-              <button className="ghost" onClick={onSuggest} disabled={busy === "lines"}>
-                {busy === "lines" ? "Notchi is thinking..." : "Let Notchi write 3 lines"}
+              <button className="ghost" onClick={onSuggest} disabled={busy === "lines"} aria-busy={busy === "lines"}>
+                {busy === "lines" ? "Writing lines…" : "Let Notchi write 3 lines"}
               </button>
             </p>
+            {busy === "lines" && (
+              <div className="thinking" role="status">
+                <PetSmall />
+                <div>
+                  <strong>Notchi is thinking on 0G…</strong>
+                  <span className="muted">
+                    This can take up to a minute. <Elapsed />
+                  </span>
+                </div>
+              </div>
+            )}
             {linesError && <p className="bad">{linesError}</p>}
             {lines.map((l, i) => (
               <button key={i} className={`sign ${picked === i ? "picked" : ""}`} onClick={() => setPicked(i)}>
@@ -221,8 +248,9 @@ export default function FundCampaign() {
             </p>
             {error && <p className="bad">{error}</p>}
             <button onClick={onFund} disabled={!account || busy === "fund"}>
-              {busy === "fund" ? "Confirm in your wallet..." : "Fund campaign"}
+              {busy === "fund" ? "Confirm in your wallet…" : "Fund campaign"}
             </button>
+            {!account && <p className="hint">Connect your wallet at the top to fund.</p>}
             <p className="muted">
               Contract:{" "}
               <a className="mono" href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">
@@ -258,16 +286,18 @@ export default function FundCampaign() {
           <div>
             <label>Campaign ID</label>
             <input value={lookupId} onChange={(e) => setLookupId(e.target.value)} placeholder="1" />
+            <p className="hint">Shown after you fund, as Campaign #N.</p>
           </div>
         </div>
         <p>
           <button className="ghost" onClick={onLookup} disabled={busy === "lookup"}>
-            Check
+            {busy === "lookup" ? "Checking…" : "Check"}
           </button>{" "}
           <button className="ghost" onClick={onSettle} disabled={busy === "settle"}>
-            {busy === "settle" ? "Settling onchain..." : "Settle impressions"}
+            {busy === "settle" ? "Settling onchain…" : "Settle impressions"}
           </button>
         </p>
+        {campaignError && <p className="bad">{campaignError}</p>}
         {settlement && (
           <>
             {settlement.count === 0 && !settlement.error && <p className="muted">No impressions queued for this campaign yet.</p>}
@@ -303,7 +333,7 @@ export default function FundCampaign() {
             </p>
             {!lookup.closed && lookup.endTime <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>
-                {busy === "close" ? "Closing..." : "Close and refund"}
+                {busy === "close" ? "Closing…" : "Close and refund"}
               </button>
             )}
           </>

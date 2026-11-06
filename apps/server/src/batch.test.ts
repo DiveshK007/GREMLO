@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countImpression, planSettlement } from "./batch.ts";
+import { countImpression, markSettled, planSettlement } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -35,4 +35,13 @@ test("an impression counts once per pet per campaign per window", () => {
   assert.equal(countImpression(last, "1:0xa", 59_999, 60_000), false);
   assert.equal(countImpression(last, "2:0xa", 59_999, 60_000), true); // other campaign
   assert.equal(countImpression(last, "1:0xa", 60_000, 60_000), true);
+});
+
+test("a sent but unconfirmed settle is never paid again; a failed one stays pending", () => {
+  const p = { "0xa": 5, "0xb": 2 };
+  markSettled(p, "0xa", 3, "unconfirmed");
+  markSettled(p, "0xb", 2, "failed");
+  assert.deepEqual(p, { "0xa": 2, "0xb": 2 });
+  markSettled(p, "0xa", 2, "paid");
+  assert.deepEqual(p, { "0xb": 2 });
 });

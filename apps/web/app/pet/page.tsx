@@ -24,19 +24,20 @@ export default function GetYourPet() {
   const [petKey, setPetKey] = useState("");
   const [payout, setPayout] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
+  const [walletError, setWalletError] = useState(""); // shown next to Connect wallet
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
 
   const fullName = `${name.trim().toLowerCase()}.notchi.eth`;
 
   async function onConnect() {
-    setFormError("");
+    setWalletError("");
     try {
       const addr = await connectWallet();
       setOwner(addr);
       if (!payout) setPayout(addr);
     } catch (e) {
-      setFormError((e as Error).message);
+      setWalletError((e as Error).message);
     }
   }
 
@@ -89,7 +90,7 @@ export default function GetYourPet() {
       });
       setPhase({ kind: "done", name: res.name ?? fullName, txHash: res.txHash });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setPhase({ kind: "denied" });
+      if (e instanceof ApiError && e.status === 409 && e.message === "already has a pet") setPhase({ kind: "denied" });
       else setPhase({ kind: "error", message: (e as Error).message });
     } finally {
       setBusy(false);
@@ -111,7 +112,10 @@ export default function GetYourPet() {
       {phase.kind === "form" && (
         <div className="card">
           {!owner ? (
-            <button onClick={onConnect}>Connect wallet</button>
+            <>
+              <button onClick={onConnect}>Connect wallet</button>
+              {walletError && <p className="bad">{walletError}</p>}
+            </>
           ) : (
             <p className="muted">
               Connected: <span className="mono">{owner}</span>
@@ -122,18 +126,21 @@ export default function GetYourPet() {
           <input value={name} onChange={(e) => setName(e.target.value)} />
           <p className="muted mono">{fullName}</p>
 
-          <label>Payout address (where the pet's earnings go; only you can change it later)</label>
+          <label>Payout address</label>
           <input className="mono" value={payout} onChange={(e) => setPayout(e.target.value)} placeholder="0x..." />
+          <p className="hint">Where the pet's earnings go. Only you can change it later.</p>
 
-          <label>Pet key (from the Notchi menu-bar app; leave empty to use the payout address)</label>
+          <label>Pet key (optional)</label>
           <input className="mono" value={petKey} onChange={(e) => setPetKey(e.target.value)} placeholder="0x..." />
+          <p className="hint">Leave empty to use the payout address.</p>
 
           {formError && <p className="bad">{formError}</p>}
           <p>
             <button onClick={onVerify} disabled={busy || !owner}>
-              {busy ? "Starting..." : "Prove you're a real person"}
+              {busy ? "Starting…" : "Prove you're a real person"}
             </button>
           </p>
+          {!owner && <p className="hint">Connect your wallet first.</p>}
         </div>
       )}
 
@@ -160,14 +167,14 @@ export default function GetYourPet() {
             </button>
           </p>
           <p className="muted" style={{ textAlign: "center" }}>
-            Waiting for your phone...
+            Waiting for your phone…
           </p>
         </div>
       )}
 
       {phase.kind === "registering" && (
         <div className="card">
-          <p>Verified. Checking the proof on our server and registering your pet onchain...</p>
+          <p>Verified. Checking the proof on our server and registering your pet onchain…</p>
         </div>
       )}
 

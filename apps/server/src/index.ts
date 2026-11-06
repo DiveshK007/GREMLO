@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { countImpression, planSettlement, type Pending } from "./batch.ts";
+import { countImpression, markSettled, planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -120,11 +120,12 @@ async function settle(id: string) {
       try {
         const txHash = await send("settleImpressions", [BigInt(id), s.pet, BigInt(s.count)]);
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
-        store.pending[id][s.pet] -= s.count;
-        if (store.pending[id][s.pet] === 0) delete store.pending[id][s.pet];
+        markSettled(store.pending[id], s.pet, s.count, "paid");
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
-      } catch (e) {
+      } catch (e: any) {
+        markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
+        save();
         error = errMsg(e);
         break;
       }
@@ -138,19 +139,20 @@ async function settle(id: string) {
   }
 }
 
-/** The campaign the pet shows: the first live one that can still pay for an impression, or null. */
+/** The campaign the pet shows: the newest live one with a known line that can still pay for an impression, or null. */
 async function activeCampaign() {
   const [created, block] = await Promise.all([
     pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
     pub.getBlock(),
   ]);
-  for (const ev of created) {
+  for (const ev of [...created].reverse()) { // newest first: a campaign funded mid-demo shows on the next poll
     const id = ev.args.id!;
     const [brand, budget, spent, rate, endTime, closed, lineHash] = await pub.readContract({
       address: vault, abi, functionName: "campaigns", args: [id],
     });
     if (closed || endTime <= block.timestamp || budget - spent < rate) continue;
-    return campaignView({ id, brand, lineHash, rate }, store);
+    const view = campaignView({ id, brand, lineHash, rate }, store);
+    if (view.line) return view; // a line the server never got can't go on the sign
   }
   return null;
 }
@@ -243,6 +245,8 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 const port = Number(process.env.PORT ?? 8787);
+// Loopback only: /think and /campaigns/lines spend real 0G and have no auth, so nothing on the venue wifi may reach them.
+const host = process.env.HOST ?? "127.0.0.1";
 createServer((req, res) => {
   if (cors(req, res)) return;
   route(req).then(
@@ -253,4 +257,4 @@ createServer((req, res) => {
       reply(res, status, { error: errMsg(e) });
     },
   );
-}).listen(port, () => console.log(`server on :${port}, vault ${vault}, chain ${chain.id}`));
+}).listen(port, host, () => console.log(`server on ${host}:${port}, vault ${vault}, chain ${chain.id}`));

@@ -35,13 +35,19 @@ export const operator = createWalletClient({
   account: privateKeyToAccount(env("ZG_OPERATOR_KEY") as `0x${string}`),
 });
 
-/** Send an operator tx and wait for it; throws if it reverts. */
+/** Send an operator tx and wait for it; throws if it reverts. A wait failure after broadcast carries .unconfirmedTx. */
 export async function send(functionName: "registerPet" | "settleImpressions", args: readonly unknown[]) {
   const { request } = await pub.simulateContract({
     address: vault, abi, functionName, args: args as never, account: operator.account,
   });
   const hash = await operator.writeContract(request);
-  const receipt = await pub.waitForTransactionReceipt({ hash });
+  let receipt;
+  try {
+    receipt = await pub.waitForTransactionReceipt({ hash });
+  } catch (e) {
+    // broadcast but unconfirmed: it may still land, so callers must not resend it
+    throw Object.assign(new Error(`tx ${hash} sent but not confirmed: ${(e as Error).message}`), { unconfirmedTx: hash });
+  }
   if (receipt.status !== "success") throw new Error(`tx ${hash} reverted`);
   return hash;
 }

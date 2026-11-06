@@ -5,7 +5,7 @@ let tickHz = 30.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
 let homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? 75
 
-enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat }
+enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
 
 let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag]
 
@@ -21,39 +21,69 @@ func sequence(_ s: PetState, _ n: Int) -> [Int] {
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
 
-// A pet folder: <state>.png horizontal strips plus pet.json, e.g. assets/pets/mochi/.
+// Two pet folder formats, see assets/pets/README.md:
+// strips: <state>.png + pet.json with frames/fps/pixel/baseline (mochi)
+// sheet:  spritesheet.webp + pet.json (Codex pet format), rows from rows.json in the folder or assets/pets/notchi-rows.json
 struct SkinInfo: Decodable {
-    let fps: Double
-    let frames: [String: Int]
-    let pixel: Double     // strip pixels per art pixel; one art pixel draws at 2 points
-    let baseline: Double  // strip row the feet stand on
+    let fps: Double?
+    let frames: [String: Int]?
+    let pixel: Double?     // strip pixels per art pixel; one art pixel draws at 2 points
+    let baseline: Double?  // strip row the feet stand on
+    let spritesheetPath: String?
+}
+
+struct RowMap: Decodable {
+    struct Row: Decodable { let row: Int; let name: String; let frames: Int }
+    let cell: [Int]
+    let baseline: Double
+    let scale: Double
+    let rows_map: [Row]
+    let fps: [String: Double]?
 }
 
 struct Skin {
     let name: String
     let fps: Double
+    let fpsByMood: [String: Double]
     let size: CGSize
     let footPadding: CGFloat
     let strips: [PetState: [CGImage]]
     let doors: [DoorState: CGImage]  // empty unless all four door_<state>.png exist
-    let scale: CGFloat               // points per strip pixel
+    let scale: CGFloat               // points per sheet pixel
 }
 
-// assets/demo-pets/ (gitignored) wins over assets/pets/ when it exists. NOTCHI_SKIN picks a folder by name, else the first one.
-func loadSkin() -> Skin? {
-    let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().appendingPathComponent("assets")
-    let want = ProcessInfo.processInfo.environment["NOTCHI_SKIN"]
-    let found = ["demo-pets", "pets"].lazy.compactMap { sub -> (String, URL)? in
-        let root = assets.appendingPathComponent(sub)
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
-        guard let name = want.flatMap({ names.contains($0) ? $0 : nil }) ?? (want == nil ? names.first : nil) else { return nil }
-        return (name, root.appendingPathComponent(name))
-    }.first
-    guard let (name, dir) = found else {
-        print("no pet folder\(want.map { " named " + $0 } ?? "") in \(assets.path)/demo-pets or /pets")
-        return nil
+let assetsDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent().appendingPathComponent("assets")
+let defaultSkin = "notchi-ink"
+
+// Every folder with a pet.json in assets/demo-pets (gitignored) and assets/pets, demo first.
+func petFolders() -> [(name: String, dir: URL)] {
+    ["demo-pets", "pets"].flatMap { sub -> [(name: String, dir: URL)] in
+        let root = assetsDir.appendingPathComponent(sub)
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
+        return names.map { (name: $0, dir: root.appendingPathComponent($0)) }
+            .filter { FileManager.default.fileExists(atPath: $0.dir.appendingPathComponent("pet.json").path) }
     }
+}
+
+func loadImage(_ url: URL) -> CGImage? {
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    return CGImageSourceCreateImageAtIndex(src, 0, nil)
+}
+
+// Loads `want` (or NOTCHI_SKIN, or notchi-ink); falls back to the first pet that loads.
+func loadSkin(_ want: String? = nil) -> Skin? {
+    let folders = petFolders()
+    let pick = want ?? ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? defaultSkin
+    let ordered = folders.filter { $0.name == pick } + folders.filter { $0.name != pick }
+    for f in ordered {
+        if let skin = loadSkin(name: f.name, dir: f.dir) { return skin }
+    }
+    print("no loadable pet in \(assetsDir.path)/demo-pets or /pets")
+    return nil
+}
+
+func loadSkin(name: String, dir: URL) -> Skin? {
     guard let data = try? Data(contentsOf: dir.appendingPathComponent("pet.json")),
           let info = try? JSONDecoder().decode(SkinInfo.self, from: data) else {
         print("\(dir.path)/pet.json missing or invalid")
@@ -61,34 +91,57 @@ func loadSkin() -> Skin? {
     }
     var strips: [PetState: [CGImage]] = [:]
     var cell = CGSize.zero
-    for s in PetState.allCases {
-        guard let n = info.frames[s.rawValue], n > 0,
-              let src = CGImageSourceCreateWithURL(dir.appendingPathComponent(s.rawValue + ".png") as CFURL, nil),
-              let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { continue }
-        let w = img.width / n
-        let frames = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
-        guard w > 0, frames.count == n else { print("\(s.rawValue).png: \(n) frames don't fit \(img.width)px"); continue }
-        strips[s] = frames
-        cell = CGSize(width: w, height: img.height)
+    var pixel = info.pixel ?? 7, baseline = info.baseline ?? 190, fps = info.fps ?? 8
+    var fpsByMood: [String: Double] = [:]
+    let sheetURL = dir.appendingPathComponent(info.spritesheetPath ?? "spritesheet.webp")
+    if let sheet = loadImage(sheetURL) {
+        let local = dir.appendingPathComponent("rows.json")
+        let mapURL = FileManager.default.fileExists(atPath: local.path) ? local : assetsDir.appendingPathComponent("pets/notchi-rows.json")
+        guard let mapData = try? Data(contentsOf: mapURL), let map = try? JSONDecoder().decode(RowMap.self, from: mapData),
+              map.cell.count == 2 else {
+            print("\(name): \(mapURL.path) missing or invalid")
+            return nil
+        }
+        cell = CGSize(width: map.cell[0], height: map.cell[1])
+        for row in map.rows_map {
+            guard let s = PetState(rawValue: row.name) else { continue }
+            let frames = (0..<row.frames).compactMap {
+                sheet.cropping(to: CGRect(x: $0 * map.cell[0], y: row.row * map.cell[1], width: map.cell[0], height: map.cell[1]))
+            }
+            if frames.count == row.frames && row.frames > 0 { strips[s] = frames }
+        }
+        pixel = map.scale
+        baseline = map.baseline
+        fpsByMood = map.fps ?? [:]
+        fps = fpsByMood["stable"] ?? fps
+    } else {
+        for s in PetState.allCases {
+            guard let n = info.frames?[s.rawValue], n > 0,
+                  let img = loadImage(dir.appendingPathComponent(s.rawValue + ".png")) else { continue }
+            let w = img.width / n
+            let frames = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
+            guard w > 0, frames.count == n else { print("\(s.rawValue).png: \(n) frames don't fit \(img.width)px"); continue }
+            strips[s] = frames
+            cell = CGSize(width: w, height: img.height)
+        }
     }
     guard strips[.walk] != nil else {
-        print("\(dir.path) has no walk.png")
+        print("\(dir.path) has no walk frames")
         return nil
     }
-    for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) strip, using walk") }
-    let scale = 2 / info.pixel
+    for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) frames, using walk") }
+    let scale = 2 / pixel
     var doors: [DoorState: CGImage] = [:]
     for d in DoorState.allCases {
-        if let src = CGImageSourceCreateWithURL(dir.appendingPathComponent("door_\(d.rawValue).png") as CFURL, nil),
-           let img = CGImageSourceCreateImageAtIndex(src, 0, nil) { doors[d] = img }
+        if let img = loadImage(dir.appendingPathComponent("door_\(d.rawValue).png")) { doors[d] = img }
     }
     if !doors.isEmpty && doors.count < DoorState.allCases.count {
         print("\(name): door art needs all of door_closed/glowing/open/locked.png, drawing the default door")
         doors = [:]
     }
     print("pet skin \(dir.path)\(doors.isEmpty ? "" : " with door art")")
-    return Skin(name: name, fps: info.fps, size: CGSize(width: cell.width * scale, height: cell.height * scale),
-                footPadding: (cell.height - info.baseline) * scale, strips: strips, doors: doors, scale: scale)
+    return Skin(name: name, fps: fps, fpsByMood: fpsByMood, size: CGSize(width: cell.width * scale, height: cell.height * scale),
+                footPadding: (cell.height - baseline) * scale, strips: strips, doors: doors, scale: scale)
 }
 
 // The screen with the menu bar (and the notch, if there is one).
@@ -341,7 +394,7 @@ final class Pet {
                 return
             }
         }
-        animClock += skin.fps * speed * dt
+        animClock += (skin.fpsByMood[mood] ?? skin.fps * speed) * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -506,7 +559,8 @@ final class HookServer {
                 let head = String(decoding: buf[..<end.lowerBound], as: UTF8.self).lowercased()
                 let length = head.split(separator: "\r\n")
                     .first { $0.hasPrefix("content-length:") }
-                    .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) } ?? 0
+                    .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) }
+                    .map { max(0, $0) } ?? 0 // a negative length would trap in prefix()
                 let body = buf[end.upperBound...]
                 if body.count >= length || done || err != nil {
                     self.finish(conn, body: Data(body.prefix(length)))

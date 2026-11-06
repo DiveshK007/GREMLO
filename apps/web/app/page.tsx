@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { NotchPet } from "@/components/PetArt";
+import { addressLink, VAULT_ADDRESS } from "@/lib/config";
 
 export default function Home() {
   return (
@@ -15,18 +16,30 @@ export default function Home() {
         <div className="card">
           <h2>Developers</h2>
           <p className="muted">Prove you are a real person once, name your pet, and it moves into your notch.</p>
-          <Link href="/pet">
-            <button>Get your pet</button>
+          <Link href="/pet" className="button">
+            Get your pet
           </Link>
         </div>
         <div className="card">
           <h2>Brands</h2>
           <p className="muted">The pet writes three lines for you. Pick one, fund it, and any unspent budget comes back.</p>
-          <Link href="/brand">
-            <button>Fund a campaign</button>
+          <Link href="/brand" className="button">
+            Fund a campaign
           </Link>
         </div>
       </div>
+      <p className="muted proof">
+        The pet itself is a small Mac app that reacts to Claude Code. Payments here are real 0G Galileo testnet transactions
+        {VAULT_ADDRESS ? (
+          <>
+            {" "}to the{" "}
+            <a href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">
+              campaign contract
+            </a>
+          </>
+        ) : null}
+        .
+      </p>
     </>
   );
 }

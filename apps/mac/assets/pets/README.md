@@ -1,6 +1,12 @@
 # Pet folders
 
-One folder per pet: `assets/pets/<name>/`. Put local-only pets in `assets/demo-pets/<name>/` (gitignored); if that folder has a pet, the app uses it instead. `NOTCHI_SKIN=<name>` picks one by name.
+One folder per pet: `assets/pets/<name>/`. Put local-only pets in `assets/demo-pets/<name>/` (gitignored, third-party packs). The default is `notchi-ink`; `NOTCHI_SKIN=<name>` picks another. If the chosen pet doesn't load, the first one that does is used.
+
+## Sheet format (notchi-bone, notchi-ink, notchi-signal)
+
+`pet.json` (Codex pet format, `spritesheetPath` defaults to `spritesheet.webp`) plus one sheet: 192x208 cells, 8 columns, one animation per row, frames left-aligned. The row map, baseline, pixel scale and per-mood fps come from `rows.json` in the folder if present, else `assets/pets/notchi-rows.json`.
+
+## Strip format (mochi)
 
 Each folder has:
 

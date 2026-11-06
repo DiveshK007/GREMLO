@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node --env-file=.env --test",
+    "test": "node --env-file-if-exists=.env --test",
     "ping": "node --env-file=.env scripts/ping.js"
   }
 }

@@ -27,3 +27,13 @@ export function countImpression(last: Record<string, number>, key: string, now: 
   last[key] = now;
   return true;
 }
+
+/**
+ * Take settled impressions out of pending. A tx that was sent but not confirmed counts as paid: it may still
+ * land, and the contract would pay a resend again. Worst case the pet is underpaid; the brand never pays twice.
+ */
+export function markSettled(pending: Pending, pet: string, count: number, outcome: "paid" | "unconfirmed" | "failed") {
+  if (outcome === "failed") return;
+  pending[pet] -= count;
+  if (pending[pet] <= 0) delete pending[pet];
+}
