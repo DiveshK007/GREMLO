@@ -244,6 +244,8 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 const port = Number(process.env.PORT ?? 8787);
+// Loopback only: /think and /campaigns/lines spend real 0G and have no auth, so nothing on the venue wifi may reach them.
+const host = process.env.HOST ?? "127.0.0.1";
 createServer((req, res) => {
   if (cors(req, res)) return;
   route(req).then(
@@ -254,4 +256,4 @@ createServer((req, res) => {
       reply(res, status, { error: errMsg(e) });
     },
   );
-}).listen(port, () => console.log(`server on :${port}, vault ${vault}, chain ${chain.id}`));
+}).listen(port, host, () => console.log(`server on ${host}:${port}, vault ${vault}, chain ${chain.id}`));
