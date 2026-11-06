@@ -68,7 +68,7 @@ export default function FundCampaign() {
       setLinesError(
         e instanceof ApiError && e.status === 404
           ? "The server doesn't have the line-writing route yet. Write your own line below."
-          : (e as Error).message,
+          : `Notchi couldn't write lines: ${(e as Error).message}. Try again, or write your own line below.`,
       );
     } finally {
       setBusy("");
@@ -120,7 +120,7 @@ export default function FundCampaign() {
   async function onLookup() {
     setCampaignError("");
     setRefund(null);
-    if (!/^\d+$/.test(lookupId)) return setCampaignError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("lookup");
     try {
       setLookup(await readCampaign(BigInt(lookupId)));
@@ -134,7 +134,7 @@ export default function FundCampaign() {
   async function onSettle() {
     setCampaignError("");
     setSettlement(null);
-    if (!/^\d+$/.test(lookupId)) return setCampaignError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("settle");
     try {
       setSettlement(await settleImpressions(lookupId));
