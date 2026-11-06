@@ -17,16 +17,17 @@ export function petView(p: {
   walletBalance: bigint;
   impressionsToday: number;
   seeded: boolean;
+  lastThoughts?: { action: string; requestId: string; at: number }[];
 }) {
   return {
     name: p.name,
-    // shortcut: brain does not report balances or thoughts to the server yet, so these stay
-    // empty instead of invented; fill them when brain posts its compute balance and deposits
+    // shortcut: brain does not report balances or meals yet, so these stay empty instead of
+    // invented; fill them when brain posts its compute balance and deposits
     mood: "asleep",
     walletBalance: p.walletBalance.toString(),
     computeBalance: null as string | null,
     impressionsToday: p.impressionsToday,
-    lastThoughts: [] as { action: string; requestId: string; at: number }[],
+    lastThoughts: p.lastThoughts ?? [],
     lastMeal: null as { amount: string; txHash: string; at: number } | null,
     seeded: p.seeded,
   };

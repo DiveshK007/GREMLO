@@ -6,6 +6,9 @@ import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, WORLD_ACTIONS, type PetRecord } from "./register.ts";
+import { addThought, type Thought } from "./thoughts.ts";
+// @ts-expect-error plain ESM JS package, no types
+import { think } from "../../../packages/brain/index.js";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -14,12 +17,13 @@ type Store = {
   lines: Record<string, string>; // lineHash -> ad line text (the chain only stores the hash)
   brands: Record<string, string>; // brand address -> display name
   today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
+  thoughts: Record<string, Thought[]>; // pet key -> last 0G decisions with request IDs
 };
 
 // shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
 const STORE_FILE = new URL("../data.json", import.meta.url);
 const store: Store = {
-  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {},
+  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -141,7 +145,22 @@ async function getPet(key: string) {
     walletBalance: await pub.getBalance({ address: payout }), // payout is where the pet's earnings land
     impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
+    lastThoughts: store.thoughts[petKey],
   });
+}
+
+const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 64) : undefined);
+
+/** One pet decision from a Claude Code hook. A sleep is a valid answer, so it is 200 too. */
+async function petThink(key: string, body: any) {
+  const event = str(body.event);
+  if (!event) throw bad("event is required");
+  const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
+  const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
+  const petKey = getAddress(findPet(key)?.petKey ?? key);
+  store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
+  save();
+  return r;
 }
 
 async function route(req: IncomingMessage) {
@@ -152,6 +171,8 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
+  const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
+  if (m === "POST" && thinkPath) return petThink(decodeURIComponent(thinkPath[1]), await readBody(req));
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }
