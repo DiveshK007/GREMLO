@@ -342,7 +342,14 @@ final class HookServer {
             self?.read(conn, Data())
         }
         listener.stateUpdateHandler = { state in
-            if case .failed(let err) = state { print("hook server failed: \(err)"); exit(1) }
+            if case .failed(let err) = state {
+                if case .posix(.EADDRINUSE) = err {
+                    print("Port 47474 is taken: Notchi is probably already running. Stop it with: pkill -x Notchi")
+                } else {
+                    print("hook server failed: \(err)")
+                }
+                exit(1)
+            }
         }
         listener.start(queue: .main)
     }
