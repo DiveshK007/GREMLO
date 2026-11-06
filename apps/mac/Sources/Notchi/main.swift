@@ -35,6 +35,8 @@ struct Skin {
     let size: CGSize
     let footPadding: CGFloat
     let strips: [PetState: [CGImage]]
+    let doors: [DoorState: CGImage]  // empty unless all four door_<state>.png exist
+    let scale: CGFloat               // points per strip pixel
 }
 
 // assets/demo-pets/ (gitignored) wins over assets/pets/ when it exists. NOTCHI_SKIN picks a folder by name, else the first one.
@@ -75,9 +77,18 @@ func loadSkin() -> Skin? {
     }
     for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) strip, using walk") }
     let scale = 2 / info.pixel
-    print("pet skin \(dir.path)")
+    var doors: [DoorState: CGImage] = [:]
+    for d in DoorState.allCases {
+        if let src = CGImageSourceCreateWithURL(dir.appendingPathComponent("door_\(d.rawValue).png") as CFURL, nil),
+           let img = CGImageSourceCreateImageAtIndex(src, 0, nil) { doors[d] = img }
+    }
+    if !doors.isEmpty && doors.count < DoorState.allCases.count {
+        print("\(name): door art needs all of door_closed/glowing/open/locked.png, drawing the default door")
+        doors = [:]
+    }
+    print("pet skin \(dir.path)\(doors.isEmpty ? "" : " with door art")")
     return Skin(name: name, fps: info.fps, size: CGSize(width: cell.width * scale, height: cell.height * scale),
-                footPadding: (cell.height - info.baseline) * scale, strips: strips)
+                footPadding: (cell.height - info.baseline) * scale, strips: strips, doors: doors, scale: scale)
 }
 
 // The screen with the menu bar (and the notch, if there is one).
@@ -98,11 +109,13 @@ func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
     return panel
 }
 
-enum DoorState: String { case closed, glowing, open, locked }
+enum DoorState: String, CaseIterable { case closed, glowing, open, locked }
 
-// A small arched door hanging under the notch. Drawn in code until there is door art.
+// A small arched door hanging under the notch. Uses the pet's door_<state>.png art if it has it, else drawn in code.
 final class Door {
-    let size = CGSize(width: 16, height: 20)
+    let size: CGSize
+    let art: [DoorState: CGImage]
+    let artLayer = CALayer()
     let panel: NSPanel
     let arch = CAShapeLayer()
     let lockBody = CAShapeLayer()
@@ -111,7 +124,9 @@ final class Door {
     let brown = CGColor(red: 0.23, green: 0.18, blue: 0.15, alpha: 1)
     var state = DoorState.closed
 
-    init() {
+    init(art: [DoorState: CGImage], scale: CGFloat) {
+        self.art = art
+        size = art[.closed].map { CGSize(width: CGFloat($0.width) * scale, height: CGFloat($0.height) * scale) } ?? CGSize(width: 16, height: 20)
         panel = overlayPanel(size, level: NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1))
         let path = CGMutablePath()
         path.move(to: CGPoint(x: 1, y: 1))
@@ -128,7 +143,10 @@ final class Door {
         lockShackle.path = shackle
         lockShackle.fillColor = nil
         lockShackle.lineWidth = 1
-        for layer in [arch, lockBody, lockShackle] { panel.contentView?.layer?.addSublayer(layer) }
+        artLayer.frame = CGRect(origin: .zero, size: size)
+        artLayer.magnificationFilter = .nearest
+        artLayer.contentsGravity = .resizeAspect
+        for layer in art.isEmpty ? [arch, lockBody, lockShackle] : [artLayer] { panel.contentView?.layer?.addSublayer(layer) }
         place()
         set(.closed)
         panel.orderFrontRegardless()
@@ -151,6 +169,7 @@ final class Door {
         state = s
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        artLayer.contents = art[s]
         arch.fillColor = s == .open ? amber : CGColor(gray: 0, alpha: 1)
         arch.strokeColor = s == .glowing ? amber : brown
         arch.shadowColor = amber
@@ -728,7 +747,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 guard let skin = loadSkin() else { exit(1) }
-let door = Door()
+let door = Door(art: skin.doors, scale: skin.scale)
 let pet = Pet(skin: skin, door: door)
 let backend = Backend(pet: pet)
 let server: HookServer
