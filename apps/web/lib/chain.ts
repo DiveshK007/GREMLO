@@ -135,6 +135,7 @@ export async function createCampaign(opts: {
     functionName: "createCampaign",
     args: [lineHash(opts.line), opts.rateWei, opts.endTime],
     value: opts.budgetWei,
+    gas: 300000n,
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
   if (receipt.status !== "success") throw new Error(`Transaction failed: ${txHash}`);
