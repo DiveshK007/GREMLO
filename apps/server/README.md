@@ -33,4 +33,6 @@ The chain stores only a hash of the line and the brand's address. `line` and `br
 ```
 `walletBalance` is the onchain balance of the pet's payout address. `impressionsToday` counts impressions accepted since 00:00 UTC. The brain does not report to the server yet, so `computeBalance` is `null`, `lastThoughts` is empty, `lastMeal` is `null` and `mood` is `asleep`. None of these are made up.
 
+Once the brain reports, each `lastThoughts` entry looks like `{ "action": "work", "requestId": "<0G x_0g_trace.request_id>", "at": 1793970566 }`. `action` is one of the brain's `ACTIONS`, verbatim: `wake`, `work`, `wave`, `wait`, `celebrate`, `sad`, `go_home`, `sleep`.
+
 Impressions are client-reported and unsigned in v1. World's one-human-one-pet rule is the defence.
