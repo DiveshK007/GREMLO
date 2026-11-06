@@ -601,6 +601,7 @@ final class Backend: NSObject {
     func refresh() {
         request("/campaigns/active") { data, err in
             self.serverError = err
+            if err != nil { self.campaign = nil } // can't confirm the campaign, so don't hold its sign
             if let data { self.campaign = try? JSONDecoder().decode(Campaign?.self, from: data) }
             self.render()
         }
@@ -609,7 +610,12 @@ final class Backend: NSObject {
         request(petPath) { data, err in
             guard seq > self.petApplied else { return }
             self.petApplied = seq
-            if let err { self.serverError = "pet \(self.petName): \(err)" }
+            if let err {
+                // No balance means no mood: sleep and say why instead of showing the last known one.
+                self.serverError = "pet \(self.petName): \(err)"
+                self.info = nil
+                self.pet.setMood("asleep", reason: "can't reach the Notchi server")
+            }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
                 if self.info?.seeded == new.seeded, let gain = ogGain(self.info?.walletBalance, new.walletBalance) {
                     self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
