@@ -246,6 +246,7 @@ export default function FundCampaign() {
             <button onClick={onFund} disabled={!account || busy === "fund"}>
               {busy === "fund" ? "Confirm in your wallet..." : "Fund campaign"}
             </button>
+            {!account && <p className="hint">Connect your wallet at the top to fund.</p>}
             <p className="muted">
               Contract:{" "}
               <a className="mono" href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">

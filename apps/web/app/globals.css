@@ -66,7 +66,9 @@ textarea { min-height: 80px; resize: vertical; }
 button { font: inherit; border: 0; border-radius: 10px; padding: 11px 18px; background: var(--accent); color: var(--accent-ink); cursor: pointer; font-weight: 700; }
 button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 600; }
 button.ghost:hover:not(:disabled) { border-color: var(--muted); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
+button.ghost:disabled { background: transparent; }
+.hint { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
 
 .mono { font-family: var(--mono); font-size: 13px; word-break: break-all; }
 .muted { color: var(--muted); }

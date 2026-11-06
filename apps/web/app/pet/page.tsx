@@ -134,6 +134,7 @@ export default function GetYourPet() {
               {busy ? "Starting..." : "Prove you're a real person"}
             </button>
           </p>
+          {!owner && <p className="hint">Connect your wallet first.</p>}
         </div>
       )}
 
