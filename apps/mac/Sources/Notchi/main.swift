@@ -1,5 +1,6 @@
 import AppKit
 import Network
+import UserNotifications
 
 let tickHz = 30.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
@@ -11,6 +12,8 @@ var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
 // Off: overlay windows stay on the Space Notchi started on, and never over full-screen apps.
 var allDesktops = defaults.bool(forKey: "allDesktops")
+// Come-back reminders every N minutes after Stop or an approval request; 0 is off.
+var reminderMinutes = defaults.object(forKey: "reminderMinutes") as? Double ?? 5
 func spacesBehavior() -> NSWindow.CollectionBehavior {
     allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.stationary]
 }
@@ -530,6 +533,12 @@ final class Pet {
         for w in [panel, signPanel, bubblePanel, door.panel] { w.collectionBehavior = spacesBehavior() }
     }
 
+    // A reminder fired: wave if you can actually see the pet. Already waving the approval flag counts.
+    func wave() {
+        guard path == .floor, panel.isVisible, onHomeSpace, state != .flag, state != .greet else { return }
+        set(.greet, then: loopingStates.contains(state) ? state : next)
+    }
+
     // Cursor play. Cosmetic only: nothing here touches the backend, balances or hooks.
     var annoyance = 0
     var lastPoke = Date.distantPast
@@ -822,6 +831,80 @@ final class Pet {
     }
 }
 
+// Nudges you back when Claude Code is done or waiting on you. Cosmetic: never touches hooks' replies, balances or spending.
+final class Reminders {
+    let pet: Pet
+    var message: String?
+    var project: String?
+    var timer: Timer?
+
+    init(pet: Pet) { self.pet = pet }
+
+    func handle(_ hook: [String: Any]) {
+        switch hook["hook_event_name"] as? String {
+        case "Stop": arm("Claude Code is done", hook)
+        case "PermissionRequest": arm(approval, hook)
+        case "Notification" where hook["notification_type"] as? String == "permission_prompt": arm(approval, hook)
+        case "UserPromptSubmit", "SessionEnd": cancel()
+        // The approval was answered and tools are running again.
+        case "PreToolUse", "PostToolUse": if message == approval { cancel() }
+        default: break
+        }
+    }
+
+    let approval = "Claude Code needs your approval"
+
+    func arm(_ text: String, _ hook: [String: Any]) {
+        message = text
+        project = (hook["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }.flatMap { $0.isEmpty ? nil : $0 }
+        reschedule()
+    }
+
+    func cancel() {
+        message = nil
+        timer?.invalidate()
+        timer = nil
+    }
+
+    // Also called when the interval setting changes.
+    func reschedule() {
+        timer?.invalidate()
+        timer = nil
+        guard message != nil, reminderMinutes > 0 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: reminderMinutes * 60, repeats: true) { [weak self] _ in self?.fire() }
+    }
+
+    func fire() {
+        guard let message else { return }
+        notify(title: message, body: project.map { "In \($0)" } ?? "Back to your terminal")
+        pet.wave()
+    }
+
+    // UNUserNotificationCenter throws without a bundle id (swift run has none); osascript works either way.
+    func notify(title: String, body: String) {
+        guard Bundle.main.bundleIdentifier != nil else { return osascript(title, body) }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return DispatchQueue.main.async { self.osascript(title, body) } }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            center.add(UNNotificationRequest(identifier: "notchi-reminder", content: content, trigger: nil))
+        }
+    }
+
+    func osascript(_ title: String, _ body: String) {
+        func quote(_ s: String) -> String {
+            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: " ") + "\""
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", "display notification \(quote(body)) with title \(quote(title))"]
+        do { try p.run() } catch { print("reminder not shown: \(error)") }
+    }
+}
+
 // Takes clicks on the pet only while the panel isn't click-through (see Pet.updateCursor).
 final class ClickView: NSView {
     var onClick: (() -> Void)?
@@ -936,6 +1019,7 @@ final class Backend: NSObject {
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
     var shown = ""
     var showingSettings = false
+    lazy var reminders: Reminders = Reminders(pet: self.pet)
 
     init(pet: Pet) {
         self.pet = pet
@@ -1146,6 +1230,11 @@ final class Backend: NSObject {
         slider.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
         stack.addArrangedSubview(slider)
 
+        stack.addArrangedSubview(caption("Remind me"))
+        let remind = NSSegmentedControl(labels: ["Off", "2 min", "5 min", "10 min"], trackingMode: .selectOne, target: self, action: #selector(setReminder(_:)))
+        remind.selectedSegment = [0.0, 2, 5, 10].firstIndex(of: reminderMinutes) ?? -1
+        stack.addArrangedSubview(remind)
+
         stack.addArrangedSubview(caption("Home after"))
         let seg = NSSegmentedControl(labels: ["30s", "75s", "180s"], trackingMode: .selectOne, target: self, action: #selector(setHomeAfter(_:)))
         seg.selectedSegment = [30.0, 75, 180].firstIndex(of: homeAfter) ?? -1
@@ -1168,6 +1257,12 @@ final class Backend: NSObject {
     }
 
     @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
+
+    @objc func setReminder(_ sender: NSSegmentedControl) {
+        reminderMinutes = [0.0, 2, 5, 10][max(0, sender.selectedSegment)]
+        defaults.set(reminderMinutes, forKey: "reminderMinutes")
+        reminders.reschedule()
+    }
 
     @objc func toggleAllDesktops(_ sender: NSButton) {
         allDesktops = sender.state == .on
@@ -1288,6 +1383,7 @@ do {
     server = try HookServer(port: 47474) { hook in
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
         backend.think(hook)
+        backend.reminders.handle(hook)
         backend.render()
     }
 } catch {
