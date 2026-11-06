@@ -487,7 +487,8 @@ final class HookServer {
                 let head = String(decoding: buf[..<end.lowerBound], as: UTF8.self).lowercased()
                 let length = head.split(separator: "\r\n")
                     .first { $0.hasPrefix("content-length:") }
-                    .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) } ?? 0
+                    .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) }
+                    .map { max(0, $0) } ?? 0 // a negative length would trap in prefix()
                 let body = buf[end.upperBound...]
                 if body.count >= length || done || err != nil {
                     self.finish(conn, body: Data(body.prefix(length)))
