@@ -336,7 +336,7 @@ final class Pet {
     func setMood(_ m: String, reason: String?) {
         if m != mood { print("mood \(mood) -> \(m)") }
         mood = m
-        sleepNote = m == "asleep" ? "zzz  " + (reason ?? "wallet too low to pay for 0G calls") : nil
+        sleepNote = m == "asleep" ? "zzz  " + (reason ?? brokeReason) : nil
         placeBubble()
     }
 
@@ -517,9 +517,17 @@ struct PetInfo: Decodable {
 }
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
-func og(_ wei: String?) -> String {
-    guard let wei, let d = Decimal(string: wei) else { return "unknown" }
-    return og(d)
+let popoverWidth: CGFloat = 420
+let brokeReason = "wallet too low to pay for 0G calls"
+
+// Wei string to "0.0192 0G": 4 decimals, rounded down so the popover never shows more than the wallet holds.
+func og4(_ wei: String?) -> String {
+    guard let wei, var units = Decimal(string: wei) else { return "unknown" }
+    units /= Decimal(sign: .plus, exponent: 14, significand: 1)
+    var whole = Decimal()
+    NSDecimalRound(&whole, &units, 0, .down)
+    let digits = String(repeating: "0", count: max(0, 5 - "\(whole)".count)) + "\(whole)"
+    return "\(digits.dropLast(4)).\(digits.suffix(4)) 0G"
 }
 
 func og(_ wei: Decimal) -> String { "\(wei / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G" }
@@ -537,7 +545,7 @@ final class Backend: NSObject {
     let pet: Pet
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
-    let text = NSTextField(wrappingLabelWithString: "loading")
+    let stack = NSStackView()
     var campaign: Campaign?
     var info: PetInfo?
     var lastThink = "no think yet"
@@ -553,13 +561,13 @@ final class Backend: NSObject {
         item.button?.title = "Notchi"
         item.button?.target = self
         item.button?.action = #selector(toggle)
-        text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        text.preferredMaxLayoutWidth = 360
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.widthAnchor.constraint(equalToConstant: popoverWidth).isActive = true
         let vc = NSViewController()
-        vc.view = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 220))
-        text.frame = vc.view.bounds.insetBy(dx: 10, dy: 10)
-        text.autoresizingMask = [.width, .height]
-        vc.view.addSubview(text)
+        vc.view = stack
         popover.contentViewController = vc
         popover.behavior = .transient
         refresh()
@@ -642,24 +650,64 @@ final class Backend: NSObject {
         let tag = seeded ? " [seeded]" : ""
         pet.setSign(campaign?.line.map { $0 + tag })
         if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
-        var lines: [String] = []
-        if seeded { lines.append("SEEDED DATA: not real 0G tokens") }
-        if let e = serverError { lines.append("server: \(e)") }
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real 0G tokens", 13, .bold, .systemRed)) }
+        if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .systemRed)) }
         if let i = info {
-            lines.append("\(i.name)  mood: \(i.mood)")
-            lines.append("wallet: \(og(i.walletBalance))\(tag)   compute: \(og(i.computeBalance))")
-            lines.append("impressions today: \(i.impressionsToday)\(tag)")
-            lines.append("last meal: " + (i.lastMeal.map { "\(og($0.amount)) tx \($0.txHash)" } ?? "none"))
+            stack.addArrangedSubview(label(i.name, 13, .regular, .secondaryLabelColor))
+            let colors = ["thriving": NSColor.systemGreen, "stable": .systemBlue, "hungry": .systemOrange]
+            stack.addArrangedSubview(label(i.mood.uppercased(), 32, .heavy, colors[i.mood] ?? .systemGray))
+            if i.mood == "asleep" { stack.addArrangedSubview(label(i.moodReason ?? brokeReason, 13, .regular, .secondaryLabelColor)) }
+            stack.addArrangedSubview(row("Wallet", og4(i.walletBalance) + tag))
+            stack.addArrangedSubview(row("Impressions today", "\(i.impressionsToday)" + tag))
+        } else {
+            stack.addArrangedSubview(label("No pet data yet", 15, .medium, .secondaryLabelColor))
         }
-        lines.append("sign: " + (campaign.map { "\"\($0.line ?? "(line unknown)")\" by \($0.brand)\(tag)" } ?? "no active campaign"))
-        lines.append("last think: \(lastThink)")
-        for t in info?.lastThoughts.prefix(5) ?? [] { lines.append("  \(t.action)  request \(t.requestId)") }
-        text.stringValue = lines.joined(separator: "\n")
+        stack.addArrangedSubview(label("Sign", 13, .regular, .secondaryLabelColor))
+        stack.addArrangedSubview(label(campaign.map { "\"\($0.line ?? "(line unknown)")\" by \($0.brand)\(tag)" } ?? "No active campaign", 15, .medium))
+        stack.addArrangedSubview(label("Last thoughts (click to copy request ID)", 13, .regular, .secondaryLabelColor))
+        let thoughts = info?.lastThoughts.prefix(3) ?? []
+        if thoughts.isEmpty { stack.addArrangedSubview(label("none yet", 13, .regular, .secondaryLabelColor)) }
+        for t in thoughts {
+            let b = NSButton(title: "", target: self, action: #selector(copyId(_:)))
+            b.isBordered = false
+            b.identifier = NSUserInterfaceItemIdentifier(t.requestId)
+            b.attributedTitle = NSAttributedString(string: "\(t.action.padding(toLength: 6, withPad: " ", startingAt: 0)) \(t.requestId)", attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), .foregroundColor: NSColor.linkColor])
+            stack.addArrangedSubview(b)
+        }
+        stack.addArrangedSubview(label("Last think: \(lastThink)", 11, .regular, .tertiaryLabelColor))
+        popover.contentSize = stack.fittingSize
+    }
+
+    @objc func copyId(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(id, forType: .string)
+        sender.attributedTitle = NSAttributedString(string: "copied \(id)", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), .foregroundColor: NSColor.systemGreen])
+    }
+
+    func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor = .labelColor) -> NSTextField {
+        let l = NSTextField(wrappingLabelWithString: text)
+        l.font = .systemFont(ofSize: size, weight: weight)
+        l.textColor = color
+        l.preferredMaxLayoutWidth = popoverWidth - 32
+        return l
+    }
+
+    func row(_ key: String, _ value: String) -> NSStackView {
+        let k = label(key, 15, .regular, .secondaryLabelColor)
+        let v = label(value, 17, .semibold)
+        v.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
+        return NSStackView(views: [k, v])
     }
 }
 
 assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
 assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
+assert(og4("19279999998320000") == "0.0192 0G" && og4("0") == "0.0000 0G" && og4("1000000000000000000000") == "1000.0000 0G")
+assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "unknown")
 assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
