@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
+import { signRequest } from "@worldcoin/idkit-core/signing";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
+import { bad, HttpError, makeRegister, verifyWorldProof, WORLD_ACTIONS, type PetRecord } from "./register.ts";
 
-type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string };
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
   nullifiers: string[];
@@ -27,23 +28,26 @@ const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
 const MAX_COUNT = 1000; // per impression entry; the Mac app rate-limits far below this
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
-/**
- * Stub until the World ID cloud verify call lands. Denies everything unless
- * WORLD_DEV_BYPASS=1, so the denied path is the default.
- */
-async function verifyWorldProof(_proof: unknown): Promise<boolean> {
-  return process.env.WORLD_DEV_BYPASS === "1";
+const RP_ID = process.env.RP_ID;
+const RP_SIGNING_KEY = process.env.RP_SIGNING_KEY;
+if (!RP_ID || !RP_SIGNING_KEY) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
+
+const registerPet = makeRegister({
+  verify: (result) => verifyWorldProof(result, RP_ID),
+  registerOnChain: (pet, owner, payout) => send("registerPet", [pet, owner, payout]),
+  store,
+  save,
+  seeded,
+});
+
+/** RP signature for an IDKit request. The signing key stays here; only the signature leaves. */
+function worldSign(action: string | null) {
+  if (!action || !WORLD_ACTIONS.has(action)) throw bad("unknown action");
+  const s = signRequest({ action, signingKeyHex: RP_SIGNING_KEY! });
+  return { sig: s.sig, nonce: s.nonce, created_at: s.createdAt, expires_at: s.expiresAt };
 }
 
-class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-const bad = (msg: string) => new HttpError(400, msg);
 const errMsg = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message : String(e));
-const addr = (v: unknown, field: string) => {
-  if (typeof v !== "string" || !isAddress(v)) throw bad(`${field} must be an address`);
-  return getAddress(v);
-};
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
@@ -54,26 +58,6 @@ async function readBody(req: IncomingMessage) {
     if (raw.length > 100_000) throw new HttpError(413, "body too large");
   }
   try { return raw ? JSON.parse(raw) : {}; } catch { throw bad("invalid JSON"); }
-}
-
-async function registerPet(body: any) {
-  const petKey = addr(body.petKey, "petKey");
-  const owner = addr(body.ownerAddress, "ownerAddress");
-  const payout = addr(body.payoutAddress, "payoutAddress");
-  const name = body.name ?? petKey.toLowerCase();
-  if (typeof name !== "string" || !/^[a-z0-9.-]{1,64}$/.test(name)) throw bad("name must be a-z, 0-9, . or -");
-  const nullifier = body.worldProof?.nullifier_hash;
-  if (typeof nullifier !== "string" || !nullifier) throw bad("worldProof.nullifier_hash required");
-
-  if (!(await verifyWorldProof(body.worldProof))) throw new HttpError(403, "World proof rejected");
-  if (store.nullifiers.includes(nullifier)) throw new HttpError(409, "this human already has a pet");
-  if (store.pets[name] || findPet(petKey)) throw new HttpError(409, "pet already registered");
-
-  const registerTx = await send("registerPet", [petKey, owner, payout]);
-  store.pets[name] = { name, petKey, owner, payout, registerTx };
-  store.nullifiers.push(nullifier);
-  save();
-  return { name, petKey, owner, payout, verified: true, registerTx, seeded };
 }
 
 function addImpressions(body: any) {
@@ -161,8 +145,9 @@ async function getPet(key: string) {
 }
 
 async function route(req: IncomingMessage) {
-  const { pathname } = new URL(req.url ?? "/", "http://x");
+  const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
+  if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"));
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
