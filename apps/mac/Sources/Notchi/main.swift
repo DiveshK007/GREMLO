@@ -9,6 +9,11 @@ var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AF
 var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
 var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
+// Off: overlay windows stay on the Space Notchi started on, and never over full-screen apps.
+var allDesktops = defaults.bool(forKey: "allDesktops")
+func spacesBehavior() -> NSWindow.CollectionBehavior {
+    allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.stationary]
+}
 
 enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
 
@@ -165,7 +170,7 @@ func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
     panel.hasShadow = false
     panel.level = level
     panel.ignoresMouseEvents = true
-    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    panel.collectionBehavior = spacesBehavior()
     let view = NSView(frame: NSRect(origin: .zero, size: size))
     view.wantsLayer = true
     panel.contentView = view
@@ -423,7 +428,7 @@ final class Pet {
             holdUntil = Date().addingTimeInterval(0.26)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
                 guard let self else { return }
-                if self.path == .falling {
+                if self.path == .falling && self.onHomeSpace {
                     self.panel.setFrameOrigin(self.pos)
                     self.panel.orderFrontRegardless()
                 }
@@ -510,10 +515,19 @@ final class Pet {
             advanceFrame()
         }
         panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
+        // Came out while you were on another Space: show it once you're back on the home one.
+        if !panel.isVisible && onHomeSpace && Date() >= holdUntil { panel.orderFrontRegardless() }
         draw()
         placeSign()
         placeBubble()
         updateCursor()
+    }
+
+    // The door's window is ordered in once at launch and never out, so it marks Notchi's home Space.
+    var onHomeSpace: Bool { allDesktops || door.panel.isOnActiveSpace }
+
+    func applySpaces() {
+        for w in [panel, signPanel, bubblePanel, door.panel] { w.collectionBehavior = spacesBehavior() }
     }
 
     // Cursor play. Cosmetic only: nothing here touches the backend, balances or hooks.
@@ -526,7 +540,7 @@ final class Pet {
     // The overlay stays click-through except while the cursor is over a visible pixel of the pet.
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
-        let inside = path == .floor && panel.isVisible && opaque(at: mouse)
+        let inside = path == .floor && onHomeSpace && panel.isVisible && opaque(at: mouse)
         setScrollPaused(inside || (signPanel.isVisible && signPanel.frame.contains(mouse)))
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         if annoyance > 0 && Date().timeIntervalSince(lastPoke) > 6 { annoyance = 0 }
@@ -616,7 +630,7 @@ final class Pet {
         if path == .ceiling { y = pos.y - h + skin.footPadding }
         x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
         bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
-        if !bubblePanel.isVisible { bubblePanel.orderFrontRegardless() }
+        if !bubblePanel.isVisible && onHomeSpace { bubblePanel.orderFrontRegardless() }
     }
 
     func setSign(_ text: String?) {
@@ -682,11 +696,16 @@ final class Pet {
     func placeSign() {
         let show = path == .floor && state == .sign && !signText.isEmpty
         if !show { signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return }
-        if signShownAt == nil { signShownAt = Date() }
         let w = signPanel.frame.width
         let x = min(max(pos.x + size.width / 2 - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
         signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + size.height - 6))
-        if !signPanel.isVisible { signPanel.orderFrontRegardless() }
+        if !signPanel.isVisible && onHomeSpace { signPanel.orderFrontRegardless() }
+        // An impression needs the sign really on screen: not on another Space, not behind a full-screen app.
+        if signPanel.occlusionState.contains(.visible) {
+            if signShownAt == nil { signShownAt = Date() }
+        } else {
+            signShownAt = nil
+        }
     }
 
     func advanceFrame() {
@@ -1118,6 +1137,9 @@ final class Backend: NSObject {
         sponsored.state = sponsoredOn ? .on : .off
         stack.addArrangedSubview(sounds)
         stack.addArrangedSubview(sponsored)
+        let spaces = NSButton(checkboxWithTitle: "Show on all desktops", target: self, action: #selector(toggleAllDesktops(_:)))
+        spaces.state = allDesktops ? .on : .off
+        stack.addArrangedSubview(spaces)
 
         stack.addArrangedSubview(caption("Walk speed"))
         let slider = NSSlider(value: walkSpeed, minValue: 0.5, maxValue: 2, target: self, action: #selector(setWalkSpeed(_:)))
@@ -1146,6 +1168,12 @@ final class Backend: NSObject {
     }
 
     @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
+
+    @objc func toggleAllDesktops(_ sender: NSButton) {
+        allDesktops = sender.state == .on
+        defaults.set(allDesktops, forKey: "allDesktops")
+        pet.applySpaces()
+    }
 
     @objc func toggleSponsored(_ sender: NSButton) {
         sponsoredOn = sender.state == .on
