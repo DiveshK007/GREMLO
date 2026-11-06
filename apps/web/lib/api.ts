@@ -59,8 +59,10 @@ export const registerPet = (body: RegisterBody) =>
 
 /** POST /campaigns/lines -> the pet writes 3 ad lines through 0G. */
 export type SuggestedLine = { text: string; requestId?: string | null };
-export const suggestLines = (brief: string) =>
-  call<{ lines: SuggestedLine[] }>(`/campaigns/lines`, { method: "POST", body: JSON.stringify({ brief }) });
+export const TONES = ["bold", "calm", "dev-meme"] as const;
+export type Tone = (typeof TONES)[number];
+export const suggestLines = (brief: string, tone: Tone) =>
+  call<{ lines: SuggestedLine[] }>(`/campaigns/lines`, { method: "POST", body: JSON.stringify({ brief, tone }) });
 
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
 export const recordCampaign = (body: { campaignId: string; line: string; lineHash: string; brand: string; txHash: string }) =>
@@ -77,3 +79,7 @@ export type Settlement = {
 };
 export const settleImpressions = (campaignId: string) =>
   call<Settlement>(`/settle/${encodeURIComponent(campaignId)}`, { method: "POST" });
+
+/** GET /campaigns/active -> what the pet is showing now, or null when nothing is live. */
+export type ActiveCampaign = { campaignId: string; line: string | null; brand: string; ratePerImpression: string } | null;
+export const activeCampaign = () => call<ActiveCampaign>(`/campaigns/active`);

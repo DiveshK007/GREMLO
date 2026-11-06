@@ -1,45 +1,61 @@
 import Link from "next/link";
-import { NotchPet } from "@/components/PetArt";
+import { LiveSign } from "@/components/LiveSign";
 import { addressLink, VAULT_ADDRESS } from "@/lib/config";
 
 export default function Home() {
   return (
     <>
-      <NotchPet />
-      <span className="pill">ETHGlobal Mumbai build</span>
-      <h1>Your coding agent makes you wait. Notchi makes that wait pay for itself.</h1>
-      <p className="lead">
-        A tiny pet lives behind a door in your MacBook notch. When Claude Code starts working, it drops out and holds up one
-        short line from a sponsor. Brands pay per real impression. The pet uses what it earns to pay for its own AI brain on 0G.
-      </p>
-      <div className="row audiences">
-        <div className="card">
-          <h2>Developers</h2>
-          <p className="muted">Prove you are a real person once, name your pet, and it moves into your notch.</p>
-          <Link href="/pet" className="button">
-            Get your pet
-          </Link>
+      <section className="hero">
+        <div>
+          <h1 className="loud">
+            Your agent makes you wait.
+            <span className="on-signal-type"> Notchi makes the wait pay.</span>
+          </h1>
+          <p className="lead">
+            A small pet lives behind a hidden door in your MacBook notch. While Claude Code works, it holds up one sponsored
+            line. Brands pay per real impression, and the pet spends what it earns on its own 0G brain.
+          </p>
+          <p className="actions">
+            <Link href="/pet" className="button">
+              Get your pet
+            </Link>
+            <Link href="/brand" className="button ghost">
+              Fund a campaign
+            </Link>
+          </p>
         </div>
-        <div className="card">
-          <h2>Brands</h2>
-          <p className="muted">The pet writes three lines for you. Pick one, fund it, and any unspent budget comes back.</p>
-          <Link href="/brand" className="button">
-            Fund a campaign
-          </Link>
-        </div>
-      </div>
-      <p className="muted proof">
-        The pet itself is a small Mac app that reacts to Claude Code. Payments here are real 0G Galileo testnet transactions
-        {VAULT_ADDRESS ? (
-          <>
-            {" "}to the{" "}
-            <a href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">
-              campaign contract
+        <LiveSign />
+      </section>
+
+      <ul className="stats">
+        <li>
+          <span className="mono">Chain</span>0G Galileo testnet
+        </li>
+        <li>
+          <span className="mono">Brain</span>0G Compute
+        </li>
+        <li>
+          <span className="mono">Humans</span>World ID, one pet each
+        </li>
+        <li>
+          <span className="mono">Contract</span>
+          {VAULT_ADDRESS ? (
+            <a className="mono" href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">
+              {VAULT_ADDRESS.slice(0, 6)}…{VAULT_ADDRESS.slice(-4)}
             </a>
-          </>
-        ) : null}
-        .
-      </p>
+          ) : (
+            "–"
+          )}
+        </li>
+      </ul>
+
+      <section className="band">
+        <p className="dsp">Put your line on the sign.</p>
+        <p className="band-copy">The pet is a Mac app that reacts to Claude Code. Every payment here is a real testnet transaction.</p>
+        <Link href="/brand" className="button">
+          Fund a campaign
+        </Link>
+      </section>
     </>
   );
 }

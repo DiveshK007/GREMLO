@@ -98,7 +98,7 @@ export default function GetYourPet() {
   }
 
   return (
-    <>
+    <div className="narrow">
       <div className="steps">
         <span className={phase.kind === "form" ? "on" : ""}>1. Details</span>
         <span>›</span>
@@ -218,6 +218,6 @@ export default function GetYourPet() {
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }

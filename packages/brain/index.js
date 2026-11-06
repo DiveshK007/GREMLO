@@ -7,8 +7,15 @@ const SYSTEM = `You are Notchi, a small desktop pet that watches a coding agent.
 Given the pet state as JSON, pick one action from: ${ACTIONS.join(', ')}.
 Reply with only a JSON object: {"action": "<one action>", "say": "<at most 8 words>"}.`;
 
-const LINES_SYSTEM = `You write sponsored lines a small desktop pet holds on a sign while a coding agent works.
-Given a brand brief, write 3 different lines, each at most 60 characters, plain and specific, no emoji.
+/** Tones a brand can pick for its hooks; the value is what the model is told. */
+export const TONES = {
+  bold: 'confident and punchy',
+  calm: 'plain and understated',
+  'dev-meme': 'developer in-joke humour that still says what the product does',
+};
+
+const linesSystem = (tone) => `You write sponsored lines a small desktop pet holds on a sign while a coding agent works.
+Given a brand brief, write 3 different lines, each at most 40 characters, plain and specific, no emoji.${tone ? `\nTone: ${TONES[tone]}.` : ''}
 Reply with only a JSON object: {"lines": ["...", "...", "..."]}.`;
 
 const SMART = process.env.ZG_MODEL_SMART || process.env.ZG_MODEL;
@@ -69,7 +76,7 @@ export async function think(state, opts = {}) {
   }
 }
 
-const LINES_STRICT = `${LINES_SYSTEM}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
+const linesStrict = (tone) => `${linesSystem(tone)}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
 
 /** Plain-text fallback: only lines the model actually wrote (list markers and quotes stripped), never filler. */
 export function linesFromText(text) {
@@ -87,8 +94,9 @@ export function linesFromText(text) {
  */
 export async function suggestLines(brief, opts = {}) {
   opts = { timeoutMs: 60000, ...opts }; // live call took 33s
-  let r = await chat(LINES_SYSTEM, String(brief), SMART, opts);
-  if (!r.out) r = await chat(LINES_STRICT, String(brief), SMART, opts);
+  if (opts.tone !== undefined && !Object.hasOwn(TONES, opts.tone)) throw new Error(`unknown tone: ${opts.tone}`);
+  let r = await chat(linesSystem(opts.tone), String(brief), SMART, opts);
+  if (!r.out) r = await chat(linesStrict(opts.tone), String(brief), SMART, opts);
   const lines = r.out
     ? (Array.isArray(r.out.lines) ? r.out.lines.filter((l) => typeof l === 'string' && l.trim()).slice(0, 3) : [])
     : linesFromText(r.content);

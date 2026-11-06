@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatEther, parseEther, type Address, type Hash } from "viem";
-import { ApiError, recordCampaign, settleImpressions, suggestLines, type Settlement, type SuggestedLine } from "@/lib/api";
+import { ApiError, recordCampaign, settleImpressions, suggestLines, TONES, type Settlement, type SuggestedLine, type Tone } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
 import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
@@ -17,6 +17,8 @@ function Elapsed() {
   return <>{s}s</>;
 }
 
+const MAX_LINE = 40; // what fits on the pet's sign
+
 type Funded = { campaignId: bigint; txHash: Hash; line: string; recordWarning?: string };
 type Lookup = Awaited<ReturnType<typeof readCampaign>>;
 
@@ -24,6 +26,7 @@ export default function FundCampaign() {
   const [account, setAccount] = useState<Address | null>(null);
   const [brief, setBrief] = useState("");
   const [lines, setLines] = useState<SuggestedLine[]>([]);
+  const [tone, setTone] = useState<Tone>("bold");
   const [picked, setPicked] = useState<number | null>(null);
   const [ownLine, setOwnLine] = useState("");
   const [budget, setBudget] = useState("0.02");
@@ -60,7 +63,7 @@ export default function FundCampaign() {
     }
     setBusy("lines");
     try {
-      const res = await suggestLines(brief.trim());
+      const res = await suggestLines(brief.trim(), tone);
       setLines(res.lines ?? []);
       setPicked(res.lines?.length ? 0 : null);
     } catch (e) {
@@ -69,7 +72,7 @@ export default function FundCampaign() {
       setLinesError(
         e instanceof ApiError && e.status === 404
           ? "The server doesn't have the line-writing route yet. Write your own line below."
-          : `Notchi couldn't write lines: ${(e as Error).message}. Try again, or write your own line below.`,
+          : `Notchi couldn't write hooks: ${(e as Error).message}. Try again, or write your own line below.`,
       );
     } finally {
       setBusy("");
@@ -80,7 +83,7 @@ export default function FundCampaign() {
     setError("");
     if (!account) return setError("Connect your wallet first.");
     if (!chosenLine) return setError("Pick one of Notchi's lines or write your own.");
-    if (chosenLine.length > 60) return setError("Keep the line under 60 characters so it fits on the sign.");
+    if (chosenLine.length > MAX_LINE) return setError(`Keep the line to ${MAX_LINE} characters so it fits on the sign.`);
     let budgetWei: bigint, rateWei: bigint;
     try {
       budgetWei = parseEther(budget);
@@ -165,7 +168,7 @@ export default function FundCampaign() {
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
 
   return (
-    <>
+    <div className="narrow">
       <h1>Fund a campaign</h1>
       <p className="lead">Your line, held up by a tiny pet while developers wait on their AI agent. Pay per real impression.</p>
 
@@ -183,11 +186,19 @@ export default function FundCampaign() {
       {!funded && (
         <>
           <div className="card">
-            <h2>1. What do you sell?</h2>
+            <h2><span className="mono num">01</span>What do you sell?</h2>
             <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="CI that runs in 30 seconds for TypeScript monorepos." />
+            <label id="tone-label">Tone</label>
+            <div className="tones" role="radiogroup" aria-labelledby="tone-label">
+              {TONES.map((t) => (
+                <button key={t} role="radio" aria-checked={tone === t} className={tone === t ? "" : "ghost"} onClick={() => setTone(t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
             <p>
-              <button className="ghost" onClick={onSuggest} disabled={busy === "lines"} aria-busy={busy === "lines"}>
-                {busy === "lines" ? "Writing lines…" : "Let Notchi write 3 lines"}
+              <button onClick={onSuggest} disabled={busy === "lines"} aria-busy={busy === "lines"}>
+                {busy === "lines" ? "Writing hooks…" : "Notchi hooks"}
               </button>
             </p>
             {busy === "lines" && (
@@ -205,7 +216,12 @@ export default function FundCampaign() {
             {lines.map((l, i) => (
               <button key={i} className={`sign ${picked === i ? "picked" : ""}`} onClick={() => setPicked(i)}>
                 {l.text}
-                <small className="mono">written on 0G{l.requestId ? ` · request ${l.requestId}` : ""}</small>
+                <small>
+                  <span className="mono">written by AI · {l.requestId ?? "–"}</span>
+                  <span className={`mono count ${l.text.length > MAX_LINE ? "over" : ""}`}>
+                    {l.text.length}/{MAX_LINE}
+                  </span>
+                </small>
               </button>
             ))}
             <label>Or write your own</label>
@@ -217,10 +233,13 @@ export default function FundCampaign() {
               }}
               placeholder="Ship faster with Acme CI"
             />
+            <p className={`hint mono count ${ownLine.trim().length > MAX_LINE ? "over" : ""}`}>
+              {ownLine.trim().length}/{MAX_LINE}
+            </p>
           </div>
 
           <div className="card">
-            <h2>2. Budget</h2>
+            <h2><span className="mono num">02</span>Budget</h2>
             <div className="row">
               <div>
                 <label>Total budget (0G)</label>
@@ -235,17 +254,18 @@ export default function FundCampaign() {
                 <input value={hours} onChange={(e) => setHours(e.target.value)} />
               </div>
             </div>
-            <p className="muted">
-              About {(() => {
-                try {
-                  const r = parseEther(rate);
-                  return r > 0n ? (parseEther(budget) / r).toString() : "0";
-                } catch {
-                  return "?";
-                }
-              })()}{" "}
-              impressions. Any unspent budget is refunded when the campaign ends.
-            </p>
+            <div className="summary">
+              <span className="estimate">
+                {(() => {
+                  try {
+                    const r = parseEther(rate);
+                    return r > 0n ? (parseEther(budget) / r).toString() : "–";
+                  } catch {
+                    return "–";
+                  }
+                })()}
+              </span>
+              <p>impressions, roughly, at this price. Any unspent budget is refunded when the campaign ends.</p>
             {error && <p className="bad">{error}</p>}
             <button onClick={onFund} disabled={!account || busy === "fund"}>
               {busy === "fund" ? "Confirm in your wallet…" : "Fund campaign"}
@@ -257,6 +277,7 @@ export default function FundCampaign() {
                 {VAULT_ADDRESS}
               </a>
             </p>
+            </div>
           </div>
         </>
       )}
@@ -281,7 +302,7 @@ export default function FundCampaign() {
       )}
 
       <div className="card">
-        <h2>Your campaign</h2>
+        <h2><span className="mono num">03</span>Your campaign</h2>
         <div className="row">
           <div>
             <label>Campaign ID</label>
@@ -347,6 +368,6 @@ export default function FundCampaign() {
           </p>
         )}
       </div>
-    </>
+    </div>
   );
 }
