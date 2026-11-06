@@ -109,3 +109,4 @@ button + p { margin-top: 12px; }
 .thinking .muted { font-size: 14px; font-variant-numeric: tabular-nums; }
 @keyframes bob { 50% { transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .thinking .pet-small { animation: none; } }
+.card > :first-child { margin-top: 0; }
