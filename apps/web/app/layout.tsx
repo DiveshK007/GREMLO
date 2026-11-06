@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import "./tokens.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

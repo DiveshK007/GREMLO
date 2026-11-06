@@ -77,3 +77,7 @@ export type Settlement = {
 };
 export const settleImpressions = (campaignId: string) =>
   call<Settlement>(`/settle/${encodeURIComponent(campaignId)}`, { method: "POST" });
+
+/** GET /campaigns/active -> what the pet is showing now, or null when nothing is live. */
+export type ActiveCampaign = { campaignId: string; line: string | null; brand: string; ratePerImpression: string } | null;
+export const activeCampaign = () => call<ActiveCampaign>(`/campaigns/active`);

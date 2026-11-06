@@ -1,0 +1,87 @@
+/* Notchi v2 — minimalist maximalism.
+   Three values, nothing else. The accent is the pet. */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink:    #0B0B0B;
+  --paper:  #F4F2ED;
+  --signal: #FF5A3C;
+
+  /* derived greys — never new hues */
+  --on-paper-strong: rgba(11, 11, 11, .78);
+  --on-paper-muted:  rgba(11, 11, 11, .60);
+  --on-paper-faint:  rgba(11, 11, 11, .38);
+  --rule-on-paper:   rgba(11, 11, 11, .16);
+
+  --on-ink-strong: rgba(244, 242, 237, .85);
+  --on-ink-muted:  rgba(244, 242, 237, .60);
+  --on-ink-faint:  rgba(244, 242, 237, .45);
+  --rule-on-ink:   rgba(244, 242, 237, .14);
+
+  --font-display: 'Bricolage Grotesque', Inter, system-ui, sans-serif;
+  --font-body:    Inter, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  --s-1: 8px;  --s-2: 16px; --s-3: 24px;
+  --s-4: 40px; --s-5: 72px; --s-6: 120px;
+
+  --radius: 0;           /* everywhere */
+  --radius-popover: 14px; /* the one exception */
+}
+
+/* Signal is NEVER body text on paper — 3.1:1, fails.
+   It is fills, glow, the pet, and large type on ink. */
+
+.dsp {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.5;
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* one loud move per screen */
+.loud {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.88;
+  font-size: clamp(48px, 8vw, 118px);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 28px;
+  background: var(--signal);
+  color: var(--ink);
+  font: 600 16px/1 var(--font-body);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+}
+.cta:hover { background: var(--ink); color: var(--paper); }
+
+/* no cards: separate with rules, not boxes */
+.rule { height: 1px; background: var(--rule-on-paper); border: 0; }
