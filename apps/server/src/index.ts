@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { countImpression, planSettlement, type Pending } from "./batch.ts";
+import { countImpression, markSettled, planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -120,11 +120,12 @@ async function settle(id: string) {
       try {
         const txHash = await send("settleImpressions", [BigInt(id), s.pet, BigInt(s.count)]);
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
-        store.pending[id][s.pet] -= s.count;
-        if (store.pending[id][s.pet] === 0) delete store.pending[id][s.pet];
+        markSettled(store.pending[id], s.pet, s.count, "paid");
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
-      } catch (e) {
+      } catch (e: any) {
+        markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
+        save();
         error = errMsg(e);
         break;
       }
