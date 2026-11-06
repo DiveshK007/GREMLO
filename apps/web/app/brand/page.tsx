@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatEther, parseEther, type Address, type Hash } from "viem";
 import { ApiError, recordCampaign, settleImpressions, suggestLines, type Settlement, type SuggestedLine } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
 import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
+import { PetSmall } from "@/components/PetArt";
+
+/** Seconds since mount, so a long 0G call visibly moves. */
+function Elapsed() {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setS((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{s}s</>;
+}
 
 type Funded = { campaignId: bigint; txHash: Hash; line: string; recordWarning?: string };
 type Lookup = Awaited<ReturnType<typeof readCampaign>>;
@@ -170,10 +181,21 @@ export default function FundCampaign() {
             <h2>1. What do you sell?</h2>
             <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="CI that runs in 30 seconds for TypeScript monorepos." />
             <p>
-              <button className="ghost" onClick={onSuggest} disabled={busy === "lines"}>
-                {busy === "lines" ? "Notchi is thinking..." : "Let Notchi write 3 lines"}
+              <button className="ghost" onClick={onSuggest} disabled={busy === "lines"} aria-busy={busy === "lines"}>
+                {busy === "lines" ? "Writing lines…" : "Let Notchi write 3 lines"}
               </button>
             </p>
+            {busy === "lines" && (
+              <div className="thinking" role="status">
+                <PetSmall />
+                <div>
+                  <strong>Notchi is thinking on 0G…</strong>
+                  <span className="muted">
+                    This can take up to a minute. <Elapsed />
+                  </span>
+                </div>
+              </div>
+            )}
             {linesError && <p className="bad">{linesError}</p>}
             {lines.map((l, i) => (
               <button key={i} className={`sign ${picked === i ? "picked" : ""}`} onClick={() => setPicked(i)}>

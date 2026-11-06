@@ -94,3 +94,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .audiences .card p { flex: 1; }
 .card > button, .card > p > button { margin-top: 8px; }
 .card > .muted { font-size: 15px; }
+
+.thinking { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 4px 0 8px; border-radius: 10px; background: color-mix(in srgb, var(--pet) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--pet) 40%, var(--line)); }
+.thinking .pet-small { width: 42px; margin: 0; flex: none; animation: bob 1.2s ease-in-out infinite; }
+.thinking strong { display: block; }
+.thinking .muted { font-size: 14px; font-variant-numeric: tabular-nums; }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .thinking .pet-small { animation: none; } }
