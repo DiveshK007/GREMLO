@@ -1,11 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
+import { signRequest } from "@worldcoin/idkit-core/signing";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
+import { bad, HttpError, makeRegister, verifyWorldProof, WORLD_ACTIONS, type PetRecord } from "./register.ts";
+import { addThought, type Thought } from "./thoughts.ts";
+// @ts-expect-error plain ESM JS package, no types
+import { think } from "../../../packages/brain/index.js";
 
-type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string };
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
   nullifiers: string[];
@@ -13,12 +17,13 @@ type Store = {
   lines: Record<string, string>; // lineHash -> ad line text (the chain only stores the hash)
   brands: Record<string, string>; // brand address -> display name
   today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
+  thoughts: Record<string, Thought[]>; // pet key -> last 0G decisions with request IDs
 };
 
 // shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
 const STORE_FILE = new URL("../data.json", import.meta.url);
 const store: Store = {
-  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {},
+  pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -27,23 +32,48 @@ const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
 const MAX_COUNT = 1000; // per impression entry; the Mac app rate-limits far below this
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
-/**
- * Stub until the World ID cloud verify call lands. Denies everything unless
- * WORLD_DEV_BYPASS=1, so the denied path is the default.
- */
-async function verifyWorldProof(_proof: unknown): Promise<boolean> {
-  return process.env.WORLD_DEV_BYPASS === "1";
+const RP_ID = process.env.RP_ID;
+const RP_SIGNING_KEY = process.env.RP_SIGNING_KEY;
+if (!RP_ID || !RP_SIGNING_KEY) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
+
+const wei = (name: string) => {
+  const v = process.env[name];
+  if (!v || !/^[0-9]+$/.test(v)) throw new Error(`missing or non-integer env ${name} (wei)`);
+  return BigInt(v);
+};
+const thresholds = { thriving: wei("MOOD_THRIVING_WEI"), stable: wei("MOOD_STABLE_WEI"), hungry: wei("MOOD_HUNGRY_WEI") };
+
+// Every hook event reads the pet; 30s keeps a tool burst from hammering the RPC. Only successes are cached.
+const balanceCache = new Map<string, { at: number; wei: bigint }>();
+async function payoutBalance(payout: `0x${string}`) {
+  const hit = balanceCache.get(payout);
+  if (hit && Date.now() - hit.at < 30_000) return hit.wei;
+  try {
+    const w = await pub.getBalance({ address: payout });
+    balanceCache.set(payout, { at: Date.now(), wei: w });
+    return w;
+  } catch (e) {
+    console.error(`balance read failed: ${errMsg(e)}`);
+    return null;
+  }
 }
 
-class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+const registerPet = makeRegister({
+  verify: (result) => verifyWorldProof(result, RP_ID),
+  registerOnChain: (pet, owner, payout) => send("registerPet", [pet, owner, payout]),
+  store,
+  save,
+  seeded,
+});
+
+/** RP signature for an IDKit request. The signing key stays here; only the signature leaves. */
+function worldSign(action: string | null) {
+  if (!action || !WORLD_ACTIONS.has(action)) throw bad("unknown action");
+  const s = signRequest({ action, signingKeyHex: RP_SIGNING_KEY! });
+  return { sig: s.sig, nonce: s.nonce, created_at: s.createdAt, expires_at: s.expiresAt };
 }
-const bad = (msg: string) => new HttpError(400, msg);
+
 const errMsg = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message : String(e));
-const addr = (v: unknown, field: string) => {
-  if (typeof v !== "string" || !isAddress(v)) throw bad(`${field} must be an address`);
-  return getAddress(v);
-};
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
@@ -54,26 +84,6 @@ async function readBody(req: IncomingMessage) {
     if (raw.length > 100_000) throw new HttpError(413, "body too large");
   }
   try { return raw ? JSON.parse(raw) : {}; } catch { throw bad("invalid JSON"); }
-}
-
-async function registerPet(body: any) {
-  const petKey = addr(body.petKey, "petKey");
-  const owner = addr(body.ownerAddress, "ownerAddress");
-  const payout = addr(body.payoutAddress, "payoutAddress");
-  const name = body.name ?? petKey.toLowerCase();
-  if (typeof name !== "string" || !/^[a-z0-9.-]{1,64}$/.test(name)) throw bad("name must be a-z, 0-9, . or -");
-  const nullifier = body.worldProof?.nullifier_hash;
-  if (typeof nullifier !== "string" || !nullifier) throw bad("worldProof.nullifier_hash required");
-
-  if (!(await verifyWorldProof(body.worldProof))) throw new HttpError(403, "World proof rejected");
-  if (store.nullifiers.includes(nullifier)) throw new HttpError(409, "this human already has a pet");
-  if (store.pets[name] || findPet(petKey)) throw new HttpError(409, "pet already registered");
-
-  const registerTx = await send("registerPet", [petKey, owner, payout]);
-  store.pets[name] = { name, petKey, owner, payout, registerTx };
-  store.nullifiers.push(nullifier);
-  save();
-  return { name, petKey, owner, payout, verified: true, registerTx, seeded };
 }
 
 function addImpressions(body: any) {
@@ -149,24 +159,49 @@ async function getPet(key: string) {
   const rec = findPet(key);
   if (!rec && !isAddress(key)) throw new HttpError(404, "unknown pet");
   const petKey = getAddress(rec?.petKey ?? key);
-  const [owner, payout] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
-  if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
+  let payout = rec?.payout;
+  try {
+    const [owner, p] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
+    if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
+    payout = p;
+  } catch (e) {
+    if (e instanceof HttpError || !rec) throw e; // RPC down: a pet we registered still answers, asleep
+  }
   const t = store.today[petKey];
   return petView({
     name: rec?.name ?? petKey.toLowerCase(),
-    walletBalance: await pub.getBalance({ address: payout }), // payout is where the pet's earnings land
+    walletBalance: await payoutBalance(getAddress(payout!)), // payout is where the pet's earnings land
+    thresholds,
     impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
+    lastThoughts: store.thoughts[petKey],
   });
 }
 
+const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 64) : undefined);
+
+/** One pet decision from a Claude Code hook. A sleep is a valid answer, so it is 200 too. */
+async function petThink(key: string, body: any) {
+  const event = str(body.event);
+  if (!event) throw bad("event is required");
+  const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
+  const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
+  const petKey = getAddress(findPet(key)?.petKey ?? key);
+  store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
+  save();
+  return r;
+}
+
 async function route(req: IncomingMessage) {
-  const { pathname } = new URL(req.url ?? "/", "http://x");
+  const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
+  if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"));
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
+  const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
+  if (m === "POST" && thinkPath) return petThink(decodeURIComponent(thinkPath[1]), await readBody(req));
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }

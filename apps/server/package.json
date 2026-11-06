@@ -7,6 +7,7 @@
     "test": "node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
+    "@worldcoin/idkit-core": "^4.6.0",
     "viem": "^2.57.16"
   },
   "devDependencies": {
