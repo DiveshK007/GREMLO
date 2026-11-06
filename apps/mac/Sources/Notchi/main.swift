@@ -12,7 +12,7 @@ var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
 
 enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy]
 
 // Frame order within a state's strip of n frames.
 func sequence(_ s: PetState, _ n: Int) -> [Int] {
@@ -359,6 +359,10 @@ final class Pet {
         sprite.minificationFilter = .nearest
         sprite.contentsGravity = .resizeAspect
         panel.contentView?.layer?.addSublayer(sprite)
+        let click = ClickView(frame: CGRect(origin: .zero, size: skin.size))
+        click.autoresizingMask = [.width, .height]
+        click.onClick = { [weak self] in self?.poke() }
+        panel.contentView?.addSubview(click)
         signLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
         signLabel.textColor = .black
         signLabel.drawsBackground = true
@@ -403,10 +407,15 @@ final class Pet {
             holdUntil = Date().addingTimeInterval(0.26)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
                 guard let self else { return }
-                if self.path == .falling { self.panel.orderFrontRegardless() }
+                if self.path == .falling {
+                    self.panel.setFrameOrigin(self.pos)
+                    self.panel.orderFrontRegardless()
+                }
                 self.door.close(lock: false)
             }
-        case .toWall, .climbing, .ceiling, .entering:
+        case .entering:
+            door.close(lock: false)
+        case .toWall, .climbing, .ceiling:
             break
         }
         lockWhenHome = false
@@ -442,6 +451,7 @@ final class Pet {
                 pos.y = floorY
                 go(.floor)
                 set(.greet, then: afterLanding)
+                if lockWhenHome { goHome(lock: true) }  // SessionEnd arrived mid-fall
             }
         case .floor:
             if mood == "asleep" { goHome(lock: false) }
@@ -487,6 +497,68 @@ final class Pet {
         draw()
         placeSign()
         placeBubble()
+        updateCursor()
+    }
+
+    // Cursor play. Cosmetic only: nothing here touches the backend, balances or hooks.
+    var annoyance = 0
+    var lastPoke = Date.distantPast
+    var beforeFun: PetState?
+    // Working, approval and a live bubble outrank hover and annoyance.
+    var busy: Bool { working || waiting || Date() < bubbleUntil }
+
+    // The overlay stays click-through except while the cursor is over a visible pixel of the pet.
+    func updateCursor() {
+        let mouse = NSEvent.mouseLocation
+        let inside = path == .floor && panel.isVisible && opaque(at: mouse)
+        if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+        if annoyance > 0 && Date().timeIntervalSince(lastPoke) > 6 { annoyance = 0 }
+        if state == .annoy && (annoyance == 0 || busy) {
+            set(beforeFun ?? .walk)
+            beforeFun = nil
+        } else if state == .hover && (!inside || busy) {
+            set(beforeFun ?? .walk)
+            beforeFun = nil
+        } else if inside && !busy && (state == .walk || state == .idle) {
+            beforeFun = state
+            set(.hover)
+        }
+        if state == .hover { dir = mouse.x < pos.x + size.width / 2 ? -1 : 1 }
+    }
+
+    func poke() {
+        guard path == .floor, !busy, [.walk, .idle, .hover, .annoy].contains(state) else { return }
+        annoyance += 1
+        lastPoke = Date()
+        if state != .annoy {
+            if state != .hover { beforeFun = state }
+            set(.annoy)
+        }
+    }
+
+    // Alpha of the current frame under a screen point, not the window rect.
+    func opaque(at p: NSPoint) -> Bool {
+        let f = panel.frame
+        guard f.contains(p) else { return false }
+        let img = strip[seq[min(frame, seq.count - 1)]]
+        var x = (p.x - f.minX) / f.width
+        if flipped { x = 1 - x }
+        let px = min(Int(x * CGFloat(img.width)), img.width - 1)
+        let py = min(Int((1 - (p.y - f.minY) / f.height) * CGFloat(img.height)), img.height - 1)
+        guard let ctx = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 1,
+                                  space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return false }
+        ctx.draw(img, in: CGRect(x: -px, y: -(img.height - 1 - py), width: img.width, height: img.height))
+        return (ctx.data?.load(as: UInt8.self) ?? 0) > 0
+    }
+
+    var flipped: Bool { [.walk, .sign, .hover, .annoy].contains(state) && dir < 0 }
+
+    // Frame order, with annoyance picking its part of the annoy row: 1-2 frown, 3-4 arms out, 5+ puffed and stomping.
+    var seq: [Int] {
+        guard state == .annoy else { return sequence(state, strip.count) }
+        let level = annoyance >= 5 ? [4, 5] : annoyance >= 3 ? [2, 3] : [0, 1]
+        let fit = level.filter { $0 < strip.count }
+        return fit.isEmpty ? [0] : fit
     }
 
     func setMood(_ m: String, reason: String?) {
@@ -549,7 +621,7 @@ final class Pet {
     func advanceFrame() {
         if path == .falling { return }  // hold the first greet frame mid-air
         frame += 1
-        if frame >= sequence(state, strip.count).count {
+        if frame >= seq.count {
             if loopingStates.contains(state) { frame = 0 } else { set(next) }
         }
     }
@@ -558,7 +630,8 @@ final class Pet {
 
     func draw() {
         var t = CGAffineTransform.identity
-        if (state == .walk || state == .sign) && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
+        if flipped { t = t.scaledBy(x: -1, y: 1) }
+        if state == .annoy && annoyance >= 5 && frame % 2 == 1 { t = t.translatedBy(x: 0, y: -2) }  // the stomp
         // Body only: the sign and bubbles are separate windows, so they stay upright.
         if path == .ceiling { t = t.scaledBy(x: 1, y: -1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
@@ -588,7 +661,7 @@ final class Pet {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        sprite.contents = strip[sequence(state, strip.count)[frame]]
+        sprite.contents = strip[seq[min(frame, seq.count - 1)]]
         sprite.setAffineTransform(t)
         CATransaction.commit()
     }
@@ -604,8 +677,16 @@ final class Pet {
         let floorDelta = s.footPadding - skin.footPadding
         skin = s
         panel.setContentSize(s.size)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         sprite.frame = CGRect(origin: .zero, size: s.size)
-        if path == .floor { pos.y -= floorDelta }
+        CATransaction.commit()
+        switch path {
+        case .floor: pos.y -= floorDelta
+        case .ceiling: pos.y = topY + s.footPadding
+        case .climbing: pos.x = rightX
+        default: break
+        }
         frame = 0
         draw()
     }
@@ -649,6 +730,13 @@ final class Pet {
         default: break
         }
     }
+}
+
+// Takes clicks on the pet only while the panel isn't click-through (see Pet.updateCursor).
+final class ClickView: NSView {
+    var onClick: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { onClick?() }
 }
 
 // Minimal HTTP listener for the hooks. Replies 200 with an empty body at once, never a decision.
@@ -792,7 +880,12 @@ final class Backend: NSObject {
     }
 
     @objc func toggle() {
-        if popover.isShown { popover.close() } else if let b = item.button { popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY) }
+        if popover.isShown { popover.close() } else if let b = item.button {
+            showingSettings = false
+            shown = ""
+            render()
+            popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+        }
     }
 
     var petPath: String { "/pets/" + (petName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? petName) }
@@ -878,6 +971,7 @@ final class Backend: NSObject {
         names.orientation = .vertical
         names.alignment = .leading
         names.spacing = 2
+        names.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let head = NSStackView(views: [avatar(), names, spacer, gear])
