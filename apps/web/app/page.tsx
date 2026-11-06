@@ -15,15 +15,15 @@ export default function Home() {
         <div className="card">
           <h2>Developers</h2>
           <p className="muted">Prove you are a real person once, name your pet, and it moves into your notch.</p>
-          <Link href="/pet">
-            <button>Get your pet</button>
+          <Link href="/pet" className="button">
+            Get your pet
           </Link>
         </div>
         <div className="card">
           <h2>Brands</h2>
           <p className="muted">The pet writes three lines for you. Pick one, fund it, and any unspent budget comes back.</p>
-          <Link href="/brand">
-            <button>Fund a campaign</button>
+          <Link href="/brand" className="button">
+            Fund a campaign
           </Link>
         </div>
       </div>
