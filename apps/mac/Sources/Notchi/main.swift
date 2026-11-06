@@ -146,6 +146,9 @@ final class Pet {
     var lastActive = Date()
     var sessionLive = false
     var lockWhenHome = false
+    // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
+    let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
+    let signLabel = NSTextField(labelWithString: "")
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -162,6 +165,11 @@ final class Pet {
         sprite.minificationFilter = .nearest
         sprite.contentsGravity = .resizeAspect
         panel.contentView?.layer?.addSublayer(sprite)
+        signLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        signLabel.textColor = .black
+        signLabel.drawsBackground = true
+        signLabel.backgroundColor = NSColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 1)
+        signPanel.contentView?.addSubview(signLabel)
         Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
     }
 
@@ -266,6 +274,22 @@ final class Pet {
         }
         panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
         draw()
+        placeSign()
+    }
+
+    func setSign(_ text: String?) {
+        signLabel.stringValue = text ?? ""
+        signLabel.sizeToFit()
+        signPanel.setContentSize(signLabel.frame.size)
+    }
+
+    func placeSign() {
+        let show = path == .floor && state == .sign && !signLabel.stringValue.isEmpty
+        if !show { if signPanel.isVisible { signPanel.orderOut(nil) }; return }
+        let w = signPanel.frame.width
+        let x = min(max(pos.x + size.width / 2 - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
+        signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + size.height - 6))
+        if !signPanel.isVisible { signPanel.orderFrontRegardless() }
     }
 
     func advanceFrame() {
@@ -330,9 +354,9 @@ final class Pet {
 // Minimal HTTP listener for the hooks. Replies 200 with an empty body at once, never a decision.
 final class HookServer {
     let listener: NWListener
-    let onEvent: (String, String?) -> Void
+    let onEvent: ([String: Any]) -> Void
 
-    init(port: UInt16, onEvent: @escaping (String, String?) -> Void) throws {
+    init(port: UInt16, onEvent: @escaping ([String: Any]) -> Void) throws {
         self.onEvent = onEvent
         let params = NWParameters.tcp
         params.acceptLocalOnly = true
@@ -379,8 +403,125 @@ final class HookServer {
         let reply = Data("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
         conn.send(content: reply, completion: .contentProcessed { _ in conn.cancel() })
         guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let event = json["hook_event_name"] as? String else { return }
-        onEvent(event, json["notification_type"] as? String)
+              json["hook_event_name"] is String else { return }
+        onEvent(json)
+    }
+}
+
+struct Campaign: Decodable { let campaignId: String; let line: String?; let brand: String; let ratePerImpression: String }
+struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
+struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
+struct PetInfo: Decodable {
+    let name: String; let mood: String; let walletBalance: String?; let computeBalance: String?
+    let impressionsToday: Int; let lastThoughts: [Thought]; let lastMeal: Meal?; let seeded: Bool
+}
+struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
+
+func og(_ wei: String?) -> String {
+    guard let wei, let d = Decimal(string: wei) else { return "unknown" }
+    return "\(d / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G"
+}
+
+// Talks to apps/server. Server down means the popover says so; nothing is invented.
+final class Backend: NSObject {
+    let base = ProcessInfo.processInfo.environment["NOTCHI_SERVER"] ?? "http://localhost:8787"
+    let petName = ProcessInfo.processInfo.environment["NOTCHI_PET"] ?? "mochi.notchi.eth"
+    let pet: Pet
+    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    let popover = NSPopover()
+    let text = NSTextField(wrappingLabelWithString: "loading")
+    var campaign: Campaign?
+    var info: PetInfo?
+    var lastThink = "no think yet"
+    var serverError: String?
+    var thinking = false
+
+    init(pet: Pet) {
+        self.pet = pet
+        super.init()
+        item.button?.title = "Notchi"
+        item.button?.target = self
+        item.button?.action = #selector(toggle)
+        text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        text.preferredMaxLayoutWidth = 360
+        let vc = NSViewController()
+        vc.view = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 220))
+        text.frame = vc.view.bounds.insetBy(dx: 10, dy: 10)
+        text.autoresizingMask = [.width, .height]
+        vc.view.addSubview(text)
+        popover.contentViewController = vc
+        popover.behavior = .transient
+        refresh()
+        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refresh() }
+    }
+
+    @objc func toggle() {
+        if popover.isShown { popover.close() } else if let b = item.button { popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY) }
+    }
+
+    var petPath: String { "/pets/" + (petName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? petName) }
+
+    func request(_ path: String, body: [String: Any]? = nil, done: @escaping (Data?, String?) -> Void) {
+        var req = URLRequest(url: URL(string: base + path)!, timeoutInterval: 30)
+        if let body {
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let fail = err.map { $0.localizedDescription } ?? (code == 200 ? nil : "HTTP \(code) \(String(decoding: data ?? Data(), as: UTF8.self).prefix(120))")
+            DispatchQueue.main.async { done(fail == nil ? data : nil, fail) }
+        }.resume()
+    }
+
+    func refresh() {
+        request("/campaigns/active") { data, err in
+            self.serverError = err
+            if let data { self.campaign = try? JSONDecoder().decode(Campaign?.self, from: data) }
+            self.render()
+        }
+        request(petPath) { data, err in
+            if let err { self.serverError = "pet \(self.petName): \(err)" }
+            if let data { self.info = try? JSONDecoder().decode(PetInfo.self, from: data) }
+            self.render()
+        }
+    }
+
+    // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
+    func think(_ hook: [String: Any]) {
+        guard !thinking else { return }
+        thinking = true
+        let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
+                                   "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
+        request(petPath + "/think", body: body) { data, err in
+            self.thinking = false
+            if let err { self.lastThink = "think failed: \(err)" }
+            else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
+                let id = r.requestId.map { "request \($0)" } ?? "no request ID"
+                self.lastThink = r.action == "sleep" ? "sleep: \(r.reason ?? "") (\(id))" : "\(r.action) \"\(r.say ?? "")\" (\(id))"
+            }
+            self.refresh()
+        }
+    }
+
+    func render() {
+        let seeded = info?.seeded ?? false
+        let tag = seeded ? " [seeded]" : ""
+        pet.setSign(campaign?.line.map { $0 + tag })
+        var lines: [String] = []
+        if seeded { lines.append("SEEDED DATA: not real 0G tokens") }
+        if let e = serverError { lines.append("server: \(e)") }
+        if let i = info {
+            lines.append("\(i.name)  mood: \(i.mood)")
+            lines.append("wallet: \(og(i.walletBalance))\(tag)   compute: \(og(i.computeBalance))")
+            lines.append("impressions today: \(i.impressionsToday)\(tag)")
+            lines.append("last meal: " + (i.lastMeal.map { "\(og($0.amount)) tx \($0.txHash)" } ?? "none"))
+        }
+        lines.append("sign: " + (campaign.map { "\"\($0.line ?? "(line unknown)")\" by \($0.brand)\(tag)" } ?? "no active campaign"))
+        lines.append("last think: \(lastThink)")
+        for t in info?.lastThoughts.prefix(5) ?? [] { lines.append("  \(t.action)  request \(t.requestId)") }
+        text.stringValue = lines.joined(separator: "\n")
     }
 }
 
@@ -394,10 +535,12 @@ guard let url = Bundle.module.url(forResource: "spritesheet", withExtension: "we
 }
 let door = Door()
 let pet = Pet(frames: frames, door: door)
+let backend = Backend(pet: pet)
 let server: HookServer
 do {
-    server = try HookServer(port: 47474) { event, notification in
-        pet.handle(event: event, notification: notification)
+    server = try HookServer(port: 47474) { hook in
+        pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
+        backend.think(hook)
     }
 } catch {
     print("cannot listen on 47474: \(error)")
