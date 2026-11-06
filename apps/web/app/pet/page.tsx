@@ -24,19 +24,20 @@ export default function GetYourPet() {
   const [petKey, setPetKey] = useState("");
   const [payout, setPayout] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
+  const [walletError, setWalletError] = useState(""); // shown next to Connect wallet
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
 
   const fullName = `${name.trim().toLowerCase()}.notchi.eth`;
 
   async function onConnect() {
-    setFormError("");
+    setWalletError("");
     try {
       const addr = await connectWallet();
       setOwner(addr);
       if (!payout) setPayout(addr);
     } catch (e) {
-      setFormError((e as Error).message);
+      setWalletError((e as Error).message);
     }
   }
 
@@ -111,7 +112,10 @@ export default function GetYourPet() {
       {phase.kind === "form" && (
         <div className="card">
           {!owner ? (
-            <button onClick={onConnect}>Connect wallet</button>
+            <>
+              <button onClick={onConnect}>Connect wallet</button>
+              {walletError && <p className="bad">{walletError}</p>}
+            </>
           ) : (
             <p className="muted">
               Connected: <span className="mono">{owner}</span>

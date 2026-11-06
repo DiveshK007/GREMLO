@@ -29,6 +29,7 @@ export default function FundCampaign() {
   const [budget, setBudget] = useState("0.02");
   const [rate, setRate] = useState("0.0001");
   const [hours, setHours] = useState("1");
+  const [walletError, setWalletError] = useState(""); // shown next to Connect wallet
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [campaignError, setCampaignError] = useState(""); // lookup, settle and close, shown in "Your campaign"
@@ -43,11 +44,11 @@ export default function FundCampaign() {
   const chosenLine = picked !== null ? lines[picked]?.text ?? "" : ownLine.trim();
 
   async function onConnect() {
-    setError("");
+    setWalletError("");
     try {
       setAccount(await connectWallet());
     } catch (e) {
-      setError((e as Error).message);
+      setWalletError((e as Error).message);
     }
   }
 
@@ -169,7 +170,10 @@ export default function FundCampaign() {
       <p className="lead">Your line, held up by a tiny pet while developers wait on their AI agent. Pay per real impression.</p>
 
       {!account ? (
-        <button onClick={onConnect}>Connect wallet</button>
+        <>
+          <button onClick={onConnect}>Connect wallet</button>
+          {walletError && <p className="bad">{walletError}</p>}
+        </>
       ) : (
         <p className="muted">
           Paying from <span className="mono">{account}</span>
