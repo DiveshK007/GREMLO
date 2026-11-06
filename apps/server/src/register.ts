@@ -47,7 +47,6 @@ export function makeRegister(deps: {
   registerOnChain: (pet: string, owner: string, payout: string) => Promise<string>;
   store: { pets: Record<string, PetRecord>; nullifiers: string[] };
   save: () => void;
-  seeded: boolean;
 }) {
   const claiming = new Set<string>(); // nullifiers with a registration in flight
 
@@ -77,7 +76,7 @@ export function makeRegister(deps: {
       pets[name] = { name, petKey, owner, payout, registerTx };
       nullifiers.push(n);
       deps.save();
-      return { name, petKey, owner, payout, verified: true, registerTx, seeded: deps.seeded };
+      return { ok: true, txHash: registerTx, name }; // shape apps/web expects
     } finally {
       claiming.delete(n);
     }

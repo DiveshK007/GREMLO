@@ -1,14 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
-import { signRequest } from "@worldcoin/idkit-core/signing";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
-import { bad, HttpError, makeRegister, verifyWorldProof, WORLD_ACTIONS, type PetRecord } from "./register.ts";
+import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
+import { checkLine, cors, worldSign } from "./web.ts";
 // @ts-expect-error plain ESM JS package, no types
-import { think } from "../../../packages/brain/index.js";
+import { suggestLines, think } from "../../../packages/brain/index.js";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -63,15 +63,7 @@ const registerPet = makeRegister({
   registerOnChain: (pet, owner, payout) => send("registerPet", [pet, owner, payout]),
   store,
   save,
-  seeded,
 });
-
-/** RP signature for an IDKit request. The signing key stays here; only the signature leaves. */
-function worldSign(action: string | null) {
-  if (!action || !WORLD_ACTIONS.has(action)) throw bad("unknown action");
-  const s = signRequest({ action, signingKeyHex: RP_SIGNING_KEY! });
-  return { sig: s.sig, nonce: s.nonce, created_at: s.createdAt, expires_at: s.expiresAt };
-}
 
 const errMsg = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message : String(e));
 const findPet = (key: string) =>
@@ -178,7 +170,7 @@ async function getPet(key: string) {
   });
 }
 
-const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 64) : undefined);
+const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
 /** One pet decision from a Claude Code hook. A sleep is a valid answer, so it is 200 too. */
 async function petThink(key: string, body: any) {
@@ -192,14 +184,45 @@ async function petThink(key: string, body: any) {
   return r;
 }
 
+/** 3 ad lines for a brand brief, one 0G call. No fallback lines: a failure is a 502 the web page shows. */
+async function campaignLines(body: any) {
+  const brief = str(body.brief, 500);
+  if (!brief?.trim()) throw bad("brief is required");
+  try {
+    return { lines: await suggestLines(brief) };
+  } catch (e: any) {
+    throw new HttpError(502, e.message);
+  }
+}
+
+/** Saves the line text for a campaign the brand just paid for, once it hashes to the onchain lineHash. */
+async function saveCampaign(body: any) {
+  const id = String(body.campaignId ?? "");
+  if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
+  if (typeof body.txHash === "string" && /^0x[0-9a-fA-F]{64}$/.test(body.txHash)) {
+    // the web app posts right after sending; wait for it so the campaign exists when we read it
+    await pub.waitForTransactionReceipt({ hash: body.txHash, timeout: 60_000 });
+  }
+  const [brand, , , rate, , , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
+  if (rate === 0n) throw new HttpError(404, "unknown campaign");
+  const h = checkLine(body.line, body.lineHash, onchainHash);
+  store.lines[h] = body.line;
+  const name = str(body.brand, 40);
+  if (name) store.brands[brand] = name;
+  save();
+  return { ok: true };
+}
+
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
-  if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"));
+  if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
+  if (m === "POST" && pathname === "/campaigns/lines") return campaignLines(await readBody(req));
+  if (m === "POST" && pathname === "/campaigns") return saveCampaign(await readBody(req));
   const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
   if (m === "POST" && thinkPath) return petThink(decodeURIComponent(thinkPath[1]), await readBody(req));
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
@@ -213,6 +236,7 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 
 const port = Number(process.env.PORT ?? 8787);
 createServer((req, res) => {
+  if (cors(req, res)) return;
   route(req).then(
     (body) => reply(res, 200, body),
     (e) => {
