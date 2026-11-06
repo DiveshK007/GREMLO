@@ -1,45 +1,79 @@
 import AppKit
 import Network
 
-// Sheet layout comes from Resources/rows.json: 192x208 cells, 8 columns, 9 rows.
-let cellSize = CGSize(width: 192, height: 208)
-let sheetCols = 8, sheetRows = 9
-// One art pixel is 7 sheet pixels; draw it at 2 points.
-let drawScale: CGFloat = 2.0 / 7.0
-// Empty sheet pixels under the feet (cell height 208, baseline 190).
-let footPadding = (208.0 - 190.0) * drawScale
 let tickHz = 30.0
-let animFps = 8.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
 let homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? 75
 
-enum PetState: String { case greet, walk, idle, sign, flag, celebrate, fail, climb }
+enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat }
 
-struct Anim { let row: Int; let frames: [Int]; let loops: Bool }
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag]
 
-let anims: [PetState: Anim] = [
-    .greet: Anim(row: 3, frames: [0, 1, 2, 3], loops: false),
-    .walk: Anim(row: 1, frames: Array(0..<8), loops: true),
-    .climb: Anim(row: 2, frames: Array(0..<8), loops: true),
-    .idle: Anim(row: 5, frames: [0, 0, 1, 1, 0, 0, 2, 0], loops: true),
-    .sign: Anim(row: 6, frames: Array(0..<6), loops: true),
-    .flag: Anim(row: 7, frames: Array(0..<6), loops: true),
-    .celebrate: Anim(row: 4, frames: Array(0..<5) + Array(0..<5), loops: false),
-    .fail: Anim(row: 8, frames: Array(0..<6), loops: false),
-]
+// Frame order within a state's strip of n frames.
+func sequence(_ s: PetState, _ n: Int) -> [Int] {
+    switch s {
+    case .idle where n >= 3: return [0, 0, 1, 1, 0, 0, 2, 0]
+    case .celebrate: return Array(0..<n) + Array(0..<n)
+    default: return Array(0..<n)
+    }
+}
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
 
-func loadFrames(_ url: URL) -> [[CGImage]]? {
-    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
-    return (0..<sheetRows).map { r in
-        (0..<sheetCols).compactMap { c in
-            img.cropping(to: CGRect(x: CGFloat(c) * cellSize.width, y: CGFloat(r) * cellSize.height,
-                                    width: cellSize.width, height: cellSize.height))
-        }
+// A pet folder: <state>.png horizontal strips plus pet.json, e.g. assets/pets/mochi/.
+struct SkinInfo: Decodable {
+    let fps: Double
+    let frames: [String: Int]
+    let pixel: Double     // strip pixels per art pixel; one art pixel draws at 2 points
+    let baseline: Double  // strip row the feet stand on
+}
+
+struct Skin {
+    let name: String
+    let fps: Double
+    let size: CGSize
+    let footPadding: CGFloat
+    let strips: [PetState: [CGImage]]
+}
+
+// assets/demo-pets/ (gitignored) wins over assets/pets/ when it exists. NOTCHI_SKIN picks a folder by name, else the first one.
+func loadSkin() -> Skin? {
+    let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("assets")
+    let fm = FileManager.default
+    let demo = assets.appendingPathComponent("demo-pets")
+    let root = fm.fileExists(atPath: demo.path) ? demo : assets.appendingPathComponent("pets")
+    let names = ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+    guard let name = ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? names.first else {
+        print("no pet folders in \(root.path)")
+        return nil
     }
+    let dir = root.appendingPathComponent(name)
+    guard let data = try? Data(contentsOf: dir.appendingPathComponent("pet.json")),
+          let info = try? JSONDecoder().decode(SkinInfo.self, from: data) else {
+        print("\(dir.path)/pet.json missing or invalid")
+        return nil
+    }
+    var strips: [PetState: [CGImage]] = [:]
+    var cell = CGSize.zero
+    for s in PetState.allCases {
+        guard let n = info.frames[s.rawValue], n > 0,
+              let src = CGImageSourceCreateWithURL(dir.appendingPathComponent(s.rawValue + ".png") as CFURL, nil),
+              let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { continue }
+        let w = img.width / n
+        strips[s] = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
+        cell = CGSize(width: w, height: img.height)
+    }
+    guard strips[.walk] != nil else {
+        print("\(dir.path) has no walk.png")
+        return nil
+    }
+    for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) strip, using walk") }
+    let scale = 2 / info.pixel
+    print("pet skin \(dir.path)")
+    return Skin(name: name, fps: info.fps, size: CGSize(width: cell.width * scale, height: cell.height * scale),
+                footPadding: (cell.height - info.baseline) * scale, strips: strips)
 }
 
 // The screen with the menu bar (and the notch, if there is one).
@@ -128,11 +162,11 @@ final class Door {
 }
 
 final class Pet {
-    let frames: [[CGImage]]
+    let skin: Skin
     let door: Door
     let panel: NSPanel
     let sprite = CALayer()
-    let size = CGSize(width: cellSize.width * drawScale, height: cellSize.height * drawScale)
+    var size: CGSize { skin.size }
     var state = PetState.walk
     var next = PetState.walk
     var frame = 0
@@ -150,16 +184,16 @@ final class Pet {
     let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let signLabel = NSTextField(labelWithString: "")
 
-    var floorY: CGFloat { mainScreen.visibleFrame.minY - footPadding }
+    var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
     var leftX: CGFloat { mainScreen.visibleFrame.minX }
     var rightX: CGFloat { mainScreen.visibleFrame.maxX - size.width }
     var doorX: CGFloat { door.center.x - size.width / 2 }
 
-    init(frames: [[CGImage]], door: Door) {
-        self.frames = frames
+    init(skin: Skin, door: Door) {
+        self.skin = skin
         self.door = door
-        panel = overlayPanel(size, level: .statusBar)
+        panel = overlayPanel(skin.size, level: .statusBar)
         sprite.frame = CGRect(origin: .zero, size: size)
         sprite.magnificationFilter = .nearest
         sprite.minificationFilter = .nearest
@@ -267,7 +301,7 @@ final class Pet {
                 return
             }
         }
-        animClock += animFps * dt
+        animClock += skin.fps * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -294,15 +328,15 @@ final class Pet {
 
     func advanceFrame() {
         if path == .falling { return }  // hold the first greet frame mid-air
-        guard let anim = anims[state] else { return }
         frame += 1
-        if frame >= anim.frames.count {
-            if anim.loops { frame = 0 } else { set(next) }
+        if frame >= sequence(state, strip.count).count {
+            if loopingStates.contains(state) { frame = 0 } else { set(next) }
         }
     }
 
+    var strip: [CGImage] { skin.strips[state] ?? skin.strips[.walk]! }
+
     func draw() {
-        guard let anim = anims[state] else { return }
         var t = CGAffineTransform.identity
         if state == .walk && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
@@ -313,7 +347,7 @@ final class Pet {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        sprite.contents = frames[anim.row][anim.frames[frame]]
+        sprite.contents = strip[sequence(state, strip.count)[frame]]
         sprite.setAffineTransform(t)
         CATransaction.commit()
     }
@@ -528,13 +562,9 @@ final class Backend: NSObject {
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-guard let url = Bundle.module.url(forResource: "spritesheet", withExtension: "webp"),
-      let frames = loadFrames(url) else {
-    print("spritesheet missing or unreadable")
-    exit(1)
-}
+guard let skin = loadSkin() else { exit(1) }
 let door = Door()
-let pet = Pet(frames: frames, door: door)
+let pet = Pet(skin: skin, door: door)
 let backend = Backend(pet: pet)
 let server: HookServer
 do {

@@ -1,0 +1,6 @@
+{
+  "fps": 8,
+  "pixel": 7,
+  "baseline": 190,
+  "frames": { "greet": 4, "walk": 8, "idle": 8, "sign": 6, "flag": 6, "celebrate": 5, "fail": 6, "climb": 8, "eat": 6 }
+}
