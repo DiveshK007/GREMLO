@@ -6,13 +6,12 @@ Notchi is a tiny desktop pet that lives behind a door in your MacBook notch. Whe
 
 Built from scratch at ETHGlobal Mumbai 2026.
 
-<!-- Replace with the real number from ~/.notchi/events.log before submitting -->
-> Our team spent **X hours** this weekend waiting on Claude Code, measured by Notchi's own hook log.
+> Our team spent **\<HOURS\>** this weekend waiting on Claude Code, measured by Notchi's own hook log.
 
 ## What it does
 
 1. **A developer gets a pet.** They prove they are a unique human with World ID. One person, one pet, so brands only pay real screens. The pet is registered onchain with a payout address only the owner can change.
-2. **A brand funds a campaign.** Notchi writes three ad lines on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
+2. **A brand funds a campaign.** The brand picks a tone (bold, calm or dev-meme) and Notchi writes three hooks of up to 40 characters on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
 3. **The pet works.** Claude Code hooks tell the pet what the agent is doing: working, waiting for permission, idle, done, failed. While the agent works, the pet holds the brand's line. Each event asks the pet's 0G brain what to do next.
 4. **The pet gets paid.** Impressions are settled onchain to the pet's payout address. The pet's mood comes from its real balance: thriving, stable, hungry or asleep.
 
@@ -25,7 +24,19 @@ Built from scratch at ETHGlobal Mumbai 2026.
 | Brand campaign funded | [0x655415b2...a370f30](https://chainscan-galileo.0g.ai/tx/0x655415b2eb9b5de7fe80d53849713227f53ed19440b009248400d318ba370f30) |
 | Ad lines written on 0G | request `ecbcab9c-96ee-4dc0-880d-e3622419f7d7` |
 | Pet decision on 0G | request `61eeed8e-7f32-4317-bcf5-e573d35553a2` |
-<!-- add: campaign #2 funding tx, settlement tx, refund tx -->
+| Campaign #2 funded | [0x208f143c...aba26d5](https://chainscan-galileo.0g.ai/tx/0x208f143c6b049278d851d912a6de8b937936af27cee1fd93a5ec906caaba26d5) |
+| Impressions settled to the pet | [0x45cf8fed...ab651704](https://chainscan-galileo.0g.ai/tx/0x45cf8fed373b3fc9db171297a7f96df4b649996c06de325f4be16be9ab651704) |
+
+## The pet
+
+- **Hidden door.** The notch looks like stock hardware. The door only appears while the pet crosses it: it fades in, glows, swings open, closes and fades out.
+- **Ticker sign.** While the agent works the pet walks slowly holding the sponsored line. Lines that don't fit scroll like a news ticker and pause when your cursor is on the pet.
+- **Walks every edge.** It walks the bottom, climbs the side wall and walks the top edge upside down on its way home. The sign and bubbles stay upright.
+- **Three avatars.** Notchi, Notchi Ink and Notchi Signal, switched live from the menu-bar popover.
+- **Settings.** Sounds, sponsored lines on/off, ticker, walk speed, how long before it goes home, and a "Send pet home" button.
+- **Reminders.** After the agent stops or asks for approval, Notchi reminds you every 2, 5 or 10 minutes (or never) until your next prompt.
+- **Stays on its desktop.** The pet lives on the Space it started on and never covers full-screen apps. A setting shows it on all desktops. Impressions only count while the sign is actually on screen.
+- **Reacts to you.** Hover and it turns to smile; click it repeatedly and it gets annoyed, then calms down after 6 seconds. It never interrupts work, approvals or what its 0G brain says.
 
 ## How each sponsor is used
 
@@ -57,8 +68,8 @@ Claude Code hooks ──> Mac app (Swift, notch window, hook server on 127.0.0.1
 ## Tests
 
 - Contracts: 20 Foundry tests including fuzzing (`forge test`). The fuzz test checks the pet's earnings plus what's left always equal the budget.
-- Server: 22 tests (`npm test` in `apps/server`).
-- Brain: 4 tests (`npm test` in `packages/brain`).
+- Server: 24 tests (`npm test` in `apps/server`).
+- Brain: 6 tests (`npm test` in `packages/brain`).
 
 ## Run it
 
