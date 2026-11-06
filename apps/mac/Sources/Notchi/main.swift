@@ -187,6 +187,10 @@ final class Pet {
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let bubbleLabel = NSTextField(labelWithString: "")
     var bubbleUntil = Date.distantPast
+    // From GET /pets/:name. Asleep keeps the pet home with sleepNote under the door.
+    var mood = "stable"
+    var sleepNote: String?
+    var speed: Double { mood == "thriving" ? 1.4 : mood == "hungry" ? 0.6 : 1 }
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -231,6 +235,7 @@ final class Pet {
 
     // Leave the house (or drop off the wall) and land on the floor, then show `s`.
     func comeOut(then s: PetState) {
+        if mood == "asleep" { return }
         lastActive = Date()
         afterLanding = s
         switch path {
@@ -284,8 +289,9 @@ final class Pet {
                 set(.greet, then: afterLanding)
             }
         case .floor:
+            if mood == "asleep" { goHome(lock: false) }
             if state == .walk {
-                pos.x += dir * 24 * dt
+                pos.x += dir * 24 * speed * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }
             }
@@ -311,7 +317,7 @@ final class Pet {
                 return
             }
         }
-        animClock += skin.fps * dt
+        animClock += skin.fps * speed * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -322,10 +328,21 @@ final class Pet {
         placeBubble()
     }
 
-    func say(_ text: String, for seconds: TimeInterval) {
+    func setMood(_ m: String, reason: String?) {
+        if m != mood { print("mood \(mood) -> \(m)") }
+        mood = m
+        sleepNote = m == "asleep" ? "zzz  " + (reason ?? "wallet too low to pay for 0G calls") : nil
+        placeBubble()
+    }
+
+    func setBubble(_ text: String) {
         bubbleLabel.stringValue = text
         bubbleLabel.sizeToFit()
         bubblePanel.setContentSize(bubbleLabel.frame.size)
+    }
+
+    func say(_ text: String, for seconds: TimeInterval) {
+        setBubble(text)
         bubbleUntil = Date().addingTimeInterval(seconds)
         placeBubble()
     }
@@ -337,7 +354,10 @@ final class Pet {
     }
 
     func placeBubble() {
-        if Date() >= bubbleUntil { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
+        if Date() >= bubbleUntil {
+            guard let note = sleepNote else { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
+            if bubbleLabel.stringValue != note { setBubble(note) }
+        }
         let w = bubblePanel.frame.width, h = bubblePanel.frame.height
         var x = pos.x + size.width / 2 - w / 2
         var y = pos.y + size.height - 6 + (signPanel.isVisible ? signPanel.frame.height + 2 : 0)
@@ -377,6 +397,10 @@ final class Pet {
         if state == .walk && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
         if state == .climb { t = t.scaledBy(x: -1, y: 1) }
+        if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
+        if mood == "thriving" && path == .floor && state == .walk {
+            t = t.translatedBy(x: 0, y: abs(sin((Double(frame) + animClock) * .pi / 2)) * 3)
+        }
         if path == .entering {
             // Shrink towards the top centre, into the door.
             t = CGAffineTransform(translationX: 0, y: size.height / 2 * (1 - shrink)).scaledBy(x: shrink, y: shrink)
@@ -482,7 +506,7 @@ struct Campaign: Decodable { let campaignId: String; let line: String?; let bran
 struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
 struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
 struct PetInfo: Decodable {
-    let name: String; let mood: String; let walletBalance: String?; let computeBalance: String?
+    let name: String; let mood: String; let moodReason: String?; let walletBalance: String?; let computeBalance: String?
     let impressionsToday: Int; let lastThoughts: [Thought]; let lastMeal: Meal?; let seeded: Bool
 }
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
@@ -590,6 +614,7 @@ final class Backend: NSObject {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
         pet.setSign(campaign?.line.map { $0 + tag })
+        if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
         var lines: [String] = []
         if seeded { lines.append("SEEDED DATA: not real 0G tokens") }
         if let e = serverError { lines.append("server: \(e)") }
