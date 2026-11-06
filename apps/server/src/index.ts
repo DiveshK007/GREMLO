@@ -36,6 +36,28 @@ const RP_ID = process.env.RP_ID;
 const RP_SIGNING_KEY = process.env.RP_SIGNING_KEY;
 if (!RP_ID || !RP_SIGNING_KEY) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
 
+const wei = (name: string) => {
+  const v = process.env[name];
+  if (!v || !/^[0-9]+$/.test(v)) throw new Error(`missing or non-integer env ${name} (wei)`);
+  return BigInt(v);
+};
+const thresholds = { thriving: wei("MOOD_THRIVING_WEI"), stable: wei("MOOD_STABLE_WEI"), hungry: wei("MOOD_HUNGRY_WEI") };
+
+// Every hook event reads the pet; 30s keeps a tool burst from hammering the RPC. Only successes are cached.
+const balanceCache = new Map<string, { at: number; wei: bigint }>();
+async function payoutBalance(payout: `0x${string}`) {
+  const hit = balanceCache.get(payout);
+  if (hit && Date.now() - hit.at < 30_000) return hit.wei;
+  try {
+    const w = await pub.getBalance({ address: payout });
+    balanceCache.set(payout, { at: Date.now(), wei: w });
+    return w;
+  } catch (e) {
+    console.error(`balance read failed: ${errMsg(e)}`);
+    return null;
+  }
+}
+
 const registerPet = makeRegister({
   verify: (result) => verifyWorldProof(result, RP_ID),
   registerOnChain: (pet, owner, payout) => send("registerPet", [pet, owner, payout]),
@@ -137,12 +159,19 @@ async function getPet(key: string) {
   const rec = findPet(key);
   if (!rec && !isAddress(key)) throw new HttpError(404, "unknown pet");
   const petKey = getAddress(rec?.petKey ?? key);
-  const [owner, payout] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
-  if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
+  let payout = rec?.payout;
+  try {
+    const [owner, p] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
+    if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
+    payout = p;
+  } catch (e) {
+    if (e instanceof HttpError || !rec) throw e; // RPC down: a pet we registered still answers, asleep
+  }
   const t = store.today[petKey];
   return petView({
     name: rec?.name ?? petKey.toLowerCase(),
-    walletBalance: await pub.getBalance({ address: payout }), // payout is where the pet's earnings land
+    walletBalance: await payoutBalance(getAddress(payout!)), // payout is where the pet's earnings land
+    thresholds,
     impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
     lastThoughts: store.thoughts[petKey],
