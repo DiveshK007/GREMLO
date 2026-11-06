@@ -8,20 +8,28 @@ let sheetCols = 8, sheetRows = 9
 let drawScale: CGFloat = 2.0 / 7.0
 // Empty sheet pixels under the feet (cell height 208, baseline 190).
 let footPadding = (208.0 - 190.0) * drawScale
+let tickHz = 30.0
+let animFps = 8.0
+// Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
+let homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? 75
 
-enum PetState: String { case greet, walk, idle, sign, flag, celebrate, fail }
+enum PetState: String { case greet, walk, idle, sign, flag, celebrate, fail, climb }
 
 struct Anim { let row: Int; let frames: [Int]; let loops: Bool }
 
 let anims: [PetState: Anim] = [
     .greet: Anim(row: 3, frames: [0, 1, 2, 3], loops: false),
     .walk: Anim(row: 1, frames: Array(0..<8), loops: true),
+    .climb: Anim(row: 2, frames: Array(0..<8), loops: true),
     .idle: Anim(row: 5, frames: [0, 0, 1, 1, 0, 0, 2, 0], loops: true),
     .sign: Anim(row: 6, frames: Array(0..<6), loops: true),
     .flag: Anim(row: 7, frames: Array(0..<6), loops: true),
     .celebrate: Anim(row: 4, frames: Array(0..<5) + Array(0..<5), loops: false),
     .fail: Anim(row: 8, frames: Array(0..<6), loops: false),
 ]
+
+// Where the pet is, separate from what it is doing.
+enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
 
 func loadFrames(_ url: URL) -> [[CGImage]]? {
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -34,42 +42,132 @@ func loadFrames(_ url: URL) -> [[CGImage]]? {
     }
 }
 
+// The screen with the menu bar (and the notch, if there is one).
+var mainScreen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
+
+func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
+    let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = false
+    panel.level = level
+    panel.ignoresMouseEvents = true
+    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    let view = NSView(frame: NSRect(origin: .zero, size: size))
+    view.wantsLayer = true
+    panel.contentView = view
+    return panel
+}
+
+enum DoorState: String { case closed, glowing, open, locked }
+
+// A small arched door hanging under the notch. Drawn in code until there is door art.
+final class Door {
+    let size = CGSize(width: 16, height: 20)
+    let panel: NSPanel
+    let arch = CAShapeLayer()
+    let lockBody = CAShapeLayer()
+    let lockShackle = CAShapeLayer()
+    let amber = CGColor(red: 0.95, green: 0.72, blue: 0.29, alpha: 1)
+    let brown = CGColor(red: 0.23, green: 0.18, blue: 0.15, alpha: 1)
+    var state = DoorState.closed
+
+    init() {
+        panel = overlayPanel(size, level: NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1))
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 1, y: 1))
+        path.addLine(to: CGPoint(x: size.width - 1, y: 1))
+        path.addLine(to: CGPoint(x: size.width - 1, y: size.height - size.width / 2))
+        path.addArc(center: CGPoint(x: size.width / 2, y: size.height - size.width / 2),
+                    radius: size.width / 2 - 1, startAngle: 0, endAngle: .pi, clockwise: false)
+        path.closeSubpath()
+        arch.path = path
+        arch.lineWidth = 1
+        lockBody.path = CGPath(rect: CGRect(x: 5, y: 4, width: 6, height: 5), transform: nil)
+        let shackle = CGMutablePath()
+        shackle.addArc(center: CGPoint(x: 8, y: 9), radius: 2, startAngle: 0, endAngle: .pi, clockwise: false)
+        lockShackle.path = shackle
+        lockShackle.fillColor = nil
+        lockShackle.lineWidth = 1
+        for layer in [arch, lockBody, lockShackle] { panel.contentView?.layer?.addSublayer(layer) }
+        place()
+        set(.closed)
+        panel.orderFrontRegardless()
+    }
+
+    // Bottom centre of the notch; top centre under the menu bar on Macs without one.
+    func place() {
+        let screen = mainScreen
+        var midX = screen.frame.midX
+        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            midX = (left.maxX + right.minX) / 2
+        }
+        panel.setFrameOrigin(NSPoint(x: midX - size.width / 2, y: screen.visibleFrame.maxY - size.height))
+    }
+
+    var center: CGPoint { CGPoint(x: panel.frame.midX, y: panel.frame.midY) }
+
+    func set(_ s: DoorState) {
+        if s != state { print("door \(state.rawValue) -> \(s.rawValue)") }
+        state = s
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        arch.fillColor = s == .open ? amber : CGColor(gray: 0, alpha: 1)
+        arch.strokeColor = s == .glowing ? amber : brown
+        arch.shadowColor = amber
+        arch.shadowRadius = 4
+        arch.shadowOffset = .zero
+        arch.shadowOpacity = s == .glowing ? 0.9 : 0
+        lockBody.fillColor = amber
+        lockShackle.strokeColor = amber
+        lockBody.isHidden = s != .locked
+        lockShackle.isHidden = s != .locked
+        CATransaction.commit()
+    }
+}
+
 final class Pet {
     let frames: [[CGImage]]
+    let door: Door
     let panel: NSPanel
     let sprite = CALayer()
     let size = CGSize(width: cellSize.width * drawScale, height: cellSize.height * drawScale)
-    var state = PetState.greet
+    var state = PetState.walk
     var next = PetState.walk
     var frame = 0
-    var x: CGFloat = 0
+    var animClock = 0.0
+    var path = Path.home
+    var pos = CGPoint.zero
+    var vy: CGFloat = 0
     var dir: CGFloat = 1
+    var shrink: CGFloat = 1
+    var afterLanding = PetState.walk
+    var lastActive = Date()
+    var sessionLive = false
+    var lockWhenHome = false
 
-    init(frames: [[CGImage]]) {
+    var floorY: CGFloat { mainScreen.visibleFrame.minY - footPadding }
+    var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
+    var leftX: CGFloat { mainScreen.visibleFrame.minX }
+    var rightX: CGFloat { mainScreen.visibleFrame.maxX - size.width }
+    var doorX: CGFloat { door.center.x - size.width / 2 }
+
+    init(frames: [[CGImage]], door: Door) {
         self.frames = frames
-        panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.level = .statusBar
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        let view = NSView(frame: NSRect(origin: .zero, size: size))
-        view.wantsLayer = true
-        sprite.frame = view.bounds
+        self.door = door
+        panel = overlayPanel(size, level: .statusBar)
+        sprite.frame = CGRect(origin: .zero, size: size)
         sprite.magnificationFilter = .nearest
         sprite.minificationFilter = .nearest
         sprite.contentsGravity = .resizeAspect
-        view.layer?.addSublayer(sprite)
-        panel.contentView = view
+        panel.contentView?.layer?.addSublayer(sprite)
+        Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
+    }
 
-        let screen = NSScreen.main?.visibleFrame ?? .zero
-        x = screen.midX - size.width / 2
-        place()
-        panel.orderFrontRegardless()
-        set(.greet, then: .walk)
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 8.0, repeats: true) { [weak self] _ in self?.tick() }
+    func go(_ p: Path) {
+        if p != path { print("path \(path.rawValue) -> \(p.rawValue)") }
+        path = p
     }
 
     func set(_ s: PetState, then after: PetState? = nil) {
@@ -77,55 +175,153 @@ final class Pet {
         state = s
         next = after ?? s
         frame = 0
-        draw()
+        animClock = 0
+    }
+
+    // Leave the house (or drop off the wall) and land on the floor, then show `s`.
+    func comeOut(then s: PetState) {
+        lastActive = Date()
+        afterLanding = s
+        switch path {
+        case .floor:
+            set(s)
+            return
+        case .falling:
+            return
+        case .home:
+            door.set(.open)
+            pos = CGPoint(x: doorX, y: door.panel.frame.minY - size.height + 8)
+            panel.orderFrontRegardless()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self, self.path != .home else { return }
+                self.door.set(self.sessionLive ? .glowing : .closed)
+            }
+        case .toWall, .climbing, .ceiling, .entering:
+            break
+        }
+        lockWhenHome = false
+        shrink = 1
+        vy = 0
+        set(.greet)
+        go(.falling)
+    }
+
+    func goHome(lock: Bool) {
+        lockWhenHome = lock
+        switch path {
+        case .home: if lock { door.set(.locked) }
+        case .floor:
+            dir = 1
+            set(.walk)
+            go(.toWall)
+        default: break
+        }
     }
 
     func tick() {
-        guard let anim = anims[state] else { return }
-        frame += 1
-        if frame >= anim.frames.count {
-            if anim.loops { frame = 0 } else { set(next); return }
+        let dt = 1 / tickHz
+        switch path {
+        case .home:
+            return
+        case .falling:
+            vy += 2400 * dt
+            pos.y -= vy * dt
+            if pos.y <= floorY {
+                pos.y = floorY
+                go(.floor)
+                set(.greet, then: afterLanding)
+            }
+        case .floor:
+            if state == .walk {
+                pos.x += dir * 24 * dt
+                if pos.x < leftX { pos.x = leftX; dir = 1 }
+                if pos.x > rightX { pos.x = rightX; dir = -1 }
+            }
+            if state == .walk || state == .idle, Date().timeIntervalSince(lastActive) > homeAfter {
+                goHome(lock: false)
+            }
+        case .toWall:
+            pos.x += 140 * dt
+            if pos.x >= rightX { pos.x = rightX; set(.climb); go(.climbing) }
+        case .climbing:
+            pos.y += 140 * dt
+            if pos.y >= topY { pos.y = topY; dir = -1; set(.walk); go(.ceiling) }
+        case .ceiling:
+            pos.x -= 140 * dt
+            if pos.x <= doorX { pos.x = doorX; door.set(.open); go(.entering) }
+        case .entering:
+            shrink -= 2.5 * dt
+            if shrink <= 0 {
+                shrink = 1
+                panel.orderOut(nil)
+                go(.home)
+                door.set(lockWhenHome ? .locked : (sessionLive ? .glowing : .closed))
+                return
+            }
         }
-        if state == .walk { walk() }
+        animClock += animFps * dt
+        while animClock >= 1 {
+            animClock -= 1
+            advanceFrame()
+        }
+        panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
         draw()
     }
 
-    func walk() {
-        let screen = NSScreen.main?.visibleFrame ?? .zero
-        x += dir * 3
-        if x < screen.minX { x = screen.minX; dir = 1 }
-        if x > screen.maxX - size.width { x = screen.maxX - size.width; dir = -1 }
-        place()
-    }
-
-    func place() {
-        let screen = NSScreen.main?.visibleFrame ?? .zero
-        panel.setFrameOrigin(NSPoint(x: x, y: screen.minY - footPadding))
+    func advanceFrame() {
+        if path == .falling { return }  // hold the first greet frame mid-air
+        guard let anim = anims[state] else { return }
+        frame += 1
+        if frame >= anim.frames.count {
+            if anim.loops { frame = 0 } else { set(next) }
+        }
     }
 
     func draw() {
         guard let anim = anims[state] else { return }
+        var t = CGAffineTransform.identity
+        if state == .walk && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
+        // Climb frames face left; mirror them so the feet are on the right wall.
+        if state == .climb { t = t.scaledBy(x: -1, y: 1) }
+        if path == .entering {
+            // Shrink towards the top centre, into the door.
+            t = CGAffineTransform(translationX: 0, y: size.height / 2 * (1 - shrink)).scaledBy(x: shrink, y: shrink)
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         sprite.contents = frames[anim.row][anim.frames[frame]]
-        sprite.setAffineTransform(state == .walk && dir < 0 ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
+        sprite.setAffineTransform(t)
         CATransaction.commit()
     }
 
-    // Maps a Claude Code hook event to a pet state. See CLAUDE.md, "Pet state machine".
+    // Maps a Claude Code hook event to the pet. See CLAUDE.md, "Pet state machine".
     func handle(event: String, notification: String?) {
         switch event {
-        case "SessionStart": set(.greet, then: .walk)
-        case "UserPromptSubmit": set(.greet, then: .sign)
+        case "SessionStart":
+            sessionLive = true
+            if path == .home { door.set(.glowing) }
+        case "UserPromptSubmit":
+            sessionLive = true
+            if path == .floor { lastActive = Date(); set(.greet, then: .sign) } else { comeOut(then: .sign) }
         case "PreToolUse", "PostToolUse":
-            if state == .greet { next = .sign } else if state != .sign { set(.sign) }
-        case "PermissionRequest": set(.flag)
+            lastActive = Date()
+            if path != .floor { comeOut(then: .sign) }
+            else if state == .greet { next = .sign }
+            else if state != .sign { set(.sign) }
+        case "PermissionRequest":
+            comeOut(then: .flag)
         case "Notification":
-            if notification == "permission_prompt" { set(.flag) }
-            else if notification == "idle_prompt" { set(.idle) }
-        case "Stop": set(.celebrate, then: .walk)
-        case "StopFailure": set(.fail, then: .idle)
-        case "SessionEnd": set(.idle)
+            if notification == "permission_prompt" { comeOut(then: .flag) }
+            else if notification == "idle_prompt", path == .floor { set(.idle) }
+        case "Stop":
+            lastActive = Date()
+            if path == .floor { set(.celebrate, then: .walk) }
+        case "StopFailure":
+            lastActive = Date()
+            if path == .floor { set(.fail, then: .idle) }
+        case "SessionEnd":
+            sessionLive = false
+            goHome(lock: true)
         default: break
         }
     }
@@ -189,7 +385,8 @@ guard let url = Bundle.module.url(forResource: "spritesheet", withExtension: "we
     print("spritesheet missing or unreadable")
     exit(1)
 }
-let pet = Pet(frames: frames)
+let door = Door()
+let pet = Pet(frames: frames, door: door)
 let server: HookServer
 do {
     server = try HookServer(port: 47474) { event, notification in
@@ -199,5 +396,5 @@ do {
     print("cannot listen on 47474: \(error)")
     exit(1)
 }
-print("Notchi running, hooks on 127.0.0.1:47474")
+print("Notchi running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 app.run()
