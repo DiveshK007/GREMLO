@@ -7,11 +7,20 @@ const SYSTEM = `You are Notchi, a small desktop pet that watches a coding agent.
 Given the pet state as JSON, pick one action from: ${ACTIONS.join(', ')}.
 Reply with only a JSON object: {"action": "<one action>", "say": "<at most 8 words>"}.`;
 
+const SMART = process.env.ZG_MODEL_SMART || process.env.ZG_MODEL;
+const CHEAP = process.env.ZG_MODEL_CHEAP || process.env.ZG_MODEL;
+if (!SMART || !CHEAP) {
+  throw new Error('brain: set ZG_MODEL_SMART and ZG_MODEL_CHEAP (or ZG_MODEL as fallback for both) in .env');
+}
+export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP, hungry: CHEAP };
+
 export async function think(state, opts = {}) {
+  if (state?.mood === 'asleep') return sleep('asleep: no paid calls', null);
+  const model = MODEL_BY_MOOD[state?.mood];
+  if (!model) return sleep(`unknown mood: ${state?.mood}`, null);
+
   const base = opts.base ?? process.env.ZG_API_BASE ?? 'https://router-api.0g.ai/v1';
   const key = opts.key ?? process.env.ZG_API_KEY ?? '';
-  // shortcut: one fixed model, mood tiers should pass opts.model once balance reads exist
-  const model = opts.model ?? process.env.ZG_MODEL ?? 'glm-5.2';
   const doFetch = opts.fetch ?? fetch;
   let requestId = null;
 
