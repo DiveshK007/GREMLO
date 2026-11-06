@@ -86,6 +86,7 @@ export function linesFromText(text) {
  * they came from. Nothing is ever made up: no usable lines means a throw with the real request ID.
  */
 export async function suggestLines(brief, opts = {}) {
+  opts = { timeoutMs: 60000, ...opts }; // live call took 33s
   let r = await chat(LINES_SYSTEM, String(brief), SMART, opts);
   if (!r.out) r = await chat(LINES_STRICT, String(brief), SMART, opts);
   const lines = r.out
