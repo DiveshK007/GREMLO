@@ -121,7 +121,7 @@ contract CampaignVaultTest is Test {
         vm.prank(operator);
         vault.settleImpressions(id, petKey, 200);
         uint256 before = brand.balance;
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE() + 1);
         vm.prank(stranger); // anyone can close
         vault.close(id);
         assertEq(brand.balance - before, BUDGET - 200 * uint256(RATE));
@@ -136,7 +136,7 @@ contract CampaignVaultTest is Test {
 
     function test_doubleCloseReverts() public {
         uint256 id = _create();
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE() + 1);
         vault.close(id);
         vm.expectRevert(CampaignVault.CampaignIsClosed.selector);
         vault.close(id);
@@ -144,7 +144,7 @@ contract CampaignVaultTest is Test {
 
     function test_noSettleAfterClose() public {
         uint256 id = _create();
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE() + 1);
         vault.close(id);
         vm.prank(operator);
         vm.expectRevert(CampaignVault.CampaignIsClosed.selector);
@@ -161,6 +161,40 @@ contract CampaignVaultTest is Test {
         vm.prank(stranger);
         vm.expectRevert(CampaignVault.NotBrand.selector);
         vault.topUp{value: 0.5 ether}(id);
+    }
+
+    function test_remainingIsZeroAfterClose() public {
+        uint256 id = _create();
+        vm.prank(operator);
+        vault.settleImpressions(id, petKey, 10);
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE() + 1);
+        vault.close(id);
+        assertEq(vault.remaining(id), 0);
+    }
+
+    function test_settleWorksDuringGrace() public {
+        uint256 id = _create();
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE()); // last second of grace
+        vm.prank(operator);
+        vault.settleImpressions(id, petKey, 5);
+        assertEq(petWallet.balance, 5 * uint256(RATE));
+    }
+
+    function test_settleAfterGraceReverts() public {
+        uint256 id = _create();
+        vm.warp(block.timestamp + 1 days + vault.SETTLE_GRACE() + 1);
+        vm.prank(operator);
+        vm.expectRevert(CampaignVault.CampaignEnded.selector);
+        vault.settleImpressions(id, petKey, 1);
+    }
+
+    function test_closeDuringGraceReverts() public {
+        uint256 id = _create();
+        vm.warp(block.timestamp + 1 days + 1); // past endTime, still inside grace
+        vm.expectRevert(CampaignVault.CampaignNotEnded.selector);
+        vault.close(id);
+        vm.warp(block.timestamp + vault.SETTLE_GRACE()); // grace over
+        vault.close(id);
     }
 
     function testFuzz_settleNeverExceedsBudget(uint256 a, uint256 b) public {

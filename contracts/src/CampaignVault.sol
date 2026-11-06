@@ -22,6 +22,10 @@ contract CampaignVault {
         bool verified; // set by the operator after a backend World ID check
     }
 
+    /// @notice After endTime the operator has this long to settle the last impressions.
+    /// The campaign can only be closed (and refunded) once it has passed.
+    uint256 public constant SETTLE_GRACE = 1 hours;
+
     address public admin;
     address public operator;
     uint256 public nextCampaignId = 1;
@@ -139,6 +143,7 @@ contract CampaignVault {
 
     function settleImpressions(uint256 id, address pet, uint256 count) external onlyOperator nonReentrant {
         Campaign storage c = _live(id);
+        if (block.timestamp > uint256(c.endTime) + SETTLE_GRACE) revert CampaignEnded();
         Pet memory p = pets[pet];
         if (!p.verified) revert PetNotVerified();
         if (count == 0) revert BadParams();
@@ -151,7 +156,7 @@ contract CampaignVault {
 
     function close(uint256 id) external nonReentrant {
         Campaign storage c = _live(id);
-        if (block.timestamp <= c.endTime) revert CampaignNotEnded();
+        if (block.timestamp <= uint256(c.endTime) + SETTLE_GRACE) revert CampaignNotEnded();
         c.closed = true;
         uint256 refund = uint256(c.budget) - c.spent;
         emit CampaignClosed(id, refund);
@@ -160,6 +165,7 @@ contract CampaignVault {
 
     function remaining(uint256 id) external view returns (uint256) {
         Campaign storage c = campaigns[id];
+        if (c.closed) return 0;
         return uint256(c.budget) - c.spent;
     }
 
