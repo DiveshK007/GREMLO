@@ -522,7 +522,7 @@ let brokeReason = "wallet too low to pay for 0G calls"
 
 // Wei string to "0.0192 0G": 4 decimals, rounded down so the popover never shows more than the wallet holds.
 func og4(_ wei: String?) -> String {
-    guard let wei, var units = Decimal(string: wei) else { return "unknown" }
+    guard let wei, !wei.isEmpty, wei.allSatisfy({ $0.isASCII && $0.isNumber }), var units = Decimal(string: wei) else { return "unknown" }
     units /= Decimal(sign: .plus, exponent: 14, significand: 1)
     var whole = Decimal()
     NSDecimalRound(&whole, &units, 0, .down)
@@ -554,6 +554,8 @@ final class Backend: NSObject {
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
     // Polls overlap (timer + after each think); a late reply must not roll the balance back and re-show a meal.
     var petSent = 0, petApplied = 0
+    // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
+    var shown = ""
 
     init(pet: Pet) {
         self.pet = pet
@@ -570,6 +572,7 @@ final class Backend: NSObject {
         vc.view = stack
         popover.contentViewController = vc
         popover.behavior = .transient
+        popover.animates = false
         refresh()
         Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.refresh() }
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reportImpression() }
@@ -650,6 +653,9 @@ final class Backend: NSObject {
         let tag = seeded ? " [seeded]" : ""
         pet.setSign(campaign?.line.map { $0 + tag })
         if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
+        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)"
+        if key == shown { return }
+        shown = key
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real 0G tokens", 13, .bold, .systemRed)) }
         if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .systemRed)) }
@@ -672,7 +678,7 @@ final class Backend: NSObject {
             let b = NSButton(title: "", target: self, action: #selector(copyId(_:)))
             b.isBordered = false
             b.identifier = NSUserInterfaceItemIdentifier(t.requestId)
-            b.attributedTitle = NSAttributedString(string: "\(t.action.padding(toLength: 6, withPad: " ", startingAt: 0)) \(t.requestId)", attributes: [
+            b.attributedTitle = NSAttributedString(string: t.action + String(repeating: " ", count: max(1, 10 - t.action.count)) + t.requestId, attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), .foregroundColor: NSColor.linkColor])
             stack.addArrangedSubview(b)
         }
@@ -700,7 +706,9 @@ final class Backend: NSObject {
         let k = label(key, 15, .regular, .secondaryLabelColor)
         let v = label(value, 17, .semibold)
         v.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
-        return NSStackView(views: [k, v])
+        let row = NSStackView(views: [k, v])
+        row.alignment = .firstBaseline
+        return row
     }
 }
 
@@ -708,6 +716,7 @@ assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
 assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
 assert(og4("19279999998320000") == "0.0192 0G" && og4("0") == "0.0000 0G" && og4("1000000000000000000000") == "1000.0000 0G")
 assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "unknown")
+assert(og4("-5") == "unknown" && og4("0x1f") == "unknown" && og4(" 5") == "unknown" && og4("") == "unknown")
 assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
