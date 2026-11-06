@@ -131,7 +131,7 @@ export default function GetYourPet() {
           {formError && <p className="bad">{formError}</p>}
           <p>
             <button onClick={onVerify} disabled={busy || !owner}>
-              {busy ? "Starting..." : "Prove you're a real person"}
+              {busy ? "Starting…" : "Prove you're a real person"}
             </button>
           </p>
           {!owner && <p className="hint">Connect your wallet first.</p>}
@@ -161,14 +161,14 @@ export default function GetYourPet() {
             </button>
           </p>
           <p className="muted" style={{ textAlign: "center" }}>
-            Waiting for your phone...
+            Waiting for your phone…
           </p>
         </div>
       )}
 
       {phase.kind === "registering" && (
         <div className="card">
-          <p>Verified. Checking the proof on our server and registering your pet onchain...</p>
+          <p>Verified. Checking the proof on our server and registering your pet onchain…</p>
         </div>
       )}
 

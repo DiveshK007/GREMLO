@@ -244,7 +244,7 @@ export default function FundCampaign() {
             </p>
             {error && <p className="bad">{error}</p>}
             <button onClick={onFund} disabled={!account || busy === "fund"}>
-              {busy === "fund" ? "Confirm in your wallet..." : "Fund campaign"}
+              {busy === "fund" ? "Confirm in your wallet…" : "Fund campaign"}
             </button>
             {!account && <p className="hint">Connect your wallet at the top to fund.</p>}
             <p className="muted">
@@ -289,7 +289,7 @@ export default function FundCampaign() {
             Check
           </button>{" "}
           <button className="ghost" onClick={onSettle} disabled={busy === "settle"}>
-            {busy === "settle" ? "Settling onchain..." : "Settle impressions"}
+            {busy === "settle" ? "Settling onchain…" : "Settle impressions"}
           </button>
         </p>
         {campaignError && <p className="bad">{campaignError}</p>}
@@ -328,7 +328,7 @@ export default function FundCampaign() {
             </p>
             {!lookup.closed && lookup.endTime <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>
-                {busy === "close" ? "Closing..." : "Close and refund"}
+                {busy === "close" ? "Closing…" : "Close and refund"}
               </button>
             )}
           </>

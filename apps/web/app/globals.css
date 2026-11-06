@@ -64,6 +64,9 @@ input:focus-visible, textarea:focus-visible { outline-offset: 0; }
 textarea { min-height: 80px; resize: vertical; }
 
 button { font: inherit; border: 0; border-radius: 10px; padding: 11px 18px; background: var(--accent); color: var(--accent-ink); cursor: pointer; font-weight: 700; }
+button { transition: filter 0.12s ease-out, transform 0.12s ease-out; }
+button:not(:disabled):hover { filter: brightness(0.92); }
+button:not(:disabled):active { transform: translateY(1px); }
 button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 600; }
 button.ghost:hover:not(:disabled) { border-color: var(--muted); }
 button:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
