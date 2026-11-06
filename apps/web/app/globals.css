@@ -111,3 +111,4 @@ button + p { margin-top: 12px; }
 @media (prefers-reduced-motion: reduce) { .thinking .pet-small { animation: none; } }
 .card > :first-child { margin-top: 0; }
 a.button { display: inline-block; text-decoration: none; align-self: flex-start; }
+.proof { font-size: 15px; margin-top: 24px; }
