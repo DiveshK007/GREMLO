@@ -27,3 +27,4 @@ ETHGlobal asks every team to say where and how AI tools were used. We used them 
 ## Log
 
 <!-- time - who - tool - what it produced - what you changed -->
+- 2026-11-07 - Claude Code - Mac pet: sprite folders (assets/pets, demo-pets override), eat animation + real wallet-gain bubble, visible mood; review fixes for stale poll replies and bad pet.json - human review pending
