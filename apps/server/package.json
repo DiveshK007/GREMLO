@@ -1,0 +1,15 @@
+{
+  "name": "@notchi/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env --import tsx src/index.ts",
+    "test": "node --import tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "viem": "^2.57.16"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}
