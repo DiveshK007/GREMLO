@@ -113,3 +113,11 @@ main:has(.band) + .foot { border-top: 0; }
   .stats li:nth-child(3) { border-left: 0; }
   .summary .estimate { font-size: 64px; }
 }
+h2 .num { display: block; font-size: 11px; color: var(--on-paper-muted); margin-bottom: var(--s-1); letter-spacing: 0.09em; }
+.summary .estimate + p { margin-top: var(--s-1); }
+.summary a { color: var(--paper); }
+.summary p:has(> button) { margin-top: var(--s-3); }
+.summary > button { margin-top: var(--s-2); }
+.narrow > button, .narrow > .bad { margin-bottom: var(--s-4); }
+.foot { max-width: 1072px; padding: var(--s-3) 0; }
+@media (max-width: 1120px) { .foot { margin: 0 var(--s-3); } }

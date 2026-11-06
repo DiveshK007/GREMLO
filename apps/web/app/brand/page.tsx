@@ -165,7 +165,7 @@ export default function FundCampaign() {
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
 
   return (
-    <>
+    <div className="narrow">
       <h1>Fund a campaign</h1>
       <p className="lead">Your line, held up by a tiny pet while developers wait on their AI agent. Pay per real impression.</p>
 
@@ -183,7 +183,7 @@ export default function FundCampaign() {
       {!funded && (
         <>
           <div className="card">
-            <h2>1. What do you sell?</h2>
+            <h2><span className="mono num">01</span>What do you sell?</h2>
             <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="CI that runs in 30 seconds for TypeScript monorepos." />
             <p>
               <button className="ghost" onClick={onSuggest} disabled={busy === "lines"} aria-busy={busy === "lines"}>
@@ -220,7 +220,7 @@ export default function FundCampaign() {
           </div>
 
           <div className="card">
-            <h2>2. Budget</h2>
+            <h2><span className="mono num">02</span>Budget</h2>
             <div className="row">
               <div>
                 <label>Total budget (0G)</label>
@@ -235,17 +235,18 @@ export default function FundCampaign() {
                 <input value={hours} onChange={(e) => setHours(e.target.value)} />
               </div>
             </div>
-            <p className="muted">
-              About {(() => {
-                try {
-                  const r = parseEther(rate);
-                  return r > 0n ? (parseEther(budget) / r).toString() : "0";
-                } catch {
-                  return "?";
-                }
-              })()}{" "}
-              impressions. Any unspent budget is refunded when the campaign ends.
-            </p>
+            <div className="summary">
+              <span className="estimate">
+                {(() => {
+                  try {
+                    const r = parseEther(rate);
+                    return r > 0n ? (parseEther(budget) / r).toString() : "–";
+                  } catch {
+                    return "–";
+                  }
+                })()}
+              </span>
+              <p>impressions, roughly, at this price. Any unspent budget is refunded when the campaign ends.</p>
             {error && <p className="bad">{error}</p>}
             <button onClick={onFund} disabled={!account || busy === "fund"}>
               {busy === "fund" ? "Confirm in your wallet…" : "Fund campaign"}
@@ -257,6 +258,7 @@ export default function FundCampaign() {
                 {VAULT_ADDRESS}
               </a>
             </p>
+            </div>
           </div>
         </>
       )}
@@ -281,7 +283,7 @@ export default function FundCampaign() {
       )}
 
       <div className="card">
-        <h2>Your campaign</h2>
+        <h2><span className="mono num">03</span>Your campaign</h2>
         <div className="row">
           <div>
             <label>Campaign ID</label>
@@ -347,6 +349,6 @@ export default function FundCampaign() {
           </p>
         )}
       </div>
-    </>
+    </div>
   );
 }
