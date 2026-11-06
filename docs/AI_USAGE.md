@@ -18,3 +18,4 @@ ETHGlobal asks every team to say where and how AI tools were used. We used them 
 
 ## Log
 <!-- add a line as you go: time - who - tool - what it produced - what you changed -->
+- 19:01 - Mac - Claude Code - SwiftPM overlay app: transparent panel, spritesheet animation, hook server on 47474, state machine for 9 hook events - pending human review on device
