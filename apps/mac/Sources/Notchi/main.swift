@@ -407,10 +407,15 @@ final class Pet {
             holdUntil = Date().addingTimeInterval(0.26)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
                 guard let self else { return }
-                if self.path == .falling { self.panel.orderFrontRegardless() }
+                if self.path == .falling {
+                    self.panel.setFrameOrigin(self.pos)
+                    self.panel.orderFrontRegardless()
+                }
                 self.door.close(lock: false)
             }
-        case .toWall, .climbing, .ceiling, .entering:
+        case .entering:
+            door.close(lock: false)
+        case .toWall, .climbing, .ceiling:
             break
         }
         lockWhenHome = false
@@ -446,6 +451,7 @@ final class Pet {
                 pos.y = floorY
                 go(.floor)
                 set(.greet, then: afterLanding)
+                if lockWhenHome { goHome(lock: true) }  // SessionEnd arrived mid-fall
             }
         case .floor:
             if mood == "asleep" { goHome(lock: false) }
@@ -539,11 +545,10 @@ final class Pet {
         if flipped { x = 1 - x }
         let px = min(Int(x * CGFloat(img.width)), img.width - 1)
         let py = min(Int((1 - (p.y - f.minY) / f.height) * CGFloat(img.height)), img.height - 1)
-        var alpha: UInt8 = 0
-        guard let ctx = CGContext(data: &alpha, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 1,
+        guard let ctx = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 1,
                                   space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return false }
         ctx.draw(img, in: CGRect(x: -px, y: -(img.height - 1 - py), width: img.width, height: img.height))
-        return alpha > 0
+        return (ctx.data?.load(as: UInt8.self) ?? 0) > 0
     }
 
     var flipped: Bool { [.walk, .sign, .hover, .annoy].contains(state) && dir < 0 }
@@ -672,8 +677,16 @@ final class Pet {
         let floorDelta = s.footPadding - skin.footPadding
         skin = s
         panel.setContentSize(s.size)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         sprite.frame = CGRect(origin: .zero, size: s.size)
-        if path == .floor { pos.y -= floorDelta }
+        CATransaction.commit()
+        switch path {
+        case .floor: pos.y -= floorDelta
+        case .ceiling: pos.y = topY + s.footPadding
+        case .climbing: pos.x = rightX
+        default: break
+        }
         frame = 0
         draw()
     }
@@ -867,7 +880,12 @@ final class Backend: NSObject {
     }
 
     @objc func toggle() {
-        if popover.isShown { popover.close() } else if let b = item.button { popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY) }
+        if popover.isShown { popover.close() } else if let b = item.button {
+            showingSettings = false
+            shown = ""
+            render()
+            popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+        }
     }
 
     var petPath: String { "/pets/" + (petName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? petName) }
@@ -953,6 +971,7 @@ final class Backend: NSObject {
         names.orientation = .vertical
         names.alignment = .leading
         names.spacing = 2
+        names.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let head = NSStackView(views: [avatar(), names, spacer, gear])
