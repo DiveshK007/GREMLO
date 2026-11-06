@@ -27,3 +27,4 @@ ETHGlobal asks every team to say where and how AI tools were used. We used them 
 ## Log
 
 <!-- time - who - tool - what it produced - what you changed -->
+- 2026-11-07 - Claude Code (Opus 5.5) - Mac impression reporting (5s sign, 1/min), server-side 1/min check + settle totals, /brand Settle button, landing pet illustration and CSS polish - human review pending
