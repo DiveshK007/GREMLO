@@ -333,6 +333,8 @@ final class Pet {
     // From GET /pets/:name. Asleep keeps the pet home with sleepNote under the door.
     var mood = "stable"
     var sleepNote: String?
+    // Between PreToolUse/PostToolUse and Stop: 12 fps, a bit quicker, with a small "..." bubble.
+    var working = false
     var speed: Double { mood == "thriving" ? 1.4 : mood == "hungry" ? 0.6 : 1 }
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
@@ -438,7 +440,7 @@ final class Pet {
             if mood == "asleep" { goHome(lock: false) }
             // The sign is the ad state and gets the most screen time, so it strolls at 0.4 instead of standing still.
             if state == .walk || state == .sign {
-                pos.x += dir * 24 * speed * (state == .sign ? 0.4 : 1) * dt
+                pos.x += dir * 24 * speed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }
             }
@@ -468,7 +470,7 @@ final class Pet {
                 return
             }
         }
-        animClock += (skin.fpsByMood[mood] ?? skin.fps * speed) * dt
+        animClock += (working && state == .sign ? 12 : skin.fpsByMood[mood] ?? skin.fps * speed) * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -506,7 +508,7 @@ final class Pet {
 
     func placeBubble() {
         if Date() >= bubbleUntil {
-            guard let note = sleepNote else { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
+            guard let note = sleepNote ?? (working && path == .floor ? "\u{2026}" : nil) else { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
             if bubbleLabel.stringValue != note { setBubble(note) }
         }
         let w = bubblePanel.frame.width, h = bubblePanel.frame.height
@@ -574,6 +576,7 @@ final class Pet {
             if path == .floor { lastActive = Date(); set(.greet, then: .sign) } else { comeOut(then: .sign) }
         case "PreToolUse", "PostToolUse":
             lastActive = Date()
+            working = true
             if path != .floor { comeOut(then: .sign) }
             else if state == .greet { next = .sign }
             else if state != .sign { set(.sign) }
@@ -583,12 +586,15 @@ final class Pet {
             if notification == "permission_prompt" { comeOut(then: .flag) }
             else if notification == "idle_prompt", path == .floor { set(.idle) }
         case "Stop":
+            working = false
             lastActive = Date()
             if path == .floor { set(.celebrate, then: .walk) }
         case "StopFailure":
+            working = false
             lastActive = Date()
             if path == .floor { set(.fail, then: .idle) }
         case "SessionEnd":
+            working = false
             sessionLive = false
             goHome(lock: true)
         default: break
