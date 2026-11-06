@@ -436,8 +436,9 @@ final class Pet {
             }
         case .floor:
             if mood == "asleep" { goHome(lock: false) }
-            if state == .walk {
-                pos.x += dir * 24 * speed * dt
+            // The sign is the ad state and gets the most screen time, so it strolls at 0.4 instead of standing still.
+            if state == .walk || state == .sign {
+                pos.x += dir * 24 * speed * (state == .sign ? 0.4 : 1) * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }
             }
@@ -545,7 +546,7 @@ final class Pet {
 
     func draw() {
         var t = CGAffineTransform.identity
-        if state == .walk && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
+        if (state == .walk || state == .sign) && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
         if state == .climb { t = t.scaledBy(x: -1, y: 1) }
         if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
