@@ -3,7 +3,12 @@ import Network
 
 let tickHz = 30.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
-let homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? 75
+// Popover settings, persisted in UserDefaults. NOTCHI_HOME_AFTER still overrides at launch.
+let defaults = UserDefaults.standard
+var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? (defaults.object(forKey: "homeAfter") as? Double ?? 75)
+var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
+var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
+var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
 
 enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
 
@@ -74,7 +79,7 @@ func loadImage(_ url: URL) -> CGImage? {
 // Loads `want` (or NOTCHI_SKIN, or notchi-ink); falls back to the first pet that loads.
 func loadSkin(_ want: String? = nil) -> Skin? {
     let folders = petFolders()
-    let pick = want ?? ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? defaultSkin
+    let pick = want ?? ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? defaults.string(forKey: "skin") ?? defaultSkin
     let ordered = folders.filter { $0.name == pick } + folders.filter { $0.name != pick }
     for f in ordered {
         if let skin = loadSkin(name: f.name, dir: f.dir) { return skin }
@@ -303,7 +308,7 @@ final class Door {
 }
 
 final class Pet {
-    let skin: Skin
+    var skin: Skin
     let door: Door
     let panel: NSPanel
     let sprite = CALayer()
@@ -328,13 +333,15 @@ final class Pet {
     var signShownAt: Date?
     // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
-    let bubbleLabel = NSTextField(labelWithString: "")
+    let bubbleLabel = NSTextField(wrappingLabelWithString: "")
     var bubbleUntil = Date.distantPast
     // From GET /pets/:name. Asleep keeps the pet home with sleepNote under the door.
     var mood = "stable"
     var sleepNote: String?
     // Between PreToolUse/PostToolUse and Stop: 12 fps, a bit quicker, with a small "..." bubble.
     var working = false
+    // Claude Code is waiting on a permission prompt; the popover offers to bring the terminal forward.
+    var waiting = false
     var speed: Double { mood == "thriving" ? 1.4 : mood == "hungry" ? 0.6 : 1 }
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
@@ -440,7 +447,7 @@ final class Pet {
             if mood == "asleep" { goHome(lock: false) }
             // The sign is the ad state and gets the most screen time, so it strolls at 0.4 instead of standing still.
             if state == .walk || state == .sign {
-                pos.x += dir * 24 * speed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
+                pos.x += dir * 24 * speed * walkSpeed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }
             }
@@ -491,7 +498,8 @@ final class Pet {
 
     func setBubble(_ text: String) {
         bubbleLabel.stringValue = text
-        bubbleLabel.sizeToFit()
+        bubbleLabel.preferredMaxLayoutWidth = 220
+        bubbleLabel.frame.size = bubbleLabel.fittingSize
         bubblePanel.setContentSize(bubbleLabel.frame.size)
     }
 
@@ -585,6 +593,23 @@ final class Pet {
         CATransaction.commit()
     }
 
+    func askApproval() {
+        waiting = true
+        if soundsOn { NSSound(named: "Ping")?.play() }
+        comeOut(then: .flag)
+    }
+
+    // Live avatar switch from the popover. Door art stays as loaded at launch.
+    func setSkin(_ s: Skin) {
+        let floorDelta = s.footPadding - skin.footPadding
+        skin = s
+        panel.setContentSize(s.size)
+        sprite.frame = CGRect(origin: .zero, size: s.size)
+        if path == .floor { pos.y -= floorDelta }
+        frame = 0
+        draw()
+    }
+
     // Maps a Claude Code hook event to the pet. See CLAUDE.md, "Pet state machine".
     func handle(event: String, notification: String?) {
         switch event {
@@ -592,28 +617,33 @@ final class Pet {
             sessionLive = true
         case "UserPromptSubmit":
             sessionLive = true
+            waiting = false
             if path == .floor { lastActive = Date(); set(.greet, then: .sign) } else { comeOut(then: .sign) }
         case "PreToolUse", "PostToolUse":
             lastActive = Date()
+            waiting = false
             working = true
             if path != .floor { comeOut(then: .sign) }
             else if state == .greet { next = .sign }
             else if state != .sign { set(.sign) }
         case "PermissionRequest":
-            comeOut(then: .flag)
+            askApproval()
         case "Notification":
-            if notification == "permission_prompt" { comeOut(then: .flag) }
+            if notification == "permission_prompt" { askApproval() }
             else if notification == "idle_prompt", path == .floor { set(.idle) }
         case "Stop":
             working = false
+            waiting = false
             lastActive = Date()
             if path == .floor { set(.celebrate, then: .walk) }
         case "StopFailure":
             working = false
+            waiting = false
             lastActive = Date()
             if path == .floor { set(.fail, then: .idle) }
         case "SessionEnd":
             working = false
+            waiting = false
             sessionLive = false
             goHome(lock: true)
         default: break
@@ -688,12 +718,12 @@ struct PetInfo: Decodable {
 }
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
-let popoverWidth: CGFloat = 420
+let popoverWidth: CGFloat = 320
 let brokeReason = "wallet too low to pay for 0G calls"
 
 // Wei string to "0.0192 0G": 4 decimals, rounded down so the popover never shows more than the wallet holds.
 func og4(_ wei: String?) -> String {
-    guard let wei, !wei.isEmpty, wei.allSatisfy({ $0.isASCII && $0.isNumber }), var units = Decimal(string: wei) else { return "unknown" }
+    guard let wei, !wei.isEmpty, wei.allSatisfy({ $0.isASCII && $0.isNumber }), var units = Decimal(string: wei) else { return "\u{2014}" }
     units /= Decimal(sign: .plus, exponent: 14, significand: 1)
     var whole = Decimal()
     NSDecimalRound(&whole, &units, 0, .down)
@@ -727,6 +757,7 @@ final class Backend: NSObject {
     var petSent = 0, petApplied = 0
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
     var shown = ""
+    var showingSettings = false
 
     init(pet: Pet) {
         self.pet = pet
@@ -830,63 +861,218 @@ final class Backend: NSObject {
     func render() {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
-        pet.setSign(campaign?.line.map { $0 + tag })
+        pet.setSign(sponsoredOn ? campaign?.line.map { $0 + tag } : nil)
         if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
-        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)"
+        if showingSettings { return }  // don't rebuild under a dragging slider
+        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)"
         if key == shown { return }
         shown = key
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real 0G tokens", 13, .bold, .systemRed)) }
-        if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .systemRed)) }
-        if let i = info {
-            stack.addArrangedSubview(label(i.name, 13, .regular, .secondaryLabelColor))
-            let colors = ["thriving": NSColor.systemGreen, "stable": .systemBlue, "hungry": .systemOrange]
-            stack.addArrangedSubview(label(i.mood.uppercased(), 32, .heavy, colors[i.mood] ?? .systemGray))
-            if i.mood == "asleep" { stack.addArrangedSubview(label(i.moodReason ?? brokeReason, 13, .regular, .secondaryLabelColor)) }
-            stack.addArrangedSubview(row("Wallet", og4(i.walletBalance) + tag))
-            stack.addArrangedSubview(row("Impressions today", "\(i.impressionsToday)" + tag))
-        } else {
-            stack.addArrangedSubview(label("No pet data yet", 15, .medium, .secondaryLabelColor))
+
+        let gear = NSButton(title: "Settings", target: self, action: #selector(openSettings))
+        gear.isBordered = false
+        gear.font = .systemFont(ofSize: 12)
+        gear.contentTintColor = .secondaryLabelColor
+        let names = NSStackView(views: [label(info?.name ?? petName, 15, .semibold),
+                                        label(info?.mood.uppercased() ?? "\u{2014}", 11, .medium, .secondaryLabelColor, mono: true)])
+        names.orientation = .vertical
+        names.alignment = .leading
+        names.spacing = 2
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let head = NSStackView(views: [avatar(), names, spacer, gear])
+        head.alignment = .centerY
+        head.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
+        stack.addArrangedSubview(head)
+        stack.setCustomSpacing(16, after: head)
+
+        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real 0G tokens", 11, .bold, mono: true)) }
+        if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .secondaryLabelColor)) }
+        if let i = info, i.mood == "asleep" { stack.addArrangedSubview(label(i.moodReason ?? brokeReason, 13, .regular, .secondaryLabelColor)) }
+
+        // Bars compare the two balances to each other; there is no fixed "full".
+        let earned = info?.walletBalance.flatMap { Decimal(string: $0) }
+        let food = info?.computeBalance.flatMap { Decimal(string: $0) }
+        let top = max(earned ?? 0, food ?? 0)
+        for (name, wei, value) in [("Earned", info?.walletBalance, earned), ("Food", info?.computeBalance, food)] {
+            stack.addArrangedSubview(row(name, og4(wei) + (name == "Earned" ? tag : "")))
+            if let value, top > 0 {
+                stack.addArrangedSubview(bar(CGFloat(truncating: (value / top) as NSDecimalNumber)))
+            }
         }
-        stack.addArrangedSubview(label("Sign", 13, .regular, .secondaryLabelColor))
-        stack.addArrangedSubview(label(campaign.map { "\"\($0.line ?? "(line unknown)")\" by \($0.brand)\(tag)" } ?? "No active campaign", 15, .medium))
-        stack.addArrangedSubview(label("Last thoughts (click to copy request ID)", 13, .regular, .secondaryLabelColor))
+        stack.addArrangedSubview(row("Impressions today", info.map { "\($0.impressionsToday)" + tag } ?? "\u{2014}"))
+
+        stack.addArrangedSubview(caption("Now showing"))
+        let line = !sponsoredOn ? "Sponsored lines are off" : campaign.map { "\"\($0.line ?? "\u{2014}")\"" } ?? "No active campaign"
+        stack.addArrangedSubview(label(line, 15, .medium))
+        if sponsoredOn, let c = campaign { stack.addArrangedSubview(label("by \(c.brand)\(tag)", 12, .regular, .secondaryLabelColor)) }
+
+        stack.addArrangedSubview(caption("Last thoughts"))
         let thoughts = info?.lastThoughts.prefix(3) ?? []
-        if thoughts.isEmpty { stack.addArrangedSubview(label("none yet", 13, .regular, .secondaryLabelColor)) }
-        for t in thoughts {
-            let b = NSButton(title: "", target: self, action: #selector(copyId(_:)))
-            b.isBordered = false
-            b.identifier = NSUserInterfaceItemIdentifier(t.requestId)
-            b.attributedTitle = NSAttributedString(string: t.action + String(repeating: " ", count: max(1, 10 - t.action.count)) + t.requestId, attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), .foregroundColor: NSColor.linkColor])
+        if thoughts.isEmpty { stack.addArrangedSubview(label("none yet", 12, .regular, .secondaryLabelColor)) }
+        for t in thoughts { stack.addArrangedSubview(copyButton(t.action.uppercased(), t.requestId)) }
+
+        stack.addArrangedSubview(caption("Last meal"))
+        if let m = info?.lastMeal {
+            stack.addArrangedSubview(label(og4(m.amount) + tag, 13, .medium))
+            stack.addArrangedSubview(copyButton("TX", m.txHash))
+        } else {
+            stack.addArrangedSubview(label("none yet", 12, .regular, .secondaryLabelColor))
+        }
+
+        if pet.waiting {
+            let b = NSButton(title: "Approve in terminal", target: self, action: #selector(approveInTerminal))
+            b.bezelStyle = .rounded
+            b.keyEquivalent = "\r"
             stack.addArrangedSubview(b)
         }
-        stack.addArrangedSubview(label("Last think: \(lastThink)", 11, .regular, .tertiaryLabelColor))
+        stack.addArrangedSubview(label("Last think: \(lastThink)", 10, .regular, .tertiaryLabelColor))
         popover.contentSize = stack.fittingSize
+    }
+
+    func renderSettings() {
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let back = NSButton(title: "Back", target: self, action: #selector(closeSettings))
+        back.isBordered = false
+        back.font = .systemFont(ofSize: 12)
+        back.contentTintColor = .secondaryLabelColor
+        stack.addArrangedSubview(back)
+        stack.addArrangedSubview(label("Settings", 22, .semibold))
+
+        stack.addArrangedSubview(caption("Avatar"))
+        let picker = NSPopUpButton(frame: .zero, pullsDown: false)
+        picker.addItems(withTitles: petFolders().map(\.name))
+        picker.selectItem(withTitle: pet.skin.name)
+        picker.target = self
+        picker.action = #selector(pickSkin(_:))
+        stack.addArrangedSubview(picker)
+
+        let sounds = NSButton(checkboxWithTitle: "Sounds", target: self, action: #selector(toggleSounds(_:)))
+        sounds.state = soundsOn ? .on : .off
+        let sponsored = NSButton(checkboxWithTitle: "Show sponsored lines", target: self, action: #selector(toggleSponsored(_:)))
+        sponsored.state = sponsoredOn ? .on : .off
+        stack.addArrangedSubview(sounds)
+        stack.addArrangedSubview(sponsored)
+
+        stack.addArrangedSubview(caption("Walk speed"))
+        let slider = NSSlider(value: walkSpeed, minValue: 0.5, maxValue: 2, target: self, action: #selector(setWalkSpeed(_:)))
+        slider.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
+        stack.addArrangedSubview(slider)
+
+        stack.addArrangedSubview(caption("Home after"))
+        let seg = NSSegmentedControl(labels: ["30s", "75s", "180s"], trackingMode: .selectOne, target: self, action: #selector(setHomeAfter(_:)))
+        seg.selectedSegment = [30.0, 75, 180].firstIndex(of: homeAfter) ?? -1
+        stack.addArrangedSubview(seg)
+
+        let home = NSButton(title: "Send pet home", target: self, action: #selector(sendHome))
+        home.bezelStyle = .rounded
+        stack.addArrangedSubview(home)
+        popover.contentSize = stack.fittingSize
+    }
+
+    @objc func openSettings() { showingSettings = true; renderSettings() }
+    @objc func closeSettings() { showingSettings = false; shown = ""; render() }
+
+    @objc func pickSkin(_ sender: NSPopUpButton) {
+        guard let name = sender.titleOfSelectedItem, let f = petFolders().first(where: { $0.name == name }),
+              let s = loadSkin(name: f.name, dir: f.dir) else { return }
+        defaults.set(name, forKey: "skin")
+        pet.setSkin(s)
+    }
+
+    @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
+
+    @objc func toggleSponsored(_ sender: NSButton) {
+        sponsoredOn = sender.state == .on
+        defaults.set(sponsoredOn, forKey: "sponsored")
+        render()
+    }
+
+    @objc func setWalkSpeed(_ sender: NSSlider) { walkSpeed = sender.doubleValue; defaults.set(walkSpeed, forKey: "walkSpeed") }
+
+    @objc func setHomeAfter(_ sender: NSSegmentedControl) {
+        homeAfter = [30.0, 75, 180][max(0, sender.selectedSegment)]
+        defaults.set(homeAfter, forKey: "homeAfter")
+    }
+
+    @objc func sendHome() { pet.goHome(lock: false) }
+
+    // Brings the terminal running Claude Code forward. The approval itself happens there; the app never answers a hook.
+    @objc func approveInTerminal() {
+        let ids = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal", "com.microsoft.VSCode"]
+        let app = ids.lazy.compactMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }.first
+        app?.activate()
+        popover.close()
     }
 
     @objc func copyId(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(id, forType: .string)
-        sender.attributedTitle = NSAttributedString(string: "copied \(id)", attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), .foregroundColor: NSColor.systemGreen])
+        sender.attributedTitle = NSAttributedString(string: "COPIED  " + short(id), attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor])
     }
 
-    func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor = .labelColor) -> NSTextField {
+    func short(_ id: String) -> String { id.count > 20 ? "\(id.prefix(10))\u{2026}\(id.suffix(8))" : id }
+
+    // Shows a shortened ID; clicking copies the full one.
+    func copyButton(_ tag: String, _ id: String) -> NSButton {
+        let b = NSButton(title: "", target: self, action: #selector(copyId(_:)))
+        b.isBordered = false
+        b.identifier = NSUserInterfaceItemIdentifier(id)
+        b.toolTip = id
+        b.attributedTitle = NSAttributedString(string: tag + String(repeating: " ", count: max(1, 11 - tag.count)) + short(id), attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor])
+        return b
+    }
+
+    func avatar() -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.contents = (pet.skin.strips[.idle] ?? pet.skin.strips[.walk])?.first
+        v.layer?.contentsGravity = .resizeAspect
+        v.layer?.magnificationFilter = .nearest
+        v.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        v.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        return v
+    }
+
+    func bar(_ fraction: CGFloat) -> NSView {
+        let w = popoverWidth - 32
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.16).cgColor
+        let fill = CALayer()
+        fill.backgroundColor = NSColor.labelColor.withAlphaComponent(0.78).cgColor
+        fill.frame = CGRect(x: 0, y: 0, width: w * min(max(fraction, 0), 1), height: 2)
+        v.layer?.addSublayer(fill)
+        v.widthAnchor.constraint(equalToConstant: w).isActive = true
+        v.heightAnchor.constraint(equalToConstant: 2).isActive = true
+        return v
+    }
+
+    func caption(_ text: String) -> NSTextField {
+        let c = label(text.uppercased(), 10, .medium, .tertiaryLabelColor, mono: true)
+        return c
+    }
+
+    func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor = .labelColor, mono: Bool = false) -> NSTextField {
         let l = NSTextField(wrappingLabelWithString: text)
-        l.font = .systemFont(ofSize: size, weight: weight)
+        l.font = mono ? .monospacedSystemFont(ofSize: size, weight: weight) : .systemFont(ofSize: size, weight: weight)
         l.textColor = color
         l.preferredMaxLayoutWidth = popoverWidth - 32
         return l
     }
 
     func row(_ key: String, _ value: String) -> NSStackView {
-        let k = label(key, 15, .regular, .secondaryLabelColor)
-        let v = label(value, 17, .semibold)
-        v.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
-        let row = NSStackView(views: [k, v])
+        let k = label(key, 13, .regular, .secondaryLabelColor)
+        let v = label(value, 15, .semibold)
+        v.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [k, spacer, v])
         row.alignment = .firstBaseline
+        row.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
         return row
     }
 }
@@ -894,8 +1080,8 @@ final class Backend: NSObject {
 assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
 assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
 assert(og4("19279999998320000") == "0.0192 0G" && og4("0") == "0.0000 0G" && og4("1000000000000000000000") == "1000.0000 0G")
-assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "unknown")
-assert(og4("-5") == "unknown" && og4("0x1f") == "unknown" && og4(" 5") == "unknown" && og4("") == "unknown")
+assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "\u{2014}")
+assert(og4("-5") == "\u{2014}" && og4("0x1f") == "\u{2014}" && og4(" 5") == "\u{2014}" && og4("") == "\u{2014}")
 assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
@@ -909,6 +1095,7 @@ do {
     server = try HookServer(port: 47474) { hook in
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
         backend.think(hook)
+        backend.render()
     }
 } catch {
     print("cannot listen on 47474: \(error)")
