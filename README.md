@@ -1,0 +1,99 @@
+# Notchi
+
+**Your coding agent makes you wait. Notchi makes that wait pay for itself.**
+
+Notchi is a tiny desktop pet that lives behind a door in your MacBook notch. When Claude Code starts working, the door opens, the pet drops out and holds up one short sponsored line while the agent thinks. Brands pay per real impression. The pet's brain runs on 0G, and every decision it makes has a 0G request ID.
+
+Built from scratch at ETHGlobal Mumbai 2026.
+
+<!-- Replace with the real number from ~/.notchi/events.log before submitting -->
+> Our team spent **X hours** this weekend waiting on Claude Code, measured by Notchi's own hook log.
+
+## What it does
+
+1. **A developer gets a pet.** They prove they are a unique human with World ID. One person, one pet, so brands only pay real screens. The pet is registered onchain with a payout address only the owner can change.
+2. **A brand funds a campaign.** Notchi writes three ad lines on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
+3. **The pet works.** Claude Code hooks tell the pet what the agent is doing: working, waiting for permission, idle, done, failed. While the agent works, the pet holds the brand's line. Each event asks the pet's 0G brain what to do next.
+4. **The pet gets paid.** Impressions are settled onchain to the pet's payout address. The pet's mood comes from its real balance: thriving, stable, hungry or asleep.
+
+## Proof it is real
+
+| What | Where |
+|---|---|
+| CampaignVault (verified) | [0xe74a2dd7C3acFdf7180e43cB41644EA386f9B7DB](https://chainscan-galileo.0g.ai/address/0xe74a2dd7C3acFdf7180e43cB41644EA386f9B7DB) on 0G Galileo (16602) |
+| Pet registered after a real World ID proof | [0x24340bcc...52148f3](https://chainscan-galileo.0g.ai/tx/0x24340bccc045b7ca596aaf05e32e8331445ca82b77721f755a3a47e1e52148f3) |
+| Brand campaign funded | [0x655415b2...a370f30](https://chainscan-galileo.0g.ai/tx/0x655415b2eb9b5de7fe80d53849713227f53ed19440b009248400d318ba370f30) |
+| Ad lines written on 0G | request `ecbcab9c-96ee-4dc0-880d-e3622419f7d7` |
+| Pet decision on 0G | request `61eeed8e-7f32-4317-bcf5-e573d35553a2` |
+<!-- add: campaign #2 funding tx, settlement tx, refund tx -->
+
+## How each sponsor is used
+
+**0G (Private Computer).** The pet's brain. Every pet decision and every set of ad lines is an inference call on 0G Private Computer (TEE routing), and the request ID is shown in the UI. We use 0G's own `0gm-1.0-35b-a3b` for everyday decisions and `glm-5.3` when the pet is thriving or writing ad lines. If 0G can't be reached, the pet goes to sleep and says why. It never invents a decision. The campaign contract also lives on 0G Galileo.
+
+**World (World ID).** One human, one pet. Ad networks die from fake views, so a pet only gets registered (and paid) after a World ID proof. The proof is checked on our server against the World Developer Portal, the nullifier is stored, and a second pet from the same person is refused with "You already have a pet."
+
+## Architecture
+
+```
+Claude Code hooks ──> Mac app (Swift, notch window, hook server on 127.0.0.1:47474)
+                          │  GET /campaigns/active, GET /pets/:name, POST /pets/:name/think
+                          v
+                     Server (Node/TS) ──> 0G Private Computer (inference, request IDs)
+                          │           ──> World Developer Portal (proof verify)
+                          │           ──> CampaignVault on 0G Galileo (register, settle)
+                          ^
+                     Web app (Next.js): /pet (World ID) and /brand (fund, refund)
+```
+
+| Folder | What |
+|---|---|
+| `apps/mac` | Notch overlay, door, sprites, state machine, menu-bar popover, hook server |
+| `apps/server` | Campaigns, impressions, settlement, World verify, think route |
+| `apps/web` | Pet registration and brand checkout |
+| `packages/brain` | 0G calls, mood to model, safe-stop |
+| `contracts` | `CampaignVault.sol`, Foundry tests, deploy script |
+
+## Tests
+
+- Contracts: 20 Foundry tests including fuzzing (`forge test`). The fuzz test checks the pet's earnings plus what's left always equal the budget.
+- Server: 22 tests (`npm test` in `apps/server`).
+- Brain: 4 tests (`npm test` in `packages/brain`).
+
+## Run it
+
+```bash
+# 1. contracts (already deployed; only to redeploy)
+cd contracts && forge test
+
+# 2. server
+cd apps/server && cp .env.example .env   # fill in keys
+npm install && npm start                 # :8787
+
+# 3. web
+cd apps/web && cp .env.example .env.local
+npm install && npm run dev               # :3000
+
+# 4. Mac app
+cd apps/mac && swift run
+
+# 5. hooks: merge pet-hooks.user-settings.json into ~/.claude/settings.json
+```
+
+## Hacky bits (what was hard)
+
+- **Wallets can't estimate gas on 0G Galileo.** Core showed "pre-execution unavailable" and transactions reverted with no reason. We set the gas limit explicitly in the web app.
+- **World ID v4 vs legacy proofs.** IDKit returned the legacy proof shape when legacy proofs were allowed, but the v4 verify endpoint only accepts v4 results. We request v4 proofs and let the portal's verify response decide, reading the nullifier from the field each version binds (so a client can't inject its own nullifier).
+- **Claude Code hooks must never slow the agent.** Every hook is a `curl -m 1 ... || true` to localhost. A closed pet app never blocks or changes Claude Code, and hooks never return a decision. The local log keeps only metadata (time, event, session, tool), never prompts or file contents.
+- **Notch geometry.** The door position comes from `NSScreen.safeAreaInsets` and the auxiliary top areas. Macs without a notch get the door under the menu bar.
+- **Honest moods.** The mood is read from the pet's real onchain balance, cached for 30s. If the RPC fails, the pet is "asleep: can't read balance" rather than guessing.
+
+## Known limits
+
+- Impressions are reported by the client in v1. World ID's one-human-one-pet rule and rate limits are the defence.
+- The pet does not yet top up its own 0G compute account from its earnings. Its 0G calls are paid from the team's account. Next step: the pet's wallet deposits into its own 0G Router balance.
+- The World flow was tested with World ID staging.
+
+## AI usage
+
+See [docs/AI_USAGE.md](docs/AI_USAGE.md).
