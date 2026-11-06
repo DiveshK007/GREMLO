@@ -13,10 +13,16 @@ Amounts are wei as decimal strings. `seeded: true` means the data comes from loc
 
 ## Routes
 
+CORS allows `http://localhost:3000` (apps/web); `OPTIONS` preflights get 204.
+
+`POST /campaigns/lines` `{ brief }` -> `{ lines: [{ text, requestId }] }`. One 0G call on `ZG_MODEL_SMART`, so all 3 lines carry that call's real request ID. Any 0G failure is a 502 with the real error; there are no fallback lines.
+
+`POST /campaigns` `{ campaignId, line, lineHash, brand, txHash }` -> `{ ok: true }`. Waits for `txHash` if given, reads the campaign onchain, and saves `line` only if `keccak256(line) == lineHash == the campaign's lineHash` (400 if the text doesn't hash to `lineHash`, 409 if the campaign holds a different hash, 404 for an unknown campaign). `brand` (display name) is saved for the campaign's brand address.
+
 `GET /world/sign?action=register-pet` -> `{ sig, nonce, created_at, expires_at }`, the RP signature the client passes to IDKit as `rp_context`. Signed with `RP_SIGNING_KEY`, which never leaves the server. Unknown actions get 400.
 
 `POST /pets/register` `{ name?, petKey, ownerAddress, payoutAddress, worldProof }`. `worldProof` is the IDKit v4 result (`completion.result`), passed through unchanged. The server forwards it to `POST https://developer.world.org/api/v4/verify/{RP_ID}` and checks `success`, `environment` and `action`. If those pass, it calls `registerPet` on the vault, and only after that succeeds does it store the nullifier.
--> `{ name, petKey, owner, payout, verified, registerTx, seeded }`. 400 for a missing or non-v4 proof, 403 `World proof rejected: <code>` if the portal says no, 409 `already has a pet` for a reused nullifier, 502 if the portal or chain is down. A failed `registerPet` keeps no nullifier, so the human can retry.
+-> `{ ok, txHash, name }`. 400 for a missing or non-v4 proof, 403 `World proof rejected: <code>` if the portal says no, 409 `already has a pet` for a reused nullifier, 502 if the portal or chain is down. A failed `registerPet` keeps no nullifier, so the human can retry.
 
 `POST /impressions` `{ impressions: [{ petKey, campaignId, count }] }` -> `{ accepted, pending }`. `petKey` may also be the pet name. Counts accumulate until settled.
 

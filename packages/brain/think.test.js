@@ -41,3 +41,16 @@ test('safe-stops on HTTP error, unknown action and network failure', async () =>
   const down = await think({ mood: 'stable' }, { fetch: async () => { throw new Error('ECONNREFUSED'); } });
   assert.deepEqual(down, { action: 'sleep', reason: '0G unreachable: ECONNREFUSED', requestId: null });
 });
+
+test('suggestLines returns 3 lines with the real request id, throws otherwise', async () => {
+  const { suggestLines } = await import('./index.js');
+  const sent = [];
+  const lines = await suggestLines('fast CI', { fetch: async (u, init) => { sent.push(JSON.parse(init.body).model); return new Response(JSON.stringify({
+    choices: [{ message: { content: '{"lines":["One","Two","Three"]}' } }], x_0g_trace: { request_id: 'L1' },
+  })); } });
+  assert.deepEqual(lines, [{ text: 'One', requestId: 'L1' }, { text: 'Two', requestId: 'L1' }, { text: 'Three', requestId: 'L1' }]);
+  assert.deepEqual(sent, ['smart-model']);
+
+  await assert.rejects(suggestLines('x', { fetch: reply(200, { choices: [{ message: { content: '{"lines":["only one"]}' } }], x_0g_trace: { request_id: 'L2' } }) }), /3 lines/);
+  await assert.rejects(suggestLines('x', { fetch: reply(402, { error: 'insufficient balance' }) }), /402/);
+});

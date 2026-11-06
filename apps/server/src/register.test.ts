@@ -14,7 +14,7 @@ const PET_B = "0x000000000000000000000000000000000000000b";
 
 function setup(verdict: Verdict, chain: () => Promise<string> = async () => "0xtx") {
   const store = { pets: {}, nullifiers: [] as string[] };
-  const register = makeRegister({ verify: async () => verdict, registerOnChain: chain, store, save() {}, seeded: true });
+  const register = makeRegister({ verify: async () => verdict, registerOnChain: chain, store, save() {} });
   return { store, register };
 }
 const status = (p: Promise<unknown>, code: number) =>
@@ -23,7 +23,7 @@ const status = (p: Promise<unknown>, code: number) =>
 test("valid proof registers the pet and stores the nullifier", async () => {
   const { store, register } = setup({ ok: true, nullifier: "42" });
   const r = await register(body(PET_A));
-  assert.equal(r.registerTx, "0xtx");
+  assert.deepEqual(r, { ok: true, txHash: "0xtx", name: PET_A.toLowerCase() });
   assert.deepEqual(store.nullifiers, ["42"]);
 });
 
