@@ -1,5 +1,6 @@
 import AppKit
 import Network
+import UserNotifications
 
 let tickHz = 30.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
@@ -9,6 +10,13 @@ var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AF
 var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
 var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
+// Off: overlay windows stay on the Space Notchi started on, and never over full-screen apps.
+var allDesktops = defaults.bool(forKey: "allDesktops")
+// Come-back reminders every N minutes after Stop or an approval request; 0 is off.
+var reminderMinutes = defaults.object(forKey: "reminderMinutes") as? Double ?? 5
+func spacesBehavior() -> NSWindow.CollectionBehavior {
+    allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.stationary]
+}
 
 enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
 
@@ -149,6 +157,11 @@ func loadSkin(name: String, dir: URL) -> Skin? {
                 footPadding: (cell.height - baseline) * scale, strips: strips, doors: doors, scale: scale)
 }
 
+// Design tokens: Ink, Paper, Signal.
+let inkColor = CGColor(red: 0x0B / 255.0, green: 0x0B / 255.0, blue: 0x0B / 255.0, alpha: 1)
+let paperColor = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
+let signalColor = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
+
 // The screen with the menu bar (and the notch, if there is one).
 var mainScreen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
 
@@ -160,7 +173,7 @@ func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
     panel.hasShadow = false
     panel.level = level
     panel.ignoresMouseEvents = true
-    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    panel.collectionBehavior = spacesBehavior()
     let view = NSView(frame: NSRect(origin: .zero, size: size))
     view.wantsLayer = true
     panel.contentView = view
@@ -182,8 +195,6 @@ final class Door {
     let lockBody = CAShapeLayer()
     let lockShackle = CAShapeLayer()
     let artLayer = CALayer()
-    let signal = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
-    let paper = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
     var state = DoorState.closed
     var gen = 0  // bumps on every open/close so a stale animation step can't reopen the door
 
@@ -202,8 +213,8 @@ final class Door {
         body.frame = bounds
         glow.frame = bounds
         glow.path = path
-        glow.fillColor = signal
-        glow.shadowColor = signal
+        glow.fillColor = signalColor
+        glow.shadowColor = signalColor
         glow.shadowRadius = 5
         glow.shadowOffset = .zero
         glow.shadowOpacity = 1
@@ -216,12 +227,12 @@ final class Door {
         leaf.lineWidth = 1
         let mid = size.width / 2
         lockBody.path = CGPath(rect: CGRect(x: mid - 3, y: 4, width: 6, height: 5), transform: nil)
-        lockBody.fillColor = paper
+        lockBody.fillColor = paperColor
         let shackle = CGMutablePath()
         shackle.addArc(center: CGPoint(x: mid, y: 9), radius: 2, startAngle: 0, endAngle: .pi, clockwise: false)
         lockShackle.path = shackle
         lockShackle.fillColor = nil
-        lockShackle.strokeColor = paper
+        lockShackle.strokeColor = paperColor
         lockShackle.lineWidth = 1
         artLayer.frame = bounds
         artLayer.magnificationFilter = .nearest
@@ -328,8 +339,13 @@ final class Pet {
     var lockWhenHome = false
     var holdUntil = Date.distantPast
     // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
-    let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
-    let signLabel = NSTextField(labelWithString: "")
+    // Fixed-width ticker: static if the line fits, else it scrolls right to left in a seamless loop.
+    let signSize = CGSize(width: 160, height: 16)
+    lazy var signPanel = overlayPanel(signSize, level: .statusBar)
+    var signText = ""
+    let signClip = CALayer()
+    let signStrip = CALayer()
+    var scrollPaused = false
     var signShownAt: Date?
     // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
@@ -363,11 +379,19 @@ final class Pet {
         click.autoresizingMask = [.width, .height]
         click.onClick = { [weak self] in self?.poke() }
         panel.contentView?.addSubview(click)
-        signLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        signLabel.textColor = .black
-        signLabel.drawsBackground = true
-        signLabel.backgroundColor = NSColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 1)
-        signPanel.contentView?.addSubview(signLabel)
+        if let board = signPanel.contentView?.layer {
+            board.backgroundColor = paperColor
+            board.borderWidth = 1
+            board.borderColor = inkColor.copy(alpha: 0.16)
+            let marker = CALayer()
+            marker.backgroundColor = signalColor
+            marker.frame = CGRect(x: 5, y: (signSize.height - 6) / 2, width: 6, height: 6)
+            board.addSublayer(marker)
+            signClip.frame = CGRect(x: 15, y: 0, width: signSize.width - 19, height: signSize.height)
+            signClip.masksToBounds = true
+            signClip.addSublayer(signStrip)
+            board.addSublayer(signClip)
+        }
         bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
         bubbleLabel.textColor = .black
         bubbleLabel.drawsBackground = true
@@ -407,7 +431,7 @@ final class Pet {
             holdUntil = Date().addingTimeInterval(0.26)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
                 guard let self else { return }
-                if self.path == .falling {
+                if self.path == .falling && self.onHomeSpace {
                     self.panel.setFrameOrigin(self.pos)
                     self.panel.orderFrontRegardless()
                 }
@@ -494,10 +518,25 @@ final class Pet {
             advanceFrame()
         }
         panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
+        // Came out while you were on another Space: show it once you're back on the home one.
+        if !panel.isVisible && onHomeSpace && Date() >= holdUntil { panel.orderFrontRegardless() }
         draw()
         placeSign()
         placeBubble()
         updateCursor()
+    }
+
+    // The door's window is ordered in once at launch and never out, so it marks Notchi's home Space.
+    var onHomeSpace: Bool { allDesktops || door.panel.isOnActiveSpace }
+
+    func applySpaces() {
+        for w in [panel, signPanel, bubblePanel, door.panel] { w.collectionBehavior = spacesBehavior() }
+    }
+
+    // A reminder fired: wave if you can actually see the pet. Already waving the approval flag counts.
+    func wave() {
+        guard path == .floor, panel.isVisible, onHomeSpace, state != .flag, state != .greet else { return }
+        set(.greet, then: loopingStates.contains(state) ? state : next)
     }
 
     // Cursor play. Cosmetic only: nothing here touches the backend, balances or hooks.
@@ -510,7 +549,8 @@ final class Pet {
     // The overlay stays click-through except while the cursor is over a visible pixel of the pet.
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
-        let inside = path == .floor && panel.isVisible && opaque(at: mouse)
+        let inside = path == .floor && onHomeSpace && panel.isVisible && opaque(at: mouse)
+        setScrollPaused(inside || (signPanel.isVisible && signPanel.frame.contains(mouse)))
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         if annoyance > 0 && Date().timeIntervalSince(lastPoke) > 6 { annoyance = 0 }
         if state == .annoy && (annoyance == 0 || busy) {
@@ -599,23 +639,82 @@ final class Pet {
         if path == .ceiling { y = pos.y - h + skin.footPadding }
         x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
         bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
-        if !bubblePanel.isVisible { bubblePanel.orderFrontRegardless() }
+        if !bubblePanel.isVisible && onHomeSpace { bubblePanel.orderFrontRegardless() }
     }
 
     func setSign(_ text: String?) {
-        signLabel.stringValue = text ?? ""
-        signLabel.sizeToFit()
-        signPanel.setContentSize(signLabel.frame.size)
+        let text = text ?? ""
+        guard text != signText else { return }  // render() calls this every poll; don't restart the scroll
+        signText = text
+        signStrip.removeAllAnimations()
+        signStrip.sublayers?.forEach { $0.removeFromSuperlayer() }
+        signStrip.speed = 1
+        signStrip.timeOffset = 0
+        signStrip.beginTime = 0
+        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let clipW = signClip.bounds.width, gap: CGFloat = 40
+        let scrolls = textSize.width > clipW
+        func textLayer(at x: CGFloat) -> CATextLayer {
+            let t = CATextLayer()
+            t.string = text
+            t.font = font
+            t.fontSize = 11
+            t.foregroundColor = inkColor
+            t.contentsScale = mainScreen.backingScaleFactor
+            t.frame = CGRect(x: x, y: (signSize.height - textSize.height) / 2, width: ceil(textSize.width) + 1, height: ceil(textSize.height))
+            return t
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        signStrip.frame = CGRect(x: 0, y: 0, width: scrolls ? textSize.width * 2 + gap : clipW, height: signSize.height)
+        if scrolls {
+            signStrip.addSublayer(textLayer(at: 0))
+            signStrip.addSublayer(textLayer(at: textSize.width + gap))
+        } else {
+            signStrip.addSublayer(textLayer(at: (clipW - textSize.width) / 2))
+        }
+        CATransaction.commit()
+        guard scrolls else { return }
+        // One period moves exactly one copy plus the gap, so the loop seam is invisible. About 40pt/s.
+        let period = textSize.width + gap
+        let anim = CABasicAnimation(keyPath: "position.x")
+        anim.byValue = -period
+        anim.duration = period / 40
+        anim.repeatCount = .infinity
+        signStrip.add(anim, forKey: "ticker")
+        if scrollPaused { scrollPaused = false; setScrollPaused(true) }
+    }
+
+    // Freezes the ticker in place (layer clock pause) so the line can be read, and resumes from the same spot.
+    func setScrollPaused(_ paused: Bool) {
+        guard paused != scrollPaused else { return }
+        scrollPaused = paused
+        if paused {
+            signStrip.timeOffset = signStrip.convertTime(CACurrentMediaTime(), from: nil)
+            signStrip.speed = 0
+        } else {
+            let pausedAt = signStrip.timeOffset
+            signStrip.speed = 1
+            signStrip.timeOffset = 0
+            signStrip.beginTime = 0
+            signStrip.beginTime = signStrip.convertTime(CACurrentMediaTime(), from: nil) - pausedAt
+        }
     }
 
     func placeSign() {
-        let show = path == .floor && state == .sign && !signLabel.stringValue.isEmpty
+        let show = path == .floor && state == .sign && !signText.isEmpty
         if !show { signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return }
-        if signShownAt == nil { signShownAt = Date() }
         let w = signPanel.frame.width
         let x = min(max(pos.x + size.width / 2 - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
         signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + size.height - 6))
-        if !signPanel.isVisible { signPanel.orderFrontRegardless() }
+        if !signPanel.isVisible && onHomeSpace { signPanel.orderFrontRegardless() }
+        // An impression needs the sign really on screen: not on another Space, not behind a full-screen app.
+        if signPanel.occlusionState.contains(.visible) {
+            if signShownAt == nil { signShownAt = Date() }
+        } else {
+            signShownAt = nil
+        }
     }
 
     func advanceFrame() {
@@ -729,6 +828,80 @@ final class Pet {
             goHome(lock: true)
         default: break
         }
+    }
+}
+
+// Nudges you back when Claude Code is done or waiting on you. Cosmetic: never touches hooks' replies, balances or spending.
+final class Reminders {
+    let pet: Pet
+    var message: String?
+    var project: String?
+    var timer: Timer?
+
+    init(pet: Pet) { self.pet = pet }
+
+    func handle(_ hook: [String: Any]) {
+        switch hook["hook_event_name"] as? String {
+        case "Stop": arm("Claude Code is done", hook)
+        case "PermissionRequest": arm(approval, hook)
+        case "Notification" where hook["notification_type"] as? String == "permission_prompt": arm(approval, hook)
+        case "UserPromptSubmit", "SessionEnd": cancel()
+        // The approval was answered and tools are running again.
+        case "PreToolUse", "PostToolUse": if message == approval { cancel() }
+        default: break
+        }
+    }
+
+    let approval = "Claude Code needs your approval"
+
+    func arm(_ text: String, _ hook: [String: Any]) {
+        message = text
+        project = (hook["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }.flatMap { $0.isEmpty ? nil : $0 }
+        reschedule()
+    }
+
+    func cancel() {
+        message = nil
+        timer?.invalidate()
+        timer = nil
+    }
+
+    // Also called when the interval setting changes.
+    func reschedule() {
+        timer?.invalidate()
+        timer = nil
+        guard message != nil, reminderMinutes > 0 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: reminderMinutes * 60, repeats: true) { [weak self] _ in self?.fire() }
+    }
+
+    func fire() {
+        guard let message else { return }
+        notify(title: message, body: project.map { "In \($0)" } ?? "Back to your terminal")
+        pet.wave()
+    }
+
+    // UNUserNotificationCenter throws without a bundle id (swift run has none); osascript works either way.
+    func notify(title: String, body: String) {
+        guard Bundle.main.bundleIdentifier != nil else { return osascript(title, body) }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return DispatchQueue.main.async { self.osascript(title, body) } }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            center.add(UNNotificationRequest(identifier: "notchi-reminder", content: content, trigger: nil))
+        }
+    }
+
+    func osascript(_ title: String, _ body: String) {
+        func quote(_ s: String) -> String {
+            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: " ") + "\""
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", "display notification \(quote(body)) with title \(quote(title))"]
+        do { try p.run() } catch { print("reminder not shown: \(error)") }
     }
 }
 
@@ -846,6 +1019,7 @@ final class Backend: NSObject {
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
     var shown = ""
     var showingSettings = false
+    lazy var reminders: Reminders = Reminders(pet: self.pet)
 
     init(pet: Pet) {
         self.pet = pet
@@ -1047,11 +1221,19 @@ final class Backend: NSObject {
         sponsored.state = sponsoredOn ? .on : .off
         stack.addArrangedSubview(sounds)
         stack.addArrangedSubview(sponsored)
+        let spaces = NSButton(checkboxWithTitle: "Show on all desktops", target: self, action: #selector(toggleAllDesktops(_:)))
+        spaces.state = allDesktops ? .on : .off
+        stack.addArrangedSubview(spaces)
 
         stack.addArrangedSubview(caption("Walk speed"))
         let slider = NSSlider(value: walkSpeed, minValue: 0.5, maxValue: 2, target: self, action: #selector(setWalkSpeed(_:)))
         slider.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
         stack.addArrangedSubview(slider)
+
+        stack.addArrangedSubview(caption("Remind me"))
+        let remind = NSSegmentedControl(labels: ["Off", "2 min", "5 min", "10 min"], trackingMode: .selectOne, target: self, action: #selector(setReminder(_:)))
+        remind.selectedSegment = [0.0, 2, 5, 10].firstIndex(of: reminderMinutes) ?? -1
+        stack.addArrangedSubview(remind)
 
         stack.addArrangedSubview(caption("Home after"))
         let seg = NSSegmentedControl(labels: ["30s", "75s", "180s"], trackingMode: .selectOne, target: self, action: #selector(setHomeAfter(_:)))
@@ -1075,6 +1257,18 @@ final class Backend: NSObject {
     }
 
     @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
+
+    @objc func setReminder(_ sender: NSSegmentedControl) {
+        reminderMinutes = [0.0, 2, 5, 10][max(0, sender.selectedSegment)]
+        defaults.set(reminderMinutes, forKey: "reminderMinutes")
+        reminders.reschedule()
+    }
+
+    @objc func toggleAllDesktops(_ sender: NSButton) {
+        allDesktops = sender.state == .on
+        defaults.set(allDesktops, forKey: "allDesktops")
+        pet.applySpaces()
+    }
 
     @objc func toggleSponsored(_ sender: NSButton) {
         sponsoredOn = sender.state == .on
@@ -1189,6 +1383,7 @@ do {
     server = try HookServer(port: 47474) { hook in
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
         backend.think(hook)
+        backend.reminders.handle(hook)
         backend.render()
     }
 } catch {
