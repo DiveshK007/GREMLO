@@ -18,7 +18,10 @@ if (!SMART || !CHEAP) {
 }
 export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP, hungry: CHEAP };
 
-/** One router call. Returns the parsed JSON object from the reply; throws Error with .requestId on any failure. */
+/**
+ * One router call. Returns {out, content, requestId, cost}: out is the parsed JSON object from the reply,
+ * or null when it has none (content is the raw text). Throws Error with .requestId on transport/HTTP failure.
+ */
 async function chat(system, user, model, opts) {
   const base = opts.base ?? process.env.ZG_API_BASE ?? 'https://router-api.0g.ai/v1';
   const key = opts.key ?? process.env.ZG_API_KEY ?? '';
@@ -49,8 +52,7 @@ async function chat(system, user, model, opts) {
   const match = content.match(/\{[\s\S]*\}/);
   let out = null;
   try { out = match && JSON.parse(match[0]); } catch {}
-  if (!out) throw fail(`0G reply had no JSON: ${content.slice(0, 200)}`);
-  return { out, requestId, cost: data.x_0g_trace?.billing?.total_cost ?? null };
+  return { out, content, requestId, cost: data.x_0g_trace?.billing?.total_cost ?? null };
 }
 
 export async function think(state, opts = {}) {
@@ -58,7 +60,8 @@ export async function think(state, opts = {}) {
   const model = MODEL_BY_MOOD[state?.mood];
   if (!model) return sleep(`unknown mood: ${state?.mood}`, null);
   try {
-    const { out, requestId, cost } = await chat(SYSTEM, JSON.stringify(state), model, opts);
+    const { out, content, requestId, cost } = await chat(SYSTEM, JSON.stringify(state), model, opts);
+    if (!out) return sleep(`0G reply had no JSON: ${content.slice(0, 200)}`, requestId);
     if (!ACTIONS.includes(out.action)) return sleep(`0G picked unknown action: ${out.action}`, requestId);
     return { action: out.action, say: String(out.say ?? '').slice(0, 80), requestId, cost };
   } catch (err) {
@@ -66,12 +69,31 @@ export async function think(state, opts = {}) {
   }
 }
 
-/** 3 ad lines from one smart-model call. All three carry that call's real request ID. */
+const LINES_STRICT = `${LINES_SYSTEM}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
+
+/** Plain-text fallback: only lines the model actually wrote (list markers and quotes stripped), never filler. */
+export function linesFromText(text) {
+  return text.split('\n')
+    .filter((raw) => !/"\s*:/.test(raw)) // a JSON key, not a line
+    .map((raw) => raw.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^["'`“”]+|["'`“”]+$/g, '').trim())
+    .filter((l) => l && l.length <= 80 && !l.endsWith(':') && !/^[{}[\]`]/.test(l) && !/^(here|sure|okay|certainly)\b/i.test(l))
+    .slice(0, 3);
+}
+
+/**
+ * Ad lines from the smart model. A reply with no JSON is retried once with a stricter instruction; if that
+ * still has no JSON, up to 3 lines are taken from its plain text. Lines carry the request ID of the call
+ * they came from. Nothing is ever made up: no usable lines means a throw with the real request ID.
+ */
 export async function suggestLines(brief, opts = {}) {
-  const { out, requestId } = await chat(LINES_SYSTEM, String(brief), SMART, opts);
-  const lines = Array.isArray(out.lines) ? out.lines.filter((l) => typeof l === 'string' && l.trim()).slice(0, 3) : [];
-  if (lines.length !== 3 || !requestId) throw Object.assign(new Error('0G reply did not have 3 lines'), { requestId });
-  return lines.map((l) => ({ text: l.trim().slice(0, 80), requestId }));
+  let r = await chat(LINES_SYSTEM, String(brief), SMART, opts);
+  if (!r.out) r = await chat(LINES_STRICT, String(brief), SMART, opts);
+  const lines = r.out
+    ? (Array.isArray(r.out.lines) ? r.out.lines.filter((l) => typeof l === 'string' && l.trim()).slice(0, 3) : [])
+    : linesFromText(r.content);
+  const enough = r.out ? lines.length === 3 : lines.length >= 1; // JSON must give all 3; plain text gives what it has
+  if (!enough || !r.requestId) throw Object.assign(new Error(r.out ? '0G reply did not have 3 lines' : '0G reply had no usable lines'), { requestId: r.requestId });
+  return lines.map((l) => ({ text: l.trim().slice(0, 80), requestId: r.requestId }));
 }
 
 function sleep(reason, requestId) {
