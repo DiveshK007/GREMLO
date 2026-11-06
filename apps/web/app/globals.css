@@ -121,3 +121,11 @@ h2 .num { display: block; font-size: 11px; color: var(--on-paper-muted); margin-
 .narrow > button, .narrow > .bad { margin-bottom: var(--s-4); }
 .foot { max-width: 1072px; padding: var(--s-3) 0; }
 @media (max-width: 1120px) { .foot { margin: 0 var(--s-3); } }
+.tones { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.tones button { min-height: 40px; font: 500 11px/1 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
+.sign small { display: flex; justify-content: space-between; gap: var(--s-2); }
+.count { text-align: right; }
+.count.over { font-weight: 700; color: var(--ink); }
+.count.over::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: var(--s-1); background: var(--signal); }
+.sign.picked .count.over { color: var(--paper); }
+p.count { max-width: none; }

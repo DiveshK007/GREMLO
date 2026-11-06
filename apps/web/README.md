@@ -3,7 +3,7 @@
 Two pages for the demo, plus a landing page.
 
 - `/pet` — Get your pet: connect wallet, name the pet, World ID QR, register. A 409 from the server shows the "You already have a pet" screen (the denied path).
-- `/brand` — Fund a campaign: the pet suggests 3 lines (0G), the brand picks one, pays `createCampaign` on 0G Galileo from their browser wallet, gets a receipt. A lookup box shows budget / spent / left and a "Close and refund" button once the campaign has ended and the 1-hour settle window has passed.
+- `/brand` — Fund a campaign: the brand picks a tone (bold / calm / dev-meme), Notchi writes 3 hooks of up to 40 characters on 0G, the brand picks one, pays `createCampaign` on 0G Galileo from their browser wallet, gets a receipt. A lookup box shows budget / spent / left and a "Close and refund" button once the campaign has ended and the 1-hour settle window has passed.
 
 ## Run
 
@@ -24,7 +24,7 @@ All server calls are in `lib/api.ts`. Change that one file if a route differs.
 |---|---|---|
 | `GET /world/sign?action=register-pet` | — | `{ sig, nonce, created_at, expires_at }` from `signRequest` |
 | `POST /pets/register` | `{ name, petKey, ownerAddress, payoutAddress, worldProof }` (`worldProof` = IDKit `completion.result`) | `{ ok, txHash?, name? }`; **409** if the nullifier was used |
-| `POST /campaigns/lines` | `{ brief }` | `{ lines: [{ text, requestId }] }` (3 lines, real 0G request IDs) |
+| `POST /campaigns/lines` | `{ brief, tone? }` (`bold`, `calm`, `dev-meme`) | `{ lines: [{ text, requestId }] }` (3 lines, real 0G request IDs) |
 | `POST /settle/:id` | — | `{ txHash, count, amount, settled[], error? }`: pays queued impressions onchain (amount in wei) |
 | `POST /campaigns` | `{ campaignId, line, lineHash, brand, txHash }` | anything 2xx. Server should check `keccak256(line) == lineHash` against the onchain campaign before showing it |
 
