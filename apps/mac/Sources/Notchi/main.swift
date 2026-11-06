@@ -41,15 +41,17 @@ struct Skin {
 func loadSkin() -> Skin? {
     let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent("assets")
-    let fm = FileManager.default
-    let demo = assets.appendingPathComponent("demo-pets")
-    let root = fm.fileExists(atPath: demo.path) ? demo : assets.appendingPathComponent("pets")
-    let names = ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
-    guard let name = ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? names.first else {
-        print("no pet folders in \(root.path)")
+    let want = ProcessInfo.processInfo.environment["NOTCHI_SKIN"]
+    let found = ["demo-pets", "pets"].lazy.compactMap { sub -> (String, URL)? in
+        let root = assets.appendingPathComponent(sub)
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        guard let name = want.flatMap({ names.contains($0) ? $0 : nil }) ?? (want == nil ? names.first : nil) else { return nil }
+        return (name, root.appendingPathComponent(name))
+    }.first
+    guard let (name, dir) = found else {
+        print("no pet folder\(want.map { " named " + $0 } ?? "") in \(assets.path)/demo-pets or /pets")
         return nil
     }
-    let dir = root.appendingPathComponent(name)
     guard let data = try? Data(contentsOf: dir.appendingPathComponent("pet.json")),
           let info = try? JSONDecoder().decode(SkinInfo.self, from: data) else {
         print("\(dir.path)/pet.json missing or invalid")
@@ -62,7 +64,9 @@ func loadSkin() -> Skin? {
               let src = CGImageSourceCreateWithURL(dir.appendingPathComponent(s.rawValue + ".png") as CFURL, nil),
               let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { continue }
         let w = img.width / n
-        strips[s] = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
+        let frames = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
+        guard w > 0, frames.count == n else { print("\(s.rawValue).png: \(n) frames don't fit \(img.width)px"); continue }
+        strips[s] = frames
         cell = CGSize(width: w, height: img.height)
     }
     guard strips[.walk] != nil else {
@@ -540,6 +544,8 @@ final class Backend: NSObject {
     var serverError: String?
     var thinking = false
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
+    // Polls overlap (timer + after each think); a late reply must not roll the balance back and re-show a meal.
+    var petSent = 0, petApplied = 0
 
     init(pet: Pet) {
         self.pet = pet
@@ -598,10 +604,16 @@ final class Backend: NSObject {
             if let data { self.campaign = try? JSONDecoder().decode(Campaign?.self, from: data) }
             self.render()
         }
+        petSent += 1
+        let seq = petSent
         request(petPath) { data, err in
+            guard seq > self.petApplied else { return }
+            self.petApplied = seq
             if let err { self.serverError = "pet \(self.petName): \(err)" }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
-                if let gain = ogGain(self.info?.walletBalance, new.walletBalance) { self.pet.eat(gain + (new.seeded ? " [seeded]" : "")) }
+                if self.info?.seeded == new.seeded, let gain = ogGain(self.info?.walletBalance, new.walletBalance) {
+                    self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
+                }
                 self.info = new
             }
             self.render()
