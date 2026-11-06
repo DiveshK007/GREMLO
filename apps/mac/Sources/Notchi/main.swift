@@ -149,6 +149,11 @@ func loadSkin(name: String, dir: URL) -> Skin? {
                 footPadding: (cell.height - baseline) * scale, strips: strips, doors: doors, scale: scale)
 }
 
+// Design tokens: Ink, Paper, Signal.
+let inkColor = CGColor(red: 0x0B / 255.0, green: 0x0B / 255.0, blue: 0x0B / 255.0, alpha: 1)
+let paperColor = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
+let signalColor = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
+
 // The screen with the menu bar (and the notch, if there is one).
 var mainScreen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
 
@@ -182,8 +187,6 @@ final class Door {
     let lockBody = CAShapeLayer()
     let lockShackle = CAShapeLayer()
     let artLayer = CALayer()
-    let signal = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
-    let paper = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
     var state = DoorState.closed
     var gen = 0  // bumps on every open/close so a stale animation step can't reopen the door
 
@@ -202,8 +205,8 @@ final class Door {
         body.frame = bounds
         glow.frame = bounds
         glow.path = path
-        glow.fillColor = signal
-        glow.shadowColor = signal
+        glow.fillColor = signalColor
+        glow.shadowColor = signalColor
         glow.shadowRadius = 5
         glow.shadowOffset = .zero
         glow.shadowOpacity = 1
@@ -216,12 +219,12 @@ final class Door {
         leaf.lineWidth = 1
         let mid = size.width / 2
         lockBody.path = CGPath(rect: CGRect(x: mid - 3, y: 4, width: 6, height: 5), transform: nil)
-        lockBody.fillColor = paper
+        lockBody.fillColor = paperColor
         let shackle = CGMutablePath()
         shackle.addArc(center: CGPoint(x: mid, y: 9), radius: 2, startAngle: 0, endAngle: .pi, clockwise: false)
         lockShackle.path = shackle
         lockShackle.fillColor = nil
-        lockShackle.strokeColor = paper
+        lockShackle.strokeColor = paperColor
         lockShackle.lineWidth = 1
         artLayer.frame = bounds
         artLayer.magnificationFilter = .nearest
@@ -328,8 +331,13 @@ final class Pet {
     var lockWhenHome = false
     var holdUntil = Date.distantPast
     // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
-    let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
-    let signLabel = NSTextField(labelWithString: "")
+    // Fixed-width ticker: static if the line fits, else it scrolls right to left in a seamless loop.
+    let signSize = CGSize(width: 160, height: 16)
+    lazy var signPanel = overlayPanel(signSize, level: .statusBar)
+    var signText = ""
+    let signClip = CALayer()
+    let signStrip = CALayer()
+    var scrollPaused = false
     var signShownAt: Date?
     // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
@@ -363,11 +371,19 @@ final class Pet {
         click.autoresizingMask = [.width, .height]
         click.onClick = { [weak self] in self?.poke() }
         panel.contentView?.addSubview(click)
-        signLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        signLabel.textColor = .black
-        signLabel.drawsBackground = true
-        signLabel.backgroundColor = NSColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 1)
-        signPanel.contentView?.addSubview(signLabel)
+        if let board = signPanel.contentView?.layer {
+            board.backgroundColor = paperColor
+            board.borderWidth = 1
+            board.borderColor = inkColor.copy(alpha: 0.16)
+            let marker = CALayer()
+            marker.backgroundColor = signalColor
+            marker.frame = CGRect(x: 5, y: (signSize.height - 6) / 2, width: 6, height: 6)
+            board.addSublayer(marker)
+            signClip.frame = CGRect(x: 15, y: 0, width: signSize.width - 19, height: signSize.height)
+            signClip.masksToBounds = true
+            signClip.addSublayer(signStrip)
+            board.addSublayer(signClip)
+        }
         bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
         bubbleLabel.textColor = .black
         bubbleLabel.drawsBackground = true
@@ -511,6 +527,7 @@ final class Pet {
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
         let inside = path == .floor && panel.isVisible && opaque(at: mouse)
+        setScrollPaused(inside || (signPanel.isVisible && signPanel.frame.contains(mouse)))
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         if annoyance > 0 && Date().timeIntervalSince(lastPoke) > 6 { annoyance = 0 }
         if state == .annoy && (annoyance == 0 || busy) {
@@ -603,13 +620,67 @@ final class Pet {
     }
 
     func setSign(_ text: String?) {
-        signLabel.stringValue = text ?? ""
-        signLabel.sizeToFit()
-        signPanel.setContentSize(signLabel.frame.size)
+        let text = text ?? ""
+        guard text != signText else { return }  // render() calls this every poll; don't restart the scroll
+        signText = text
+        signStrip.removeAllAnimations()
+        signStrip.sublayers?.forEach { $0.removeFromSuperlayer() }
+        signStrip.speed = 1
+        signStrip.timeOffset = 0
+        signStrip.beginTime = 0
+        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let clipW = signClip.bounds.width, gap: CGFloat = 40
+        let scrolls = textSize.width > clipW
+        func textLayer(at x: CGFloat) -> CATextLayer {
+            let t = CATextLayer()
+            t.string = text
+            t.font = font
+            t.fontSize = 11
+            t.foregroundColor = inkColor
+            t.contentsScale = mainScreen.backingScaleFactor
+            t.frame = CGRect(x: x, y: (signSize.height - textSize.height) / 2, width: ceil(textSize.width) + 1, height: ceil(textSize.height))
+            return t
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        signStrip.frame = CGRect(x: 0, y: 0, width: scrolls ? textSize.width * 2 + gap : clipW, height: signSize.height)
+        if scrolls {
+            signStrip.addSublayer(textLayer(at: 0))
+            signStrip.addSublayer(textLayer(at: textSize.width + gap))
+        } else {
+            signStrip.addSublayer(textLayer(at: (clipW - textSize.width) / 2))
+        }
+        CATransaction.commit()
+        guard scrolls else { return }
+        // One period moves exactly one copy plus the gap, so the loop seam is invisible. About 40pt/s.
+        let period = textSize.width + gap
+        let anim = CABasicAnimation(keyPath: "position.x")
+        anim.byValue = -period
+        anim.duration = period / 40
+        anim.repeatCount = .infinity
+        signStrip.add(anim, forKey: "ticker")
+        if scrollPaused { scrollPaused = false; setScrollPaused(true) }
+    }
+
+    // Freezes the ticker in place (layer clock pause) so the line can be read, and resumes from the same spot.
+    func setScrollPaused(_ paused: Bool) {
+        guard paused != scrollPaused else { return }
+        scrollPaused = paused
+        if paused {
+            signStrip.timeOffset = signStrip.convertTime(CACurrentMediaTime(), from: nil)
+            signStrip.speed = 0
+        } else {
+            let pausedAt = signStrip.timeOffset
+            signStrip.speed = 1
+            signStrip.timeOffset = 0
+            signStrip.beginTime = 0
+            signStrip.beginTime = signStrip.convertTime(CACurrentMediaTime(), from: nil) - pausedAt
+        }
     }
 
     func placeSign() {
-        let show = path == .floor && state == .sign && !signLabel.stringValue.isEmpty
+        let show = path == .floor && state == .sign && !signText.isEmpty
         if !show { signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return }
         if signShownAt == nil { signShownAt = Date() }
         let w = signPanel.frame.width
