@@ -126,11 +126,13 @@ export default function GetYourPet() {
           <input value={name} onChange={(e) => setName(e.target.value)} />
           <p className="muted mono">{fullName}</p>
 
-          <label>Payout address (where the pet's earnings go; only you can change it later)</label>
+          <label>Payout address</label>
           <input className="mono" value={payout} onChange={(e) => setPayout(e.target.value)} placeholder="0x..." />
+          <p className="hint">Where the pet's earnings go. Only you can change it later.</p>
 
-          <label>Pet key (from the Notchi menu-bar app; leave empty to use the payout address)</label>
+          <label>Pet key (optional)</label>
           <input className="mono" value={petKey} onChange={(e) => setPetKey(e.target.value)} placeholder="0x..." />
+          <p className="hint">Leave empty to use the payout address.</p>
 
           {formError && <p className="bad">{formError}</p>}
           <p>
