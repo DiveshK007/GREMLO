@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { isAddress, type Address } from "viem";
 import { ApiError, registerPet, worldSign } from "@/lib/api";
 import { connectWallet } from "@/lib/chain";
+import { PetSmall } from "@/components/PetArt";
 import { txLink, WORLD_APP_ID, WORLD_ENV, WORLD_PRESET, WORLD_RP_ID } from "@/lib/config";
 
 type Phase =
@@ -172,9 +173,7 @@ export default function GetYourPet() {
 
       {phase.kind === "done" && (
         <div className="card">
-          <div className="pet" aria-hidden>
-            ⌂
-          </div>
+          <PetSmall />
           <h2 style={{ textAlign: "center" }}>{phase.name} is moving into your notch.</h2>
           {phase.txHash ? (
             <p className="muted" style={{ textAlign: "center" }}>

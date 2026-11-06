@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { NotchPet } from "@/components/PetArt";
 
 export default function Home() {
   return (
     <>
+      <NotchPet />
       <span className="pill">ETHGlobal Mumbai build</span>
       <h1>Your coding agent makes you wait. Notchi makes that wait pay for itself.</h1>
       <p className="lead">
         A tiny pet lives behind a door in your MacBook notch. When Claude Code starts working, it drops out and holds up one
         short line from a sponsor. Brands pay per real impression. The pet uses what it earns to pay for its own AI brain on 0G.
       </p>
-      <div className="row">
+      <div className="row audiences">
         <div className="card">
           <h2>Developers</h2>
           <p className="muted">Prove you are a real person once, name your pet, and it moves into your notch.</p>
