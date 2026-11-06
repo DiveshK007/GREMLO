@@ -31,6 +31,7 @@ export default function FundCampaign() {
   const [hours, setHours] = useState("1");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [campaignError, setCampaignError] = useState(""); // lookup, settle and close, shown in "Your campaign"
   const [linesError, setLinesError] = useState("");
   const [funded, setFunded] = useState<Funded | null>(null);
 
@@ -117,44 +118,44 @@ export default function FundCampaign() {
   }
 
   async function onLookup() {
-    setError("");
+    setCampaignError("");
     setRefund(null);
-    if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Campaign ID is a number.");
     setBusy("lookup");
     try {
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
   }
 
   async function onSettle() {
-    setError("");
+    setCampaignError("");
     setSettlement(null);
-    if (!/^\d+$/.test(lookupId)) return setError("Campaign ID is a number.");
+    if (!/^\d+$/.test(lookupId)) return setCampaignError("Campaign ID is a number.");
     setBusy("settle");
     try {
       setSettlement(await settleImpressions(lookupId));
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
   }
 
   async function onClose() {
-    setError("");
-    if (!account) return setError("Connect your wallet first.");
+    setCampaignError("");
+    if (!account) return setCampaignError("Connect your wallet first.");
     setBusy("close");
     try {
       const res = await closeCampaign(account, BigInt(lookupId));
       setRefund({ txHash: res.txHash, amount: res.refund });
       setLookup(await readCampaign(BigInt(lookupId)));
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
       setBusy("");
     }
@@ -290,6 +291,7 @@ export default function FundCampaign() {
             {busy === "settle" ? "Settling onchain..." : "Settle impressions"}
           </button>
         </p>
+        {campaignError && <p className="bad">{campaignError}</p>}
         {settlement && (
           <>
             {settlement.count === 0 && !settlement.error && <p className="muted">No impressions queued for this campaign yet.</p>}
