@@ -11,3 +11,6 @@ contracts/out/
 contracts/cache/
 contracts/broadcast/*/31337/
 contracts/.anvil/
+
+.next/
+node_modules/
