@@ -183,6 +183,10 @@ final class Pet {
     // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
     let signPanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let signLabel = NSTextField(labelWithString: "")
+    // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
+    let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
+    let bubbleLabel = NSTextField(labelWithString: "")
+    var bubbleUntil = Date.distantPast
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -204,6 +208,11 @@ final class Pet {
         signLabel.drawsBackground = true
         signLabel.backgroundColor = NSColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 1)
         signPanel.contentView?.addSubview(signLabel)
+        bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
+        bubbleLabel.textColor = .black
+        bubbleLabel.drawsBackground = true
+        bubbleLabel.backgroundColor = .white
+        bubblePanel.contentView?.addSubview(bubbleLabel)
         Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
     }
 
@@ -264,6 +273,7 @@ final class Pet {
         let dt = 1 / tickHz
         switch path {
         case .home:
+            placeBubble()
             return
         case .falling:
             vy += 2400 * dt
@@ -309,6 +319,32 @@ final class Pet {
         panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
         draw()
         placeSign()
+        placeBubble()
+    }
+
+    func say(_ text: String, for seconds: TimeInterval) {
+        bubbleLabel.stringValue = text
+        bubbleLabel.sizeToFit()
+        bubblePanel.setContentSize(bubbleLabel.frame.size)
+        bubbleUntil = Date().addingTimeInterval(seconds)
+        placeBubble()
+    }
+
+    // Money landed in the wallet: play eat (on screen only) and show the amount.
+    func eat(_ amount: String) {
+        say(amount, for: 4)
+        if path == .floor && state != .eat { set(.eat, then: next) }
+    }
+
+    func placeBubble() {
+        if Date() >= bubbleUntil { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
+        let w = bubblePanel.frame.width, h = bubblePanel.frame.height
+        var x = pos.x + size.width / 2 - w / 2
+        var y = pos.y + size.height - 6 + (signPanel.isVisible ? signPanel.frame.height + 2 : 0)
+        if path == .home { x = door.center.x - w / 2; y = door.panel.frame.minY - h - 2 }
+        x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
+        bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
+        if !bubblePanel.isVisible { bubblePanel.orderFrontRegardless() }
     }
 
     func setSign(_ text: String?) {
@@ -453,7 +489,15 @@ struct ThinkResult: Decodable { let action: String; let say: String?; let reason
 
 func og(_ wei: String?) -> String {
     guard let wei, let d = Decimal(string: wei) else { return "unknown" }
-    return "\(d / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G"
+    return og(d)
+}
+
+func og(_ wei: Decimal) -> String { "\(wei / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G" }
+
+// "+0.005 0G" when the wei balance went up, nil otherwise (first poll, unknown, same or down).
+func ogGain(_ old: String?, _ new: String?) -> String? {
+    guard let o = old.flatMap({ Decimal(string: $0) }), let n = new.flatMap({ Decimal(string: $0) }), n > o else { return nil }
+    return "+" + og(n - o)
 }
 
 // Talks to apps/server. Server down means the popover says so; nothing is invented.
@@ -486,7 +530,7 @@ final class Backend: NSObject {
         popover.contentViewController = vc
         popover.behavior = .transient
         refresh()
-        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refresh() }
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
     @objc func toggle() {
@@ -517,7 +561,10 @@ final class Backend: NSObject {
         }
         request(petPath) { data, err in
             if let err { self.serverError = "pet \(self.petName): \(err)" }
-            if let data { self.info = try? JSONDecoder().decode(PetInfo.self, from: data) }
+            if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
+                if let gain = ogGain(self.info?.walletBalance, new.walletBalance) { self.pet.eat(gain + (new.seeded ? " [seeded]" : "")) }
+                self.info = new
+            }
             self.render()
         }
     }
@@ -559,6 +606,9 @@ final class Backend: NSObject {
     }
 }
 
+assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
+assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
+assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
