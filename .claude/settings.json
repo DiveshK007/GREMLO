@@ -1,0 +1,33 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)"
+    ]
+  },
+  "skillOverrides": {
+    "office-hours": "off",
+    "plan-ceo-review": "off",
+    "plan-devex-review": "off",
+    "devex-review": "off",
+    "land-and-deploy": "off",
+    "canary": "off",
+    "retro": "off",
+    "ubicloud": "off",
+    "benchmark": "off",
+    "cso": "off",
+    "runaway-stopper": "off",
+    "modernize": "off",
+    "eval-plan": "off",
+    "make-pdf": "off",
+    "scrape": "off",
+    "setup-browser-cookies": "off",
+    "pair-agent": "off"
+  }
+}
