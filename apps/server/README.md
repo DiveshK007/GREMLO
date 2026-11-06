@@ -21,8 +21,8 @@ CORS allows `http://localhost:3000` (apps/web); `OPTIONS` preflights get 204.
 
 `GET /world/sign?action=register-pet` -> `{ sig, nonce, created_at, expires_at }`, the RP signature the client passes to IDKit as `rp_context`. Signed with `RP_SIGNING_KEY`, which never leaves the server. Unknown actions get 400.
 
-`POST /pets/register` `{ name?, petKey, ownerAddress, payoutAddress, worldProof }`. `worldProof` is the IDKit v4 result (`completion.result`), passed through unchanged. The server forwards it to `POST https://developer.world.org/api/v4/verify/{RP_ID}` and checks `success`, `environment` and `action`. If those pass, it calls `registerPet` on the vault, and only after that succeeds does it store the nullifier.
--> `{ ok, txHash, name }`. 400 for a missing or non-v4 proof, 403 `World proof rejected: <code>` if the portal says no, 409 `already has a pet` for a reused nullifier, 502 if the portal or chain is down. A failed `registerPet` keeps no nullifier, so the human can retry.
+`POST /pets/register` `{ name?, petKey, ownerAddress, payoutAddress, worldProof }`. `worldProof` is IDKit's `completion.result`. The server does not check its shape: it forwards it unchanged to `POST https://developer.worldcoin.org/api/v4/verify/{RP_ID}` and trusts `success` (plus `action`, if the portal returns one). The nullifier comes from the portal's answer, else from the proof (v4 `responses[].nullifier`, or legacy `nullifier_hash`). It calls `registerPet` on the vault, and only after that succeeds does it store the nullifier. The first request logs the proof's top-level key names (never values).
+-> `{ ok, txHash, name }`. 400 for a missing or non-object proof, 403 `World proof rejected: <code>` if the portal says no, 409 `already has a pet` for a reused nullifier, 502 if the portal or chain is down. A failed `registerPet` keeps no nullifier, so the human can retry.
 
 `POST /impressions` `{ impressions: [{ petKey, campaignId, count }] }` -> `{ accepted, pending }`. `petKey` may also be the pet name. Counts accumulate until settled.
 
