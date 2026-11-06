@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { isAddress, type Address } from "viem";
 import { ApiError, registerPet, worldSign } from "@/lib/api";
 import { connectWallet } from "@/lib/chain";
-import { txLink, WORLD_APP_ID, WORLD_PRESET, WORLD_RP_ID } from "@/lib/config";
+import { txLink, WORLD_APP_ID, WORLD_ENV, WORLD_PRESET, WORLD_RP_ID } from "@/lib/config";
 
 type Phase =
   | { kind: "form" }
@@ -68,6 +68,7 @@ export default function GetYourPet() {
           signature: sig.sig,
         },
         allow_legacy_proofs: true,
+        environment: WORLD_ENV,
       } as Parameters<typeof IDKit.request>[0]).preset(preset);
 
       setPhase({ kind: "scan", uri: request.connectorURI });
@@ -137,11 +138,26 @@ export default function GetYourPet() {
 
       {phase.kind === "scan" && (
         <div className="card">
-          <h2>Scan with World App</h2>
-          <p className="muted">Open World App (or the World ID sandbox app) and scan this code.</p>
+          <h2>{WORLD_ENV === "staging" ? "Verify with the World ID simulator" : "Scan with World App"}</h2>
+          {WORLD_ENV === "staging" ? (
+            <p className="muted">
+              Test mode: open{" "}
+              <a href="https://simulator.worldcoin.org" target="_blank" rel="noreferrer">
+                simulator.worldcoin.org
+              </a>
+              , then scan this code or paste the link below into it.
+            </p>
+          ) : (
+            <p className="muted">Open World App and scan this code.</p>
+          )}
           <div className="qr">
             <QRCodeSVG value={phase.uri} size={220} />
           </div>
+          <p style={{ textAlign: "center" }}>
+            <button className="ghost" onClick={() => navigator.clipboard?.writeText(phase.uri)}>
+              Copy link
+            </button>
+          </p>
           <p className="muted" style={{ textAlign: "center" }}>
             Waiting for your phone...
           </p>

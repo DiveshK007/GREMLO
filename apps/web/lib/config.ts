@@ -4,6 +4,8 @@ export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhos
 export const WORLD_APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID ?? "";
 export const WORLD_RP_ID = process.env.NEXT_PUBLIC_WORLD_RP_ID ?? "";
 export const WORLD_PRESET = process.env.NEXT_PUBLIC_WORLD_PRESET === "device" ? "device" : "orb";
+// "staging" = World App simulator (simulator.worldcoin.org), no phone or Orb needed. "production" = real World App.
+export const WORLD_ENV = process.env.NEXT_PUBLIC_WORLD_ENV === "production" ? "production" : "staging";
 
 export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 16602);
 export const CHAIN_RPC = process.env.NEXT_PUBLIC_CHAIN_RPC ?? "https://evmrpc-testnet.0g.ai";
