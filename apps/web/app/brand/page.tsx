@@ -286,7 +286,7 @@ export default function FundCampaign() {
         </div>
         <p>
           <button className="ghost" onClick={onLookup} disabled={busy === "lookup"}>
-            Check
+            {busy === "lookup" ? "Checking…" : "Check"}
           </button>{" "}
           <button className="ghost" onClick={onSettle} disabled={busy === "settle"}>
             {busy === "settle" ? "Settling onchain…" : "Settle impressions"}
