@@ -84,3 +84,18 @@ test('suggestLines retries once for JSON, then falls back to the reply text, nev
   await suggestLines('x', { fetch: q.fetch });
   assert.equal(q.sent.length, 1);
 });
+
+test('suggestLines threads the picked tone into the prompt and rejects unknown tones', async () => {
+  const { suggestLines } = await import('./index.js');
+  let system = '';
+  const fetch = async (u, init) => {
+    system = JSON.parse(init.body).messages[0].content;
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"lines":["a","b","c"]}' } }], x_0g_trace: { request_id: 'T1' } }));
+  };
+  await suggestLines('x', { fetch, tone: 'dev-meme' });
+  assert.match(system, /Tone: developer in-joke/);
+  assert.match(system, /at most 40 characters/);
+  await suggestLines('x', { fetch });
+  assert.doesNotMatch(system, /Tone:/);
+  await assert.rejects(suggestLines('x', { fetch, tone: 'angry' }), /unknown tone/);
+});

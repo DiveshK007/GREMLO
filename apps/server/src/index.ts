@@ -8,7 +8,7 @@ import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, cors, worldSign } from "./web.ts";
 // @ts-expect-error plain ESM JS package, no types
-import { suggestLines, think } from "../../../packages/brain/index.js";
+import { suggestLines, think, TONES } from "../../../packages/brain/index.js";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -198,8 +198,10 @@ async function petThink(key: string, body: any) {
 async function campaignLines(body: any) {
   const brief = str(body.brief, 500);
   if (!brief?.trim()) throw bad("brief is required");
+  const tone = body.tone === undefined ? undefined : str(body.tone, 20);
+  if (tone !== undefined && !Object.hasOwn(TONES, tone)) throw bad(`tone must be one of ${Object.keys(TONES).join(", ")}`);
   try {
-    return { lines: await suggestLines(brief) };
+    return { lines: await suggestLines(brief, { tone }) };
   } catch (e: any) {
     throw new HttpError(502, e.message);
   }
