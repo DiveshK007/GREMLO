@@ -452,7 +452,8 @@ final class Pet {
             if pos.x >= rightX { pos.x = rightX; set(.climb); go(.climbing) }
         case .climbing:
             pos.y += 140 * dt
-            if pos.y >= topY { pos.y = topY; dir = -1; set(.walk); go(.ceiling) }
+            // Upside down on the top edge: the flipped sprite's feet are footPadding below its top, so lift it by that.
+            if pos.y >= topY { pos.y = topY + skin.footPadding; dir = -1; set(.walk); go(.ceiling) }
         case .ceiling:
             pos.x -= 140 * dt
             if pos.x <= doorX { pos.x = doorX; door.open(); go(.entering) }
@@ -515,6 +516,7 @@ final class Pet {
         var x = pos.x + size.width / 2 - w / 2
         var y = pos.y + size.height - 6 + (signPanel.isVisible ? signPanel.frame.height + 2 : 0)
         if path == .home { x = door.center.x - w / 2; y = door.panel.frame.minY - h - 2 }
+        if path == .ceiling { y = pos.y - h + skin.footPadding }
         x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
         bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
         if !bubblePanel.isVisible { bubblePanel.orderFrontRegardless() }
@@ -549,6 +551,8 @@ final class Pet {
     func draw() {
         var t = CGAffineTransform.identity
         if (state == .walk || state == .sign) && dir < 0 { t = t.scaledBy(x: -1, y: 1) }
+        // Body only: the sign and bubbles are separate windows, so they stay upright.
+        if path == .ceiling { t = t.scaledBy(x: 1, y: -1) }
         // Climb frames face left; mirror them so the feet are on the right wall.
         if state == .climb { t = t.scaledBy(x: -1, y: 1) }
         if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
