@@ -5,6 +5,6 @@ let package = Package(
     name: "Notchi",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "Notchi")
+        .executableTarget(name: "Notchi", resources: [.copy("Resources/notchi-hook.sh")])
     ]
 )

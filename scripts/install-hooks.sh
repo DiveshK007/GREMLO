@@ -6,7 +6,7 @@ set -euo pipefail
 command -v jq >/dev/null || { echo "Needs jq: brew install jq"; exit 1; }
 
 mkdir -p ~/.notchi
-cp scripts/notchi-hook.sh ~/.notchi/notchi-hook.sh
+cp apps/mac/Sources/Notchi/Resources/notchi-hook.sh ~/.notchi/notchi-hook.sh
 chmod +x ~/.notchi/notchi-hook.sh
 
 settings=~/.claude/settings.json

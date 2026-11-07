@@ -1341,6 +1341,13 @@ final class Backend: NSObject {
         home.bezelStyle = .rounded
         stack.addArrangedSubview(home)
 
+        // one click instead of hand-editing ~/.claude/settings.json; other hooks are kept and a backup is written first
+        let connected = ClaudeHooks.isConnected
+        let hooksButton = NSButton(title: connected ? "Disconnect Claude Code" : "Connect Claude Code", target: self, action: #selector(toggleClaudeHooks))
+        hooksButton.bezelStyle = .rounded
+        stack.addArrangedSubview(caption(connected ? "Claude Code: connected" : "Claude Code: not connected"))
+        stack.addArrangedSubview(hooksButton)
+
         // pairing ties this Mac's Secure Enclave key to the pet; the owner approves it with their wallet on the web
         if devicePublicKey != nil {
             let pair = NSButton(title: "Pair this Mac with my pet", target: self, action: #selector(pairDevice))
@@ -1411,6 +1418,17 @@ final class Backend: NSObject {
     }
 
     @objc func sendHome() { pet.goHome(lock: false) }
+    @objc func toggleClaudeHooks() {
+        do {
+            if ClaudeHooks.isConnected { try ClaudeHooks.disconnect() } else { try ClaudeHooks.connect() }
+        } catch {
+            let a = NSAlert()
+            a.messageText = "Couldn't update Claude Code's settings"
+            a.informativeText = "\(error.localizedDescription)\nNothing was changed. Your settings file is at ~/.claude/settings.json."
+            a.runModal()
+        }
+        renderSettings()
+    }
     @objc func pairDevice() {
         guard let key = devicePublicKey else { return }
         let web = ProcessInfo.processInfo.environment["NOTCHI_WEB"] ?? "http://localhost:3000"
@@ -1525,4 +1543,7 @@ do {
 }
 print("Notchi running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
+#if DEBUG
+ClaudeHooks.selfCheck()
+#endif
 app.run()
