@@ -43,7 +43,7 @@ async function chat(system, user, model, opts) {
       body: JSON.stringify({
         model,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        max_tokens: 1024, // reasoning models spend tokens before content; too low returns empty
+        max_tokens: opts.maxTokens ?? 1024, // reasoning models spend tokens before content; too low returns empty
       }),
       signal: AbortSignal.timeout(opts.timeoutMs ?? 20000),
     });
@@ -93,7 +93,7 @@ export function linesFromText(text) {
  * they came from. Nothing is ever made up: no usable lines means a throw with the real request ID.
  */
 export async function suggestLines(brief, opts = {}) {
-  opts = { timeoutMs: 60000, ...opts }; // live call took 33s
+  opts = { timeoutMs: 60000, maxTokens: 4096, ...opts }; // live call took 33s; the reasoning model used all 1024 tokens before writing a line
   if (opts.tone !== undefined && !Object.hasOwn(TONES, opts.tone)) throw new Error(`unknown tone: ${opts.tone}`);
   let r = await chat(linesSystem(opts.tone), String(brief), SMART, opts);
   if (!r.out) r = await chat(linesStrict(opts.tone), String(brief), SMART, opts);

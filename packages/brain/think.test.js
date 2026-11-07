@@ -99,3 +99,15 @@ test('suggestLines threads the picked tone into the prompt and rejects unknown t
   assert.doesNotMatch(system, /Tone:/);
   await assert.rejects(suggestLines('x', { fetch, tone: 'angry' }), /unknown tone/);
 });
+
+test('suggestLines leaves the reasoning model room to answer; think stays at 1024', async () => {
+  const { suggestLines } = await import('./index.js');
+  const caps = [];
+  const fetch = async (u, init) => {
+    caps.push(JSON.parse(init.body).max_tokens);
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"lines":["a","b","c"],"action":"work"}' } }], x_0g_trace: { request_id: 'M1' } }));
+  };
+  await suggestLines('x', { fetch });
+  await think({ mood: 'stable' }, { fetch });
+  assert.deepEqual(caps, [4096, 1024]);
+});
