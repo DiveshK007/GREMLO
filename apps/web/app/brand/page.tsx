@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatEther, parseEther, type Address, type Hash } from "viem";
 import {
-  ApiError, campaignStats, checkCampaign, FORMATS, recordCampaign, settleImpressions, suggestHooks,
+  ApiError, arkivCampaign, campaignStats, checkCampaign, FORMATS, type ArkivView, recordCampaign, settleImpressions, suggestHooks,
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
@@ -55,6 +55,7 @@ export default function FundCampaign() {
   const [lookupId, setLookupId] = useState("");
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [arkiv, setArkiv] = useState<ArkivView | null>(null);
   const [refund, setRefund] = useState<{ txHash: Hash; amount: bigint } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -171,9 +172,10 @@ export default function FundCampaign() {
     if (!/^\d+$/.test(id)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("lookup");
     try {
-      const [l, s] = await Promise.all([readCampaign(BigInt(id)), campaignStats(id).catch(() => null)]);
+      const [l, s, a] = await Promise.all([readCampaign(BigInt(id)), campaignStats(id).catch(() => null), arkivCampaign(id).catch(() => null)]);
       setLookup(l);
       setStats(s);
+      setArkiv(a);
     } catch (e) {
       setCampaignError((e as Error).message.split("\n")[0]);
     } finally {
@@ -434,6 +436,20 @@ export default function FundCampaign() {
                   {stats.views.every((v, i) => !v && !stats.clicks[i]) && <tr><td colSpan={4} className="muted">No views yet. They appear here as developers' agents start working.</td></tr>}
                 </tbody>
               </table>
+            )}
+            {arkiv?.on && (
+              <div className="arkiv">
+                <p className="mono section-kicker">Mirrored on Arkiv</p>
+                {arkiv.card ? (
+                  <p>
+                    Campaign card <span className="mono">{arkiv.card.key.slice(0, 10)}…</span>, expires at Arkiv block {arkiv.card.expiresAt}.{" "}
+                    {arkiv.receipts.length} settlement receipt{arkiv.receipts.length === 1 ? "" : "s"}.{" "}
+                    <a href={arkiv.explorer} target="_blank" rel="noreferrer">Arkiv explorer</a>
+                  </p>
+                ) : (
+                  <p className="muted">Not on Arkiv yet. It's published when the campaign is saved.</p>
+                )}
+              </div>
             )}
             {stats && stats.pendingViews > 0 && <p className="muted">{stats.pendingViews} view{stats.pendingViews === 1 ? "" : "s"} waiting to be settled.</p>}
             {!lookup.closed && lookup.endTime + 3600n <= nowSec && (

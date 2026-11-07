@@ -239,3 +239,4 @@ label.check input { width: auto; margin-top: 3px; }
   .notch-stage .door { opacity: 1; transform: none; animation: none !important; }
   .notch-stage .drop { opacity: 1; transform: translateY(60px); animation: none !important; }
 }
+.arkiv { border-top: 1px solid var(--rule-on-paper); padding-top: var(--s-2); margin-top: var(--s-2); }

@@ -112,3 +112,9 @@ export const pairDevice = (pet: string, key: string, signature: string) =>
 
 /** GET /pets/:name -> the pet's canonical name and mood. */
 export const getPet = (name: string) => call<{ name: string; mood: string }>(`/pets/${encodeURIComponent(name)}`);
+
+/** GET /campaigns/:id/arkiv -> what Arkiv holds for this campaign, read back from Arkiv. */
+export type ArkivView =
+  | { on: false }
+  | { on: true; explorer: string; card: { key: string; expiresAt: string; hooks: string[]; url: string; rateWei: string; fundingTx: string } | null; receipts: { key: string; pet: string; views: number; amountWei: string; settleTx: string }[] };
+export const arkivCampaign = (id: string) => call<ArkivView>(`/campaigns/${encodeURIComponent(id)}/arkiv`);
