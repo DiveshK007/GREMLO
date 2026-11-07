@@ -331,8 +331,13 @@ function signClick(id: string, hookStr: string, petKey: string | null, q: URLSea
   if (pet) {
     const key = q.get("key"), time = q.get("t"), sig = q.get("sig");
     if (key && time && sig) {
-      checkSigned({ key, time, sig, message: canonical("GET", `/c/${id}/${hookStr}`, time, pet.name), now: Date.now(), seen: seenSigs });
-      if (petByDevice(key)?.petKey !== pet.petKey) pet = undefined;
+      // a bad signature never blocks the developer's click: it just isn't counted
+      try {
+        checkSigned({ key, time, sig, message: canonical("GET", `/c/${id}/${hookStr}`, time, petKey!), now: Date.now(), seen: seenSigs });
+        if (petByDevice(key)?.petKey !== pet.petKey) pet = undefined;
+      } catch {
+        pet = undefined;
+      }
     } else if (pet.devices?.length) pet = undefined; // unsigned click for a paired pet: still redirect, never count
   }
   if (pet && countImpression(store.lastClick, `${id}:${pet.petKey}`, Date.now(), CLICK_WINDOW_MS)) {
