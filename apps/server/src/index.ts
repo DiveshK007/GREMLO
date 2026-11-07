@@ -8,6 +8,7 @@ import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, worldSign } from "./web.ts";
 import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
+import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
@@ -204,6 +205,7 @@ async function settle(id: string) {
         markSettled(store.pending[id], s.pet, s.count, "paid");
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
+        void publishReceipt({ campaignId: id, pet: getAddress(s.pet), views: s.count, amountWei: s.amount, settleTx: txHash, chainId: chain.id, endTime });
       } catch (e: any) {
         markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
         save();
@@ -324,7 +326,7 @@ async function saveCampaign(body: any) {
     // the web app posts right after sending; wait for it so the campaign exists when we read it
     await pub.waitForTransactionReceipt({ hash: body.txHash, timeout: 60_000 });
   }
-  const [brand, , , rate, , , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
+  const [brand, , , rate, endTime, , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
   if (rate === 0n) throw new HttpError(404, "unknown campaign");
   const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
   // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
@@ -332,6 +334,8 @@ async function saveCampaign(body: any) {
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
   if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
+  // public, self-expiring card on Arkiv; never blocks the brand (failures are logged)
+  void publishCampaign({ id, brand, hooks: line.split("\n"), url: store.urls[id] ?? "", rateWei: rate, endTime, chainId: chain.id, fundingTx: String(body.txHash ?? "") });
   const name = str(body.brand, 40);
   if (name) store.brands[brand] = name;
   save();
@@ -480,6 +484,8 @@ async function route(req: IncomingMessage) {
   if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"), searchParams);
   const stats = pathname.match(/^\/campaigns\/([^/]+)\/stats$/);
   if (m === "GET" && stats) return campaignStats(stats[1]);
+  const ark = pathname.match(/^\/campaigns\/([1-9][0-9]*)\/arkiv$/);
+  if (m === "GET" && ark) return arkivCampaign(ark[1]);
   if (m === "POST" && pathname === "/campaigns") return saveCampaign(await readBody(req));
   const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
   if (m === "POST" && thinkPath) {
