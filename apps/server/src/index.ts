@@ -1,12 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { BaseError, getAddress, isAddress } from "viem";
+import { BaseError, getAddress, isAddress, verifyMessage } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, worldSign } from "./web.ts";
+import { canonical, checkSigned, deviceKey, keyId, pairMessage } from "./auth.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
@@ -81,22 +82,70 @@ const errMsg = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e inst
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
-async function readBody(req: IncomingMessage) {
+async function readRaw(req: IncomingMessage) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
     if (raw.length > 100_000) throw new HttpError(413, "body too large");
   }
-  try { return raw ? JSON.parse(raw) : {}; } catch { throw bad("invalid JSON"); }
+  return raw;
+}
+const parse = (raw: string) => { try { return raw ? JSON.parse(raw) : {}; } catch { throw bad("invalid JSON"); } };
+async function readBody(req: IncomingMessage) {
+  return parse(await readRaw(req));
+}
+
+// ---- device signatures (PLAN_V2 A3) ----
+const seenSigs = new Map<string, number>();
+const petByDevice = (key: string) => Object.values(store.pets).find((p) => p.devices?.includes(key));
+
+/**
+ * The pet a request is signed by, or null when unsigned. A pet with a paired device must sign: an unsigned
+ * request for it is a 401, and a signed one must come from one of its own devices.
+ */
+function signer(req: IncomingMessage, path: string, raw: string) {
+  const key = req.headers["x-notchi-key"], time = req.headers["x-notchi-time"], sig = req.headers["x-notchi-sig"];
+  if (typeof key !== "string" || typeof time !== "string" || typeof sig !== "string") return null;
+  checkSigned({ key, time, sig, message: canonical(req.method ?? "GET", path, time, raw), now: Date.now(), seen: seenSigs });
+  const pet = petByDevice(key);
+  if (!pet) throw new HttpError(401, "device is not paired to any pet");
+  return pet;
+}
+/** The request must be from `pet`'s device if it has one; an unsigned request is fine only for unpaired pets. */
+function mustBeFrom(pet: PetRecord, signed: PetRecord | null) {
+  if (signed && signed.petKey !== pet.petKey) throw new HttpError(401, "device is paired to a different pet");
+  if (!signed && pet.devices?.length) throw new HttpError(401, "this pet has a paired device; requests must be signed");
+}
+
+/** Pair a device to a pet: the pet's owner signs the pairing message with their wallet. */
+async function pairDevice(name: string, body: any) {
+  const pet = findPet(name);
+  if (!pet) throw new HttpError(404, "unknown pet");
+  const key = String(body?.key ?? "");
+  deviceKey(key); // 400 if not a P-256 public key
+  const signature = String(body?.signature ?? "");
+  if (!/^0x[0-9a-fA-F]+$/.test(signature)) throw bad("signature is required");
+  const ok = await verifyMessage({ address: getAddress(pet.owner), message: pairMessage(pet.name, keyId(key)), signature: signature as `0x${string}` }).catch(() => false);
+  if (!ok) throw new HttpError(403, "signature is not from this pet's owner");
+  const devices = (pet.devices ??= []);
+  if (!devices.includes(key)) {
+    if (devices.length >= 5) throw bad("a pet can have at most 5 paired devices; unpair one first");
+    devices.push(key);
+    save();
+  }
+  return { ok: true, pet: pet.name, device: keyId(key) };
 }
 
 /** Each entry is one sign-shown event. Only registered (World-verified) pets, at most one per campaign per window. */
-function addImpressions(body: any) {
+function addImpressions(req: IncomingMessage, raw: string) {
+  const body = parse(raw);
   if (!Array.isArray(body.impressions) || body.impressions.length === 0) throw bad("impressions must be a non-empty array");
+  const signed = signer(req, "/impressions", raw); // verified once per request, then checked per row
   // validate all entries before touching the store so a bad batch changes nothing
   const rows = body.impressions.map((i: any) => {
     const pet = findPet(String(i?.petKey ?? ""));
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
+    mustBeFrom(pet, signed);
     const id = String(i.campaignId);
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
     const hook = i.hook === undefined ? null : Number(i.hook);
@@ -275,14 +324,21 @@ async function saveCampaign(body: any) {
 }
 
 /** A sign click: counted at most once per pet per campaign per window, then off to the brand with UTM tags. */
-function signClick(id: string, hookStr: string, petKey: string | null) {
+function signClick(id: string, hookStr: string, petKey: string | null, q: URLSearchParams) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
   const url = store.urls[id];
   if (!url) throw new HttpError(404, "this campaign has no link");
   const hook = Number(hookStr);
   if (!(Number.isInteger(hook) && hook >= 0 && hook < 5)) throw bad("hook must be 0-4");
-  // shortcut: clicks are counted from registered pets but not yet signed; they are reported, not paid, until signing lands (PLAN_V2 A3/E1)
-  const pet = petKey ? findPet(petKey) : undefined;
+  // a browser can't send headers, so a click carries its device signature in the query (over the pet name)
+  let pet = petKey ? findPet(petKey) : undefined;
+  if (pet) {
+    const key = q.get("key"), time = q.get("t"), sig = q.get("sig");
+    if (key && time && sig) {
+      checkSigned({ key, time, sig, message: canonical("GET", `/c/${id}/${hookStr}`, time, pet.name), now: Date.now(), seen: seenSigs });
+      if (petByDevice(key)?.petKey !== pet.petKey) pet = undefined;
+    } else if (pet.devices?.length) pet = undefined; // unsigned click for a paired pet: still redirect, never count
+  }
   if (pet && countImpression(store.lastClick, `${id}:${pet.petKey}`, Date.now(), CLICK_WINDOW_MS)) {
     (store.clicks[id] ??= [0, 0, 0, 0, 0])[hook]++;
     save();
@@ -386,7 +442,9 @@ async function route(req: IncomingMessage) {
   const m = req.method;
   if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
-  if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
+  if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
+  const pair = pathname.match(/^\/pets\/([^/]+)\/device$/);
+  if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(await readBody(req));
@@ -399,12 +457,18 @@ async function route(req: IncomingMessage) {
     return { ok: true, url: checkUrl(b?.url) };
   }
   const click = pathname.match(/^\/c\/([^/]+)\/([^/]+)$/);
-  if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"));
+  if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"), searchParams);
   const stats = pathname.match(/^\/campaigns\/([^/]+)\/stats$/);
   if (m === "GET" && stats) return campaignStats(stats[1]);
   if (m === "POST" && pathname === "/campaigns") return saveCampaign(await readBody(req));
   const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
-  if (m === "POST" && thinkPath) return petThink(decodeURIComponent(thinkPath[1]), await readBody(req));
+  if (m === "POST" && thinkPath) {
+    const raw = await readRaw(req);
+    const pet = findPet(decodeURIComponent(thinkPath[1]));
+    const signed = signer(req, pathname, raw); // think spends real 0G
+    if (pet) mustBeFrom(pet, signed);
+    return petThink(decodeURIComponent(thinkPath[1]), parse(raw));
+  }
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }
