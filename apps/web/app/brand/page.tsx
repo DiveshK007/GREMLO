@@ -350,9 +350,11 @@ export default function FundCampaign() {
                 ? "Closed. Unspent budget was refunded."
                 : lookup.endTime > nowSec
                   ? `Running until ${new Date(Number(lookup.endTime) * 1000).toLocaleString()}.`
-                  : "Ended. It can be closed and refunded once the 1-hour settlement window passes."}
+                  : lookup.endTime + 3600n > nowSec
+                    ? `Ended. Impressions can be settled until ${new Date(Number(lookup.endTime + 3600n) * 1000).toLocaleTimeString()}; then it can be closed and refunded.`
+                    : "Ended and the settlement window has passed. Close it to refund what's left."}
             </p>
-            {!lookup.closed && lookup.endTime <= nowSec && (
+            {!lookup.closed && lookup.endTime + 3600n <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>
                 {busy === "close" ? "Closing…" : "Close and refund"}
               </button>
