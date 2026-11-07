@@ -183,3 +183,8 @@ export async function closeCampaign(account: Address, id: bigint): Promise<{ txH
   const [closed] = parseEventLogs({ abi: vaultAbi, eventName: "CampaignClosed", logs: receipt.logs });
   return { txHash, refund: closed ? closed.args.refund : 0n };
 }
+
+/** Ask the owner's wallet to sign a plain-text message (used to approve pairing a device to their pet). */
+export async function signText(account: Address, message: string) {
+  return walletClient(account).signMessage({ account, message });
+}

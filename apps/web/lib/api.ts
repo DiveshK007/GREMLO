@@ -105,3 +105,10 @@ export const publicStats = () => call<PublicStats>(`/stats`);
 /** POST /try -> 3 example hooks for the homepage; rate-limited, labelled as examples. */
 export const tryHook = (product: string, audience: string) =>
   call<{ hooks: Hook[]; requestId: string; example: true }>(`/try`, { method: "POST", body: JSON.stringify({ product, audience }) });
+
+/** POST /pets/:name/device -> pair a Mac's Secure Enclave key to the pet; the owner's wallet signs the pairing. */
+export const pairDevice = (pet: string, key: string, signature: string) =>
+  call<{ ok: true; pet: string; device: string }>(`/pets/${encodeURIComponent(pet)}/device`, { method: "POST", body: JSON.stringify({ key, signature }) });
+
+/** GET /pets/:name -> the pet's canonical name and mood. */
+export const getPet = (name: string) => call<{ name: string; mood: string }>(`/pets/${encodeURIComponent(name)}`);
