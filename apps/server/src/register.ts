@@ -79,12 +79,13 @@ export function makeRegister(deps: {
     // shape is the portal's call, not ours; we only need something to forward
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw bad("worldProof is required");
     const { pets, nullifiers } = deps.store;
-    if (pets[name] || Object.values(pets).some((p) => p.petKey === petKey)) throw new HttpError(409, "pet already registered");
 
+    // World first: a returning human must hear "already has a pet", not a name clash with their own pet
     const verdict = await deps.verify(proof);
     if (!verdict.ok) throw new HttpError(403, `World proof rejected: ${verdict.code}`);
     const n = verdict.nullifier;
     if (nullifiers.includes(n) || claiming.has(n)) throw new HttpError(409, "already has a pet");
+    if (pets[name] || Object.values(pets).some((p) => p.petKey === petKey)) throw new HttpError(409, "pet already registered");
 
     claiming.add(n);
     try {

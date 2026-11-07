@@ -124,3 +124,9 @@ test("nullifier comes from the portal answer, else from the field the proof's ve
   assert.deepEqual(await run({}, { protocol_version: "4.0", nullifier: "0x1", responses: [{ nullifier: "0x2a" }] }), n42);
   assert.deepEqual(await run({}, { proof: "x" }), { ok: false, code: "no_nullifier" });
 });
+
+test("the same human with the same pet key hears World's answer, not a name clash", async () => {
+  const { register } = setup({ ok: true, nullifier: "42" });
+  await register(body(PET_A));
+  await assert.rejects(register(body(PET_A)), (e: any) => e.status === 409 && e.message === "already has a pet");
+});
