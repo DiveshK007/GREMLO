@@ -348,6 +348,8 @@ final class Pet {
     let signStrip = CALayer()
     var scrollPaused = false
     var signShownAt: Date?
+    var onSignClick: (() -> Void)?
+    var signLinks = false // the current campaign has a link to open
     // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let bubbleLabel = NSTextField(wrappingLabelWithString: "")
@@ -380,6 +382,11 @@ final class Pet {
         click.autoresizingMask = [.width, .height]
         click.onClick = { [weak self] in self?.poke() }
         panel.contentView?.addSubview(click)
+        // The sign opens the brand's link; it only takes clicks while the cursor is on it (see updateCursor).
+        let signClick = ClickView(frame: CGRect(origin: .zero, size: signSize))
+        signClick.autoresizingMask = [.width, .height]
+        signClick.onClick = { [weak self] in self?.onSignClick?() }
+        signPanel.contentView?.addSubview(signClick)
         if let board = signPanel.contentView?.layer {
             board.backgroundColor = paperColor
             board.borderWidth = 1
@@ -551,8 +558,13 @@ final class Pet {
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
         let inside = path == .floor && onHomeSpace && panel.isVisible && opaque(at: mouse)
-        setScrollPaused(inside || (signPanel.isVisible && signPanel.frame.contains(mouse)))
+        let overSign = signPanel.isVisible && signPanel.frame.contains(mouse)
+        setScrollPaused(inside || overSign)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+        // the sign is clickable only under the cursor, and never while the agent waits for approval
+        let signTakesClick = overSign && !waiting && signLinks
+        if signPanel.ignoresMouseEvents == signTakesClick { signPanel.ignoresMouseEvents = !signTakesClick }
+        if signTakesClick { NSCursor.pointingHand.set() }
         if annoyance > 0 && Date().timeIntervalSince(lastPoke) > 6 { annoyance = 0 }
         if state == .annoy && (annoyance == 0 || busy) {
             set(beforeFun ?? .walk)
@@ -971,7 +983,10 @@ final class HookServer {
     }
 }
 
-struct Campaign: Decodable { let campaignId: String; let line: String?; let brand: String; let ratePerImpression: String }
+struct Campaign: Decodable {
+    let campaignId: String; let line: String?; let hooks: [String]?; let url: String?; let brand: String; let ratePerImpression: String
+    var allHooks: [String] { hooks?.isEmpty == false ? hooks! : line.map { [$0] } ?? [] }
+}
 struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
 struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
 struct PetInfo: Decodable {
@@ -1015,6 +1030,11 @@ final class Backend: NSObject {
     var serverError: String?
     var thinking = false
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
+    // Hook rotation: the next hook on each new appearance of the sign, and every 45s while it stays up.
+    var hookIndex = 0
+    var hookSince = Date()
+    var signWasUp = false
+    var currentHook: Int { campaign.map { $0.allHooks.isEmpty ? 0 : hookIndex % $0.allHooks.count } ?? 0 }
     // Polls overlap (timer + after each think); a late reply must not roll the balance back and re-show a meal.
     var petSent = 0, petApplied = 0
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
@@ -1025,6 +1045,12 @@ final class Backend: NSObject {
     init(pet: Pet) {
         self.pet = pet
         super.init()
+        // A sign click goes through the server, which counts it once per window and redirects to the brand.
+        pet.onSignClick = { [weak self] in
+            guard let self, let c = self.campaign, c.url != nil else { return }
+            let pet = self.petName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self.petName
+            if let u = URL(string: "\(self.base)/c/\(c.campaignId)/\(self.currentHook)?pet=\(pet)") { NSWorkspace.shared.open(u) }
+        }
         item.button?.title = "Notchi"
         item.button?.target = self
         item.button?.action = #selector(toggle)
@@ -1044,11 +1070,23 @@ final class Backend: NSObject {
     }
 
     // BUILD_GUIDE section 8: working state, sign visible 5s, once per campaign per minute.
+    func rotateHooks() {
+        let up = pet.signShownAt != nil
+        if (signWasUp && !up) || (up && Date().timeIntervalSince(hookSince) > 45) {
+            hookIndex += 1
+            hookSince = Date()
+            render()
+        }
+        if up && !signWasUp { hookSince = Date() }
+        signWasUp = up
+    }
+
     func reportImpression() {
-        guard let c = campaign, c.line != nil, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
+        rotateHooks()
+        guard let c = campaign, !c.allHooks.isEmpty, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
         if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
         lastImpression[c.campaignId] = Date()
-        request("/impressions", body: ["impressions": [["petKey": petName, "campaignId": c.campaignId]]]) { _, err in
+        request("/impressions", body: ["impressions": [["petKey": petName, "campaignId": c.campaignId, "hook": currentHook]]]) { _, err in
             if let err { print("impression not sent: \(err)") }
             self.refresh()
         }
@@ -1129,7 +1167,9 @@ final class Backend: NSObject {
     func render() {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
-        pet.setSign(sponsoredOn ? campaign?.line.map { $0 + tag } : nil)
+        let hooks = campaign?.allHooks ?? []
+        pet.signLinks = sponsoredOn && campaign?.url != nil
+        pet.setSign(sponsoredOn && !hooks.isEmpty ? hooks[currentHook] + tag : nil)
         if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings { return }  // don't rebuild under a dragging slider
         let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)"
