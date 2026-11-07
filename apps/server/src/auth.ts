@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { HttpError } from "./register.ts";
+import { HttpError, type PetRecord } from "./register.ts";
 
 // Device signatures: each Mac install holds a P-256 key in the Secure Enclave. Requests that cost or earn money
 // carry a DER ECDSA signature over a canonical string, so a view, think or click can't be forged by a script.
@@ -44,3 +44,9 @@ export function checkSigned(opts: { key: string; time: string; sig: string; mess
 /** The message a pet owner signs with their wallet to pair a device to their pet. */
 export const pairMessage = (petName: string, deviceKeyId: string) =>
   `Pair this device to my Notchi pet.\nPet: ${petName}\nDevice: ${deviceKeyId}`;
+
+/** The request must be from `pet`'s device if it has one; an unsigned request is fine only for unpaired pets. */
+export function mustBeFrom(pet: Pick<PetRecord, "petKey" | "devices">, signed: Pick<PetRecord, "petKey"> | null) {
+  if (signed && signed.petKey !== pet.petKey) throw new HttpError(401, "device is paired to a different pet");
+  if (!signed && pet.devices?.length) throw new HttpError(401, "this pet has a paired device; requests must be signed");
+}

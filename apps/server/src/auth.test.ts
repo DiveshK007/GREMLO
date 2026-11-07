@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { canonical, checkSigned, keyId, pairMessage } from "./auth.ts";
+import { canonical, checkSigned, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 
 // a P-256 key like the Secure Enclave's, exported the way CryptoKit's x963Representation is
 function device() {
@@ -39,4 +39,13 @@ test("pairing message names the pet and a stable device id", () => {
   assert.equal(keyId(d.key), keyId(d.key));
   assert.equal(keyId(d.key).length, 16);
   assert.match(pairMessage("mochi.notchi.eth", keyId(d.key)), /Pet: mochi\.notchi\.eth\nDevice: [0-9a-f]{16}$/);
+});
+
+test("a paired pet only accepts its own device; an unpaired pet still works unsigned", () => {
+  const paired = { petKey: "0xA", devices: ["k1"] }, unpaired = { petKey: "0xB" };
+  mustBeFrom(paired, { petKey: "0xA" });
+  assert.throws(() => mustBeFrom(paired, null), (e: any) => e.status === 401 && /must be signed/.test(e.message));
+  assert.throws(() => mustBeFrom(paired, { petKey: "0xB" }), /different pet/);
+  mustBeFrom(unpaired, null);
+  assert.throws(() => mustBeFrom(unpaired, { petKey: "0xA" }), /different pet/);
 });

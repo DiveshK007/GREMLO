@@ -7,7 +7,7 @@ import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, worldSign } from "./web.ts";
-import { canonical, checkSigned, deviceKey, keyId, pairMessage } from "./auth.ts";
+import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
@@ -111,11 +111,7 @@ function signer(req: IncomingMessage, path: string, raw: string) {
   if (!pet) throw new HttpError(401, "device is not paired to any pet");
   return pet;
 }
-/** The request must be from `pet`'s device if it has one; an unsigned request is fine only for unpaired pets. */
-function mustBeFrom(pet: PetRecord, signed: PetRecord | null) {
-  if (signed && signed.petKey !== pet.petKey) throw new HttpError(401, "device is paired to a different pet");
-  if (!signed && pet.devices?.length) throw new HttpError(401, "this pet has a paired device; requests must be signed");
-}
+
 
 /** Pair a device to a pet: the pet's owner signs the pairing message with their wallet. */
 async function pairDevice(name: string, body: any) {
