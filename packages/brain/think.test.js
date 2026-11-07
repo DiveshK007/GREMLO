@@ -100,7 +100,7 @@ test('suggestLines threads the picked tone into the prompt and rejects unknown t
   await assert.rejects(suggestLines('x', { fetch, tone: 'angry' }), /unknown tone/);
 });
 
-test('suggestLines leaves the reasoning model room to answer; think stays at 1024', async () => {
+test('suggestLines and think leave the reasoning model room to answer', async () => {
   const { suggestLines } = await import('./index.js');
   const caps = [];
   const fetch = async (u, init) => {
@@ -109,5 +109,5 @@ test('suggestLines leaves the reasoning model room to answer; think stays at 102
   };
   await suggestLines('x', { fetch });
   await think({ mood: 'stable' }, { fetch });
-  assert.deepEqual(caps, [4096, 1024]);
+  assert.deepEqual(caps, [4096, 2048]);
 });

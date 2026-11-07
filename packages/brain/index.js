@@ -43,7 +43,7 @@ async function chat(system, user, model, opts) {
       body: JSON.stringify({
         model,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        max_tokens: opts.maxTokens ?? 1024, // reasoning models spend tokens before content; too low returns empty
+        max_tokens: opts.maxTokens ?? 2048, // reasoning models spend tokens before content; a Stop decision used 982 of 1024
       }),
       signal: AbortSignal.timeout(opts.timeoutMs ?? 20000),
     });
