@@ -35,7 +35,7 @@ Built from scratch at ETHGlobal Mumbai 2026.
 - **Three avatars.** Notchi, Notchi Ink and Notchi Signal, switched live from the menu-bar popover.
 - **Settings.** Sounds, sponsored lines on/off, ticker, walk speed, how long before it goes home, and a "Send pet home" button.
 - **Reminders.** After the agent stops or asks for approval, Notchi reminds you every 2, 5 or 10 minutes (or never) until your next prompt.
-- **Stays on its desktop.** The pet lives on the Space it started on and never covers full-screen apps. A setting shows it on all desktops. Impressions only count while the sign is actually on screen.
+- **Stays out of full-screen apps.** The pet shows on every normal desktop but never covers full-screen apps; a setting shows it there too. Impressions only count while the sign is actually on screen.
 - **Reacts to you.** Hover and it turns to smile; click it repeatedly and it gets annoyed, then calms down after 6 seconds. It never interrupts work, approvals or what its 0G brain says.
 
 ## How each sponsor is used

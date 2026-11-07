@@ -10,12 +10,13 @@ var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AF
 var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
 var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
-// Off: overlay windows stay on the Space Notchi started on, and never over full-screen apps.
+// Off: on every normal desktop, never over full-screen apps. On: over full-screen apps too.
+// (Pinning to the launch Space hid the pet on the desktop whenever Notchi was started from a full-screen app.)
 var allDesktops = defaults.bool(forKey: "allDesktops")
 // Come-back reminders every N minutes after Stop or an approval request; 0 is off.
 var reminderMinutes = defaults.object(forKey: "reminderMinutes") as? Double ?? 5
 func spacesBehavior() -> NSWindow.CollectionBehavior {
-    allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.stationary]
+    allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.canJoinAllSpaces, .stationary]
 }
 
 enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
@@ -1221,7 +1222,7 @@ final class Backend: NSObject {
         sponsored.state = sponsoredOn ? .on : .off
         stack.addArrangedSubview(sounds)
         stack.addArrangedSubview(sponsored)
-        let spaces = NSButton(checkboxWithTitle: "Show on all desktops", target: self, action: #selector(toggleAllDesktops(_:)))
+        let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
         spaces.state = allDesktops ? .on : .off
         stack.addArrangedSubview(spaces)
 
