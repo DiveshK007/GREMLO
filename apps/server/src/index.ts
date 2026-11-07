@@ -109,8 +109,15 @@ async function settle(id: string) {
   if (settling.has(id)) throw new HttpError(409, "settlement already running for this campaign");
   settling.add(id);
   try {
-    const [, , , rate] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
+    const [, , , rate, endTime, closed] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
     if (rate === 0n) throw new HttpError(404, "unknown campaign");
+    if (closed) throw new HttpError(409, `campaign #${id} is closed; nothing more can be paid from it`);
+    // the contract pays only until 1 hour after the end; say so instead of sending a tx that reverts
+    const { timestamp } = await pub.getBlock();
+    if (timestamp > endTime + 3600n) {
+      const queued = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
+      throw new HttpError(409, `campaign #${id}'s settlement window closed at ${new Date(Number(endTime + 3600n) * 1000).toLocaleTimeString()}; ${queued} queued impression${queued === 1 ? "" : "s"} can't be paid. Close it to refund the rest.`);
+    }
     const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [BigInt(id)] });
     const plan = planSettlement(store.pending[id] ?? {}, rate, remaining);
 
