@@ -37,7 +37,14 @@ let defaults = UserDefaults.standard
 var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? (defaults.object(forKey: "homeAfter") as? Double ?? 75)
 var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
 var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
-var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? true
+// Sponsored hooks are opt-in: off until the developer turns them on (asked once on first launch).
+var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? false
+var quietHours = defaults.object(forKey: "quietHours") as? Bool ?? true // no hooks 22:00-08:00
+let dailyViewCap = 120 // the server enforces the same cap
+func inQuietHours(_ d: Date = Date()) -> Bool {
+    let h = Calendar.current.component(.hour, from: d)
+    return quietHours && (h >= 22 || h < 8)
+}
 // Off: on every normal desktop, never over full-screen apps. On: over full-screen apps too.
 // (Pinning to the launch Space hid the pet on the desktop whenever Notchi was started from a full-screen app.)
 var allDesktops = defaults.bool(forKey: "allDesktops")
@@ -1212,8 +1219,8 @@ final class Backend: NSObject {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
         let hooks = campaign?.allHooks ?? []
-        pet.signLinks = sponsoredOn && campaign?.url != nil
-        pet.setSign(sponsoredOn && !hooks.isEmpty ? hooks[currentHook] + tag : nil)
+        pet.signLinks = showHooks && campaign?.url != nil
+        pet.setSign(showHooks && !hooks.isEmpty ? "Sponsored \u{00B7} " + hooks[currentHook] + tag : nil)
         if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings { return }  // don't rebuild under a dragging slider
         let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)"
@@ -1256,7 +1263,9 @@ final class Backend: NSObject {
         stack.addArrangedSubview(row("Impressions today", info.map { "\($0.impressionsToday)" + tag } ?? "\u{2014}"))
 
         stack.addArrangedSubview(caption("Now showing"))
-        let line = !sponsoredOn ? "Sponsored lines are off" : campaign.map { "\"\($0.line ?? "\u{2014}")\"" } ?? "No active campaign"
+        let line = !sponsoredOn ? "Sponsored hooks are off" : inQuietHours() ? "Quiet hours: no hooks until 08:00"
+            : (info?.impressionsToday ?? 0) >= dailyViewCap ? "Daily limit reached: no more hooks today"
+            : campaign.map { "\"\($0.allHooks.isEmpty ? "\u{2014}" : $0.allHooks[currentHook])\"" } ?? "No active campaign"
         stack.addArrangedSubview(label(line, 15, .medium))
         if sponsoredOn, let c = campaign { stack.addArrangedSubview(label("by \(c.brand)\(tag)", 12, .regular, .secondaryLabelColor)) }
 
@@ -1302,10 +1311,13 @@ final class Backend: NSObject {
 
         let sounds = NSButton(checkboxWithTitle: "Sounds", target: self, action: #selector(toggleSounds(_:)))
         sounds.state = soundsOn ? .on : .off
-        let sponsored = NSButton(checkboxWithTitle: "Show sponsored lines", target: self, action: #selector(toggleSponsored(_:)))
+        let sponsored = NSButton(checkboxWithTitle: "Show sponsored hooks (earn while you wait)", target: self, action: #selector(toggleSponsored(_:)))
         sponsored.state = sponsoredOn ? .on : .off
+        let quiet = NSButton(checkboxWithTitle: "Quiet hours (no hooks 22:00\u{2013}08:00)", target: self, action: #selector(toggleQuiet(_:)))
+        quiet.state = quietHours ? .on : .off
         stack.addArrangedSubview(sounds)
         stack.addArrangedSubview(sponsored)
+        stack.addArrangedSubview(quiet)
         let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
         spaces.state = allDesktops ? .on : .off
         stack.addArrangedSubview(spaces)
@@ -1366,6 +1378,27 @@ final class Backend: NSObject {
 
     @objc func toggleSponsored(_ sender: NSButton) {
         sponsoredOn = sender.state == .on
+        defaults.set(sponsoredOn, forKey: "sponsored")
+        render()
+    }
+    @objc func toggleQuiet(_ sender: NSButton) {
+        quietHours = sender.state == .on
+        defaults.set(quietHours, forKey: "quietHours")
+        render()
+    }
+    /** Hooks show only when opted in, outside quiet hours, and under the daily cap. */
+    var showHooks: Bool { sponsoredOn && !inQuietHours() && (info?.impressionsToday ?? 0) < dailyViewCap }
+
+    /** Asked once: sponsored hooks are opt-in. */
+    func askSponsoredOnce() {
+        guard defaults.object(forKey: "sponsored") == nil else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "Show sponsored hooks and earn while you wait?"
+        a.informativeText = "While your agent works, the pet can carry one short sponsored line. Brands pay per verified view and the money goes to your pet's wallet. Never during approvals, never at night with quiet hours on, at most 120 a day. You can change this any time in Settings."
+        a.addButton(withTitle: "Turn on")
+        a.addButton(withTitle: "Not now")
+        sponsoredOn = a.runModal() == .alertFirstButtonReturn
         defaults.set(sponsoredOn, forKey: "sponsored")
         render()
     }
@@ -1491,4 +1524,5 @@ do {
     exit(1)
 }
 print("Notchi running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
+DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
 app.run()
