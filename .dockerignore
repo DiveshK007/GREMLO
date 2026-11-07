@@ -1,0 +1,13 @@
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/data.json
+**/data.json.tmp
+apps/mac
+apps/web
+contracts/out
+contracts/cache
+contracts/lib
+.git
+.gstack

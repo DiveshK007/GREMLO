@@ -457,6 +457,7 @@ if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WOR
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
+  if (m === "GET" && pathname === "/health") return { ok: true }; // for the host's health check; touches nothing
   if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
