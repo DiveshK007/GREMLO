@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countImpression, hookOrder, markSettled, planSettlement } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -59,4 +59,12 @@ test("auto-optimise: clicked hooks get more slots, young hooks keep a floor", ()
   assert.ok(newShare >= 0.12 && newShare < 0.5, `new hook share ${newShare}`);
   // every slot is a valid hook index
   assert.ok(hookOrder([], [], 4, rand).every((i) => i >= 0 && i < 4));
+});
+
+test("rate limit: N per window per key, then it frees up", () => {
+  const hits = new Map<string, number[]>();
+  const hour = 3_600_000;
+  assert.deepEqual([0, 1, 2, 3].map((i) => allow(hits, "ip-a", i * 1000, 3, hour)), [true, true, true, false]);
+  assert.equal(allow(hits, "ip-b", 4000, 3, hour), true); // other keys are separate
+  assert.equal(allow(hits, "ip-a", hour + 1, 3, hour), true); // the first hit aged out
 });

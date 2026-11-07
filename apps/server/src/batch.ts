@@ -72,3 +72,12 @@ export function hookOrder(views: number[], clicks: number[], n: number, rand = M
   }
   return order;
 }
+
+/** Sliding-window rate limit: true (and recorded) if `key` has fewer than `limit` hits in the last `windowMs`. */
+export function allow(hits: Map<string, number[]>, key: string, now: number, limit: number, windowMs: number) {
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (recent.length >= limit) { hits.set(key, recent); return false; }
+  recent.push(now);
+  hits.set(key, recent);
+  return true;
+}

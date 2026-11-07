@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { countImpression, hookOrder, markSettled, planSettlement, type Pending } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -298,6 +298,51 @@ function campaignStats(id: string) {
   return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending };
 }
 
+/** Homepage numbers, read from the chain's own events (never seeded). Cached for a minute. */
+let statsCache: { at: number; body: unknown } | null = null;
+async function publicStats() {
+  if (statsCache && Date.now() - statsCache.at < 60_000) return statsCache.body;
+  const [created, settled] = await Promise.all([
+    pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
+    pub.getContractEvents({ address: vault, abi, eventName: "ImpressionsSettled", fromBlock: deployBlock }),
+  ]);
+  const views = settled.reduce((a, e) => a + (e.args.count ?? 0n), 0n);
+  const paid = settled.reduce((a, e) => a + (e.args.amount ?? 0n), 0n);
+  const body = { campaigns: created.length, settledViews: views.toString(), paidWei: paid.toString(), pets: Object.keys(store.pets).length, chainId: chain.id, seeded };
+  statsCache = { at: Date.now(), body };
+  return body;
+}
+
+// "Try a hook" on the homepage: one real 0G call, limited per visitor and per day, cached by product.
+const tryHits = new Map<string, number[]>();
+const tryCache = new Map<string, { at: number; body: unknown }>();
+const TRY_DAILY_CAP = Number(process.env.TRY_DAILY_CAP ?? 100);
+let tryDay = { day: "", calls: 0 };
+async function tryHook(req: IncomingMessage, body: any) {
+  const product = str(body?.product, 160)?.trim();
+  if (!product || product.length < 3) throw bad("say what your product is");
+  const key = product.toLowerCase().replace(/\s+/g, " ");
+  const hit = tryCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3_600_000) return hit.body;
+  // shortcut: the socket address is the visitor while the server runs behind no proxy; read x-forwarded-for once deployed behind one
+  const ip = req.socket.remoteAddress ?? "unknown";
+  if (!allow(tryHits, ip, Date.now(), 3, 3_600_000)) throw new HttpError(429, "That's 3 tries this hour. Fund a campaign to get all 16 hooks.");
+  if (tryDay.day !== utcDay()) tryDay = { day: utcDay(), calls: 0 };
+  if (tryDay.calls >= TRY_DAILY_CAP) throw new HttpError(429, "Today's free tries are used up. Come back tomorrow, or fund a campaign.");
+  tryDay.calls++;
+  try {
+    const r = await suggestHooks({ product, audience: str(body?.audience, 120)?.trim() || "developers", offer: "", proof: "", cta: "Try it" });
+    const seen = new Set<string>();
+    const hooks = r.hooks.filter((h: { format: string }) => !seen.has(h.format) && seen.add(h.format)).slice(0, 3);
+    const out = { hooks, requestId: r.requestId, example: true };
+    tryCache.set(key, { at: Date.now(), body: out });
+    return out;
+  } catch (e: any) {
+    if (e.code === "brief") throw bad(e.message);
+    throw new HttpError(502, e.message);
+  }
+}
+
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
@@ -307,6 +352,8 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(await readBody(req));
+  if (m === "GET" && pathname === "/stats") return publicStats();
+  if (m === "POST" && pathname === "/try") return tryHook(req, await readBody(req));
   if (m === "POST" && pathname === "/campaigns/check") {
     // run before the brand pays, so nothing they wrote can be refused after the money moved
     const b = await readBody(req);
