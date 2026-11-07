@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allow, countImpression, hookOrder, markSettled, planSettlement } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -67,4 +67,14 @@ test("rate limit: N per window per key, then it frees up", () => {
   assert.deepEqual([0, 1, 2, 3].map((i) => allow(hits, "ip-a", i * 1000, 3, hour)), [true, true, true, false]);
   assert.equal(allow(hits, "ip-b", 4000, 3, hour), true); // other keys are separate
   assert.equal(allow(hits, "ip-a", hour + 1, 3, hour), true); // the first hit aged out
+});
+
+test("worker: settle while the contract pays, refund once the grace is over, never touch closed campaigns", () => {
+  const c = { closed: false, endTime: 1000n, remaining: 50n };
+  assert.equal(workFor(c, 3, 900n), "settle"); // running
+  assert.equal(workFor(c, 3, 1000n + 3600n), "settle"); // last second of grace
+  assert.equal(workFor(c, 0, 900n), "none"); // nothing queued
+  assert.equal(workFor(c, 3, 1000n + 3601n), "refund"); // queued views can't be paid any more
+  assert.equal(workFor({ ...c, remaining: 0n }, 0, 9999n), "none"); // fully spent: nothing to refund
+  assert.equal(workFor({ ...c, closed: true }, 3, 900n), "none");
 });

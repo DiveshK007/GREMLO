@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { allow, countImpression, hookOrder, markSettled, planSettlement, type Pending } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -342,6 +342,44 @@ async function tryHook(req: IncomingMessage, body: any) {
     throw new HttpError(502, e.message);
   }
 }
+
+/**
+ * Background worker: settles queued views while the contract still pays, and closes ended campaigns so the
+ * unspent budget returns to the brand without anyone clicking. One pass at a time; errors are logged, not fatal.
+ */
+let working = false;
+async function workerPass() {
+  if (working) return;
+  working = true;
+  try {
+    const [created, block] = await Promise.all([
+      pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
+      pub.getBlock(),
+    ]);
+    for (const ev of created) {
+      const id = ev.args.id!;
+      try {
+        const [, , , , endTime, closed] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [id] });
+        const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [id] });
+        const pending = Object.values(store.pending[id.toString()] ?? {}).reduce((a, b) => a + b, 0);
+        const job = workFor({ closed, endTime, remaining }, pending, block.timestamp);
+        if (job === "settle") {
+          const r = await settle(id.toString());
+          console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, stopped: ${r.error}` : ""}`);
+        } else if (job === "refund") {
+          console.log(`worker: closed campaign ${id}, refund tx ${await send("close", [id])}`);
+        }
+      } catch (e) {
+        console.error(`worker: campaign ${id}: ${errMsg(e)}`);
+      }
+    }
+  } catch (e) {
+    console.error(`worker: ${errMsg(e)}`);
+  } finally {
+    working = false;
+  }
+}
+if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");

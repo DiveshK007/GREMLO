@@ -22,6 +22,7 @@ export const seeded = chain.id === 31337;
 export const abi = parseAbi([
   "function registerPet(address pet, address owner, address payout)",
   "function settleImpressions(uint256 id, address pet, uint256 count)",
+  "function close(uint256 id)",
   "function remaining(uint256 id) view returns (uint256)",
   "function campaigns(uint256) view returns (address brand, uint128 budget, uint128 spent, uint96 rate, uint64 endTime, bool closed, bytes32 lineHash)",
   "function pets(address) view returns (address owner, address payout, bool verified)",
@@ -38,7 +39,7 @@ export const operator = createWalletClient({
 });
 
 /** Send an operator tx and wait for it; throws if it reverts. A wait failure after broadcast carries .unconfirmedTx. */
-export async function send(functionName: "registerPet" | "settleImpressions", args: readonly unknown[]) {
+export async function send(functionName: "registerPet" | "settleImpressions" | "close", args: readonly unknown[]) {
   const { request } = await pub.simulateContract({
     address: vault, abi, functionName, args: args as never, account: operator.account,
   });

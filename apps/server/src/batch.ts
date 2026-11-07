@@ -81,3 +81,14 @@ export function allow(hits: Map<string, number[]>, key: string, now: number, lim
   hits.set(key, recent);
   return true;
 }
+
+export const SETTLE_GRACE_S = 3600n; // CampaignVault.SETTLE_GRACE
+
+/** What the background worker should do for one campaign right now. Pure, so it is tested without a chain. */
+export function workFor(c: { closed: boolean; endTime: bigint; remaining: bigint }, pendingViews: number, now: bigint) {
+  if (c.closed) return "none" as const;
+  const graceEnd = c.endTime + SETTLE_GRACE_S;
+  if (now <= graceEnd && pendingViews > 0) return "settle" as const; // the contract still pays
+  if (now > graceEnd && c.remaining > 0n) return "refund" as const; // anyone may close; the brand gets the rest back
+  return "none" as const;
+}
