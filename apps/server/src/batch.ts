@@ -37,3 +37,38 @@ export function markSettled(pending: Pending, pet: string, count: number, outcom
   pending[pet] -= count;
   if (pending[pet] <= 0) delete pending[pet];
 }
+
+/**
+ * Rotation order for a campaign's hooks (auto-optimise): Thompson sampling on click rate, so hooks that get
+ * clicked are shown more, while every hook under `explore` views keeps at least `floor` of the slots so early
+ * noise can't bury it. `rand` is injectable for tests.
+ */
+export function hookOrder(views: number[], clicks: number[], n: number, rand = Math.random, slots = 12, floor = 0.15, explore = 200) {
+  const sample = (a: number, b: number) => {
+    // Beta(a, b): normal approximation once there is enough data, otherwise ratio of gammas from exponentials
+    if (a + b > 60) {
+      const m = a / (a + b), sd = Math.sqrt((a * b) / ((a + b) ** 2 * (a + b + 1)));
+      const z = Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
+      return m + sd * z;
+    }
+    const g = (k: number) => { let s = 0; for (let i = 0; i < Math.round(k); i++) s -= Math.log(rand() || 1e-12); return s || 1e-12; };
+    const x = g(a), y = g(b);
+    return x / (x + y);
+  };
+  // pooled prior worth 20 views at the campaign's average click rate: a new hook starts near average, not at 50%
+  const tv = views.reduce((x, y) => x + (y ?? 0), 0), tc = clicks.reduce((x, y) => x + (y ?? 0), 0);
+  const p = tv ? Math.min(tc / tv, 1) : 0.05, prior = 20;
+  const order: number[] = [];
+  for (let k = 0; k < slots; k++) {
+    const young = [...Array(n).keys()].filter((i) => (views[i] ?? 0) < explore);
+    if (young.length && rand() < Math.min(1, floor * young.length)) { order.push(young[Math.floor(rand() * young.length)]); continue; }
+    let best = 0, bestScore = -1;
+    for (let i = 0; i < n; i++) {
+      const v = views[i] ?? 0, c = Math.min(clicks[i] ?? 0, v);
+      const score = sample(1 + c + p * prior, 1 + v - c + (1 - p) * prior);
+      if (score > bestScore) { bestScore = score; best = i; }
+    }
+    order.push(best);
+  }
+  return order;
+}

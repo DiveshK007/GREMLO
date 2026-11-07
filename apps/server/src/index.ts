@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { countImpression, markSettled, planSettlement, type Pending } from "./batch.ts";
+import { countImpression, hookOrder, markSettled, planSettlement, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -172,7 +172,8 @@ async function activeCampaign() {
     });
     if (closed || endTime <= block.timestamp || budget - spent < rate) continue;
     const view = campaignView({ id, brand, lineHash, rate }, store);
-    if (view.line) return view; // a line the server never got can't go on the sign
+    // a line the server never got can't go on the sign; `order` is the auto-optimised rotation for the next slots
+    if (view.line) return { ...view, order: hookOrder(store.hookViews[view.campaignId] ?? [], store.clicks[view.campaignId] ?? [], view.hooks.length) };
   }
   return null;
 }

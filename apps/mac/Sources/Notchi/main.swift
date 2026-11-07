@@ -984,7 +984,7 @@ final class HookServer {
 }
 
 struct Campaign: Decodable {
-    let campaignId: String; let line: String?; let hooks: [String]?; let url: String?; let brand: String; let ratePerImpression: String
+    let campaignId: String; let line: String?; let hooks: [String]?; let url: String?; let order: [Int]?; let brand: String; let ratePerImpression: String
     var allHooks: [String] { hooks?.isEmpty == false ? hooks! : line.map { [$0] } ?? [] }
 }
 struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
@@ -1034,7 +1034,12 @@ final class Backend: NSObject {
     var hookIndex = 0
     var hookSince = Date()
     var signWasUp = false
-    var currentHook: Int { campaign.map { $0.allHooks.isEmpty ? 0 : hookIndex % $0.allHooks.count } ?? 0 }
+    // follows the server's auto-optimised order when there is one, plain round robin otherwise
+    var currentHook: Int {
+        guard let c = campaign, !c.allHooks.isEmpty else { return 0 }
+        if let o = c.order, !o.isEmpty { return min(max(o[hookIndex % o.count], 0), c.allHooks.count - 1) }
+        return hookIndex % c.allHooks.count
+    }
     // Polls overlap (timer + after each think); a late reply must not roll the balance back and re-show a meal.
     var petSent = 0, petApplied = 0
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.

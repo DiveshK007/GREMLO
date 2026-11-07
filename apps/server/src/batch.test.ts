@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countImpression, markSettled, planSettlement } from "./batch.ts";
+import { countImpression, hookOrder, markSettled, planSettlement } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -44,4 +44,19 @@ test("a sent but unconfirmed settle is never paid again; a failed one stays pend
   assert.deepEqual(p, { "0xa": 2, "0xb": 2 });
   markSettled(p, "0xa", 2, "paid");
   assert.deepEqual(p, { "0xb": 2 });
+});
+
+test("auto-optimise: clicked hooks get more slots, young hooks keep a floor", () => {
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // hook 1 converts at 10%, hooks 0 and 2 at 1%, all past the exploration phase
+  const order = hookOrder([1000, 1000, 1000], [10, 100, 10], 3, rand, 600);
+  const share = (i: number) => order.filter((x) => x === i).length / order.length;
+  assert.ok(share(1) > 0.9, `best hook share ${share(1)}`);
+  // a new hook with no views still gets roughly the floor while it explores
+  const withNew = hookOrder([1000, 1000, 0], [10, 100, 0], 3, rand, 2000);
+  const newShare = withNew.filter((x) => x === 2).length / withNew.length;
+  assert.ok(newShare >= 0.12 && newShare < 0.5, `new hook share ${newShare}`);
+  // every slot is a valid hook index
+  assert.ok(hookOrder([], [], 4, rand).every((i) => i >= 0 && i < 4));
 });
