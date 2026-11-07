@@ -57,15 +57,29 @@ export type RegisterBody = {
 export const registerPet = (body: RegisterBody) =>
   call<{ ok?: boolean; txHash?: string; name?: string }>(`/pets/register`, { method: "POST", body: JSON.stringify(body) });
 
-/** POST /campaigns/lines -> the pet writes 3 ad lines through 0G. */
-export type SuggestedLine = { text: string; requestId?: string | null };
-export const TONES = ["bold", "calm", "dev-meme"] as const;
-export type Tone = (typeof TONES)[number];
-export const suggestLines = (brief: string, tone: Tone) =>
-  call<{ lines: SuggestedLine[] }>(`/campaigns/lines`, { method: "POST", body: JSON.stringify({ brief, tone }) });
+/** A brand's brief. Proof points are the only claims hooks may use (one per line). */
+export type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
+export const FORMATS = ["humour", "sarcasm", "offer", "question", "bold-claim", "urgency", "story", "dev-meme"] as const;
+export type Hook = { format: (typeof FORMATS)[number] | "own"; text: string; requestId?: string | null };
+export type Dropped = { format: string; text: string; reason: string };
+
+/** POST /campaigns/hooks -> 2 hooks per format from 0G, each through the claim checks. */
+export const suggestHooks = (brief: Brief, url: string) =>
+  call<{ hooks: Hook[]; dropped: Dropped[]; requestId: string }>(`/campaigns/hooks`, {
+    method: "POST",
+    body: JSON.stringify({ brief, url, attest: true }),
+  });
+
+/** POST /campaigns/check -> the same checks the server runs after payment, run before it. */
+export const checkCampaign = (brief: Brief, hooks: string[], url: string) =>
+  call<{ ok: true; url: string }>(`/campaigns/check`, { method: "POST", body: JSON.stringify({ brief, hooks, url }) });
+
+/** GET /campaigns/:id/stats -> per-hook views and clicks, queued views. */
+export type Stats = { campaignId: string; url: string | null; views: number[]; clicks: number[]; pendingViews: number };
+export const campaignStats = (id: string) => call<Stats>(`/campaigns/${encodeURIComponent(id)}/stats`);
 
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
-export const recordCampaign = (body: { campaignId: string; line: string; lineHash: string; brand: string; txHash: string }) =>
+export const recordCampaign = (body: { campaignId: string; hooks: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief }) =>
   call<unknown>(`/campaigns`, { method: "POST", body: JSON.stringify(body) });
 
 /** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is wei as a string. */
