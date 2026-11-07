@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  formatEther,
   http,
   keccak256,
   parseEventLogs,
@@ -121,6 +122,8 @@ function walletClient(account: Address) {
   return createWalletClient({ account, chain: galileo, transport: custom(injected()) });
 }
 
+const CREATE_GAS = 300000n; // wallets can't estimate on Galileo; a create used ~125-240k
+
 export async function createCampaign(opts: {
   account: Address;
   line: string;
@@ -129,13 +132,21 @@ export async function createCampaign(opts: {
   endTime: bigint;
 }): Promise<{ txHash: Hash; campaignId: bigint }> {
   if (!VAULT_ADDRESS) throw new Error("NEXT_PUBLIC_VAULT_ADDRESS is not set.");
+  // the wallet's "insufficient funds" surfaces as an empty revert, so check first and say what's short
+  const [balance, gasPrice] = await Promise.all([publicClient.getBalance({ address: opts.account }), publicClient.getGasPrice()]);
+  const fee = CREATE_GAS * gasPrice;
+  if (balance < opts.budgetWei + fee) {
+    throw new Error(
+      `Not enough 0G: this wallet has ${formatEther(balance)} 0G, the campaign needs ${formatEther(opts.budgetWei)} 0G plus up to ${formatEther(fee)} 0G in fees. Lower the budget or use a funded wallet.`,
+    );
+  }
   const txHash = await walletClient(opts.account).writeContract({
     address: VAULT_ADDRESS,
     abi: vaultAbi,
     functionName: "createCampaign",
     args: [lineHash(opts.line), opts.rateWei, opts.endTime],
     value: opts.budgetWei,
-    gas: 300000n,
+    gas: CREATE_GAS,
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
   if (receipt.status !== "success") throw new Error(`Transaction failed: ${txHash}`);
