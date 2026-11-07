@@ -42,72 +42,62 @@ test('safe-stops on HTTP error, unknown action and network failure', async () =>
   assert.deepEqual(down, { action: 'sleep', reason: '0G unreachable: ECONNREFUSED', requestId: null });
 });
 
-test('suggestLines returns 3 lines with the real request id, throws otherwise', async () => {
-  const { suggestLines } = await import('./index.js');
+const BRIEF = { product: 'Clearlog, log search for TypeScript teams', audience: 'backend developers', offer: 'first 1M logs free', proof: 'Indexes 1M logs in 30 seconds', cta: 'Try it free' };
+const turn = (content, id) => new Response(JSON.stringify({ choices: [{ message: { content } }], x_0g_trace: { request_id: id } }));
+const hooksJson = (list) => JSON.stringify({ hooks: list.map(([format, text]) => ({ format, text })) });
+
+test('suggestHooks keeps hooks that pass the claim checks and reports the rest with reasons', async () => {
+  const { suggestHooks } = await import('./index.js');
   const sent = [];
-  const lines = await suggestLines('fast CI', { fetch: async (u, init) => { sent.push(JSON.parse(init.body).model); return new Response(JSON.stringify({
-    choices: [{ message: { content: '{"lines":["One","Two","Three"]}' } }], x_0g_trace: { request_id: 'L1' },
-  })); } });
-  assert.deepEqual(lines, [{ text: 'One', requestId: 'L1' }, { text: 'Two', requestId: 'L1' }, { text: 'Three', requestId: 'L1' }]);
-  assert.deepEqual(sent, ['smart-model']);
-
-  await assert.rejects(suggestLines('x', { fetch: reply(200, { choices: [{ message: { content: '{"lines":["only one"]}' } }], x_0g_trace: { request_id: 'L2' } }) }), /3 lines/);
-  await assert.rejects(suggestLines('x', { fetch: reply(402, { error: 'insufficient balance' }) }), /402/);
-});
-
-test('suggestLines retries once for JSON, then falls back to the reply text, never inventing lines', async () => {
-  const { suggestLines } = await import('./index.js');
-  const turn = (content, id) => new Response(JSON.stringify({ choices: [{ message: { content } }], x_0g_trace: { request_id: id } }));
-  const queue = (...replies) => {
-    const sent = [];
-    return { sent, fetch: async (u, init) => { sent.push(JSON.parse(init.body).messages[0].content); return replies.shift(); } };
-  };
-
-  // no JSON, then the stricter retry gives JSON: those lines, with the retry's request id
-  let q = queue(turn('Sure, here you go!', 'A1'), turn('{"lines":["One","Two","Three"]}', 'A2'));
-  assert.deepEqual((await suggestLines('x', { fetch: q.fetch })).map((l) => l.requestId), ['A2', 'A2', 'A2']);
-  assert.equal(q.sent.length, 2);
-  assert.match(q.sent[1], /JSON only/);
-
-  // still no JSON: up to 3 lines from the retry's text; preamble, markers and quotes dropped, a 4th ignored
-  q = queue(turn('prose', 'B1'), turn('Here are your lines:\n1. Ship faster\n2. "Fewer red builds"\n- Cache it all\n4. One too many', 'B2'));
-  assert.deepEqual(await suggestLines('x', { fetch: q.fetch }), [
-    { text: 'Ship faster', requestId: 'B2' }, { text: 'Fewer red builds', requestId: 'B2' }, { text: 'Cache it all', requestId: 'B2' },
-  ]);
-
-  // nothing usable in the text: throws, carrying the real request id
-  q = queue(turn('Here you go:', 'C1'), turn('Sorry:', 'C2'));
-  await assert.rejects(suggestLines('x', { fetch: q.fetch }), (e) => /no usable lines/.test(e.message) && e.requestId === 'C2');
-
-  // JSON on the first try: no retry
-  q = queue(turn('{"lines":["a","b","c"]}', 'D1'));
-  await suggestLines('x', { fetch: q.fetch });
-  assert.equal(q.sent.length, 1);
-});
-
-test('suggestLines threads the picked tone into the prompt and rejects unknown tones', async () => {
-  const { suggestLines } = await import('./index.js');
-  let system = '';
   const fetch = async (u, init) => {
-    system = JSON.parse(init.body).messages[0].content;
-    return new Response(JSON.stringify({ choices: [{ message: { content: '{"lines":["a","b","c"]}' } }], x_0g_trace: { request_id: 'T1' } }));
+    const body = JSON.parse(init.body); sent.push(body);
+    return turn(hooksJson([
+      ['humour', 'Your logs called. They want to be found. Try it free'],
+      ['bold-claim', 'Indexes 1M logs in 30 seconds'],
+      ['bold-claim', 'Search logs 10x faster'],             // invented multiplier
+      ['offer', 'First 1M logs free. Yes, free.'],
+      ['offer', 'The best log tool ever'],                   // invented superlative
+      ['offer', 'First 1M logs free, no card needed'],
+      ['offer', 'First 1M logs free. Grep less.'],           // a third offer hook: capped at 2
+      ['nonsense', 'ignored format'],
+    ]), 'H1');
   };
-  await suggestLines('x', { fetch, tone: 'dev-meme' });
-  assert.match(system, /Tone: developer in-joke/);
-  assert.match(system, /at most 40 characters/);
-  await suggestLines('x', { fetch });
-  assert.doesNotMatch(system, /Tone:/);
-  await assert.rejects(suggestLines('x', { fetch, tone: 'angry' }), /unknown tone/);
+  const r = await suggestHooks(BRIEF, { fetch });
+  assert.equal(r.requestId, 'H1');
+  assert.deepEqual(r.hooks.map((h) => h.format), ['humour', 'bold-claim', 'offer', 'offer']);
+  assert.ok(r.hooks.every((h) => h.requestId === 'H1'));
+  assert.deepEqual(r.dropped.map((d) => d.reason), ['number not in your proof points: 10x', 'claim not in your proof points: best']);
+  // the prompt carries the rules and the brief, on the smart model with room to think
+  assert.match(sent[0].messages[0].content, /Never invent statistics/);
+  assert.match(sent[0].messages[0].content, /Never promise money, returns, profit or gains/);
+  assert.match(sent[0].messages[1].content, /Indexes 1M logs in 30 seconds/);
+  assert.equal(sent[0].model, 'smart-model');
+  assert.equal(sent[0].max_tokens, 8192);
 });
 
-test('suggestLines and think leave the reasoning model room to answer', async () => {
-  const { suggestLines } = await import('./index.js');
+test('suggestHooks refuses financial-return briefs before spending a 0G call', async () => {
+  const { suggestHooks } = await import('./index.js');
+  let called = false;
+  const fetch = async () => { called = true; return turn('{}', 'X'); };
+  await assert.rejects(suggestHooks({ product: 'an AI trading bot', audience: 'traders', proof: 'hit 20x in 5 days', cta: 'Know more' }, { fetch }), /performance numbers for trading/);
+  assert.equal(called, false);
+});
+
+test('suggestHooks retries once for JSON and never invents hooks', async () => {
+  const { suggestHooks } = await import('./index.js');
+  const queue = (...replies) => ({ n: 0, fetch: async () => replies.shift() });
+  let q = queue(turn('Sure! Here are some hooks', 'A1'), turn(hooksJson([['question', 'Still grepping logs at 2am? Try it free']]), 'A2'));
+  assert.deepEqual((await suggestHooks(BRIEF, { fetch: q.fetch })).hooks, [{ format: 'question', text: 'Still grepping logs at 2am? Try it free', requestId: 'A2' }]);
+  q = queue(turn('no json', 'B1'), turn('still none', 'B2'));
+  await assert.rejects(suggestHooks(BRIEF, { fetch: q.fetch }), (e) => /no hooks/.test(e.message) && e.requestId === 'B2');
+  q = queue(turn(hooksJson([['bold-claim', 'Trusted by 900 teams']]), 'C1'));
+  await assert.rejects(suggestHooks(BRIEF, { fetch: q.fetch }), (e) => /pass the claim checks/.test(e.message) && e.dropped.length === 1);
+  await assert.rejects(suggestHooks(BRIEF, { fetch: async () => new Response('{"error":"insufficient balance"}', { status: 402 }) }), /402/);
+});
+
+test('think leaves the reasoning model room to answer', async () => {
   const caps = [];
-  const fetch = async (u, init) => {
-    caps.push(JSON.parse(init.body).max_tokens);
-    return new Response(JSON.stringify({ choices: [{ message: { content: '{"lines":["a","b","c"],"action":"work"}' } }], x_0g_trace: { request_id: 'M1' } }));
-  };
-  await suggestLines('x', { fetch });
+  const fetch = async (u, init) => { caps.push(JSON.parse(init.body).max_tokens); return turn('{"action":"work"}', 'M1'); };
   await think({ mood: 'stable' }, { fetch });
-  assert.deepEqual(caps, [4096, 2048]);
+  assert.deepEqual(caps, [2048]);
 });

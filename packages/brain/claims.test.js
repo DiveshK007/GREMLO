@@ -20,6 +20,8 @@ test('invented numbers, multipliers and percentages are dropped', () => {
   assert.match(checkHook('Search logs 10x faster', brief), /not in your proof points: 10x/);
   assert.match(checkHook('Cut debugging time by 50%', brief), /50%/);
   assert.match(checkHook('Trusted by 500 teams', brief), /500/);
+  // a time of day is scene-setting, not a claim
+  assert.equal(checkHook('Still grepping logs at 2am? Try it free', brief), null);
 });
 
 test('superlatives need the brand\'s own backing', () => {

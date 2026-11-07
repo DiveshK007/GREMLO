@@ -15,7 +15,8 @@ const URL = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|io|ai|dev|xyz|app|co)\b)/i;
 const EMOJI = /\p{Extended_Pictographic}/u;
 
 const norm = (s) => s.toLowerCase().replace(/\s+/g, '').replace(/×/g, 'x').replace(/,/g, '.');
-const numbers = (s) => (s.match(NUMBER) ?? []).map(norm);
+const TIME_OF_DAY = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi; // "2am" sets a scene, it is not a claim
+const numbers = (s) => (s.replace(TIME_OF_DAY, '').match(NUMBER) ?? []).map(norm);
 const superlatives = (s) => (s.match(SUPERLATIVE) ?? []).map((w) => w.toLowerCase().replace(/\s+/g, ' '));
 
 /** Brand-supplied text the copy may draw claims from. */

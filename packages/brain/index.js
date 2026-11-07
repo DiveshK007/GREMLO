@@ -1,5 +1,5 @@
 // Pet decisions and ad lines via the 0G Compute Router (OpenAI-compatible). Never invents output:
-// think() safe-stops to {action: "sleep", reason}; suggestLines() throws with the real error.
+// think() safe-stops to {action: "sleep", reason}; suggestHooks() throws with the real error.
 
 export const ACTIONS = ['wake', 'work', 'wave', 'wait', 'celebrate', 'sad', 'go_home', 'sleep'];
 
@@ -7,16 +7,28 @@ const SYSTEM = `You are Notchi, a small desktop pet that watches a coding agent.
 Given the pet state as JSON, pick one action from: ${ACTIONS.join(', ')}.
 Reply with only a JSON object: {"action": "<one action>", "say": "<at most 8 words>"}.`;
 
-/** Tones a brand can pick for its hooks; the value is what the model is told. */
-export const TONES = {
-  bold: 'confident and punchy',
-  calm: 'plain and understated',
-  'dev-meme': 'developer in-joke humour that still says what the product does',
+import { FORMATS, MAX_HOOK, checkBrief, checkHook } from './claims.js';
+
+const FORMAT_GUIDE = {
+  humour: 'a light joke a developer would smile at, then the product',
+  sarcasm: 'dry, self-aware sarcasm about the problem the product solves; never mean about people',
+  offer: 'the offer itself, made hard to ignore; use the offer words exactly',
+  question: 'a question the reader answers yes to, then the product',
+  'bold-claim': 'one confident claim taken word for word from the proof points',
+  urgency: 'a reason to act now, only if the offer gives one; never invent deadlines or scarcity',
+  story: 'a one-sentence story: the problem, then the product',
+  'dev-meme': 'a developer in-joke (prod on Friday, merge conflicts, "works on my machine") tied to the product',
 };
 
-const linesSystem = (tone) => `You write sponsored lines a small desktop pet holds on a sign while a coding agent works.
-Given a brand brief, write 3 different lines, each at most 40 characters, plain and specific, no emoji.${tone ? `\nTone: ${TONES[tone]}.` : ''}
-Reply with only a JSON object: {"lines": ["...", "...", "..."]}.`;
+const HOOKS_SYSTEM = `You write sponsored hooks that a small desktop pet carries across a developer's screen while their coding agent works.
+For EACH format below write exactly 2 different hooks, each at most ${MAX_HOOK} characters, plain English, specific to the product.
+${FORMATS.map((f) => `- ${f}: ${FORMAT_GUIDE[f]}`).join('\n')}
+Hard rules:
+- Use only numbers, results, comparisons and claims that appear in the brief's PROOF POINTS or OFFER, copied exactly. Never invent statistics, customers, speeds, prices, deadlines or rankings.
+- No superlatives (best, fastest, only, #1) unless they are in the proof points.
+- Never promise money, returns, profit or gains.
+- No emoji, no links, no hashtags. Use the call to action when it fits.
+Reply with only a JSON object: {"hooks": [{"format": "<format>", "text": "<hook>"}, ...]}.`;
 
 const SMART = process.env.ZG_MODEL_SMART || process.env.ZG_MODEL;
 const CHEAP = process.env.ZG_MODEL_CHEAP || process.env.ZG_MODEL;
@@ -76,33 +88,34 @@ export async function think(state, opts = {}) {
   }
 }
 
-const linesStrict = (tone) => `${linesSystem(tone)}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
-
-/** Plain-text fallback: only lines the model actually wrote (list markers and quotes stripped), never filler. */
-export function linesFromText(text) {
-  return text.split('\n')
-    .filter((raw) => !/"\s*:/.test(raw)) // a JSON key, not a line
-    .map((raw) => raw.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^["'`“”]+|["'`“”]+$/g, '').trim())
-    .filter((l) => l && l.length <= 80 && !l.endsWith(':') && !/^[{}[\]`]/.test(l) && !/^(here|sure|okay|certainly)\b/i.test(l))
-    .slice(0, 3);
-}
+const HOOKS_STRICT = `${HOOKS_SYSTEM}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
 
 /**
- * Ad lines from the smart model. A reply with no JSON is retried once with a stricter instruction; if that
- * still has no JSON, up to 3 lines are taken from its plain text. Lines carry the request ID of the call
- * they came from. Nothing is ever made up: no usable lines means a throw with the real request ID.
+ * Hooks for a brand brief: 2 per format from one 0G call (retried once if the reply has no JSON).
+ * Every hook passes checkHook or is returned in `dropped` with the reason. Nothing is made up here:
+ * no hooks that pass means a throw carrying the real request ID.
  */
-export async function suggestLines(brief, opts = {}) {
-  opts = { timeoutMs: 60000, maxTokens: 4096, ...opts }; // live call took 33s; the reasoning model used all 1024 tokens before writing a line
-  if (opts.tone !== undefined && !Object.hasOwn(TONES, opts.tone)) throw new Error(`unknown tone: ${opts.tone}`);
-  let r = await chat(linesSystem(opts.tone), String(brief), SMART, opts);
-  if (!r.out) r = await chat(linesStrict(opts.tone), String(brief), SMART, opts);
-  const lines = r.out
-    ? (Array.isArray(r.out.lines) ? r.out.lines.filter((l) => typeof l === 'string' && l.trim()).slice(0, 3) : [])
-    : linesFromText(r.content);
-  const enough = r.out ? lines.length === 3 : lines.length >= 1; // JSON must give all 3; plain text gives what it has
-  if (!enough || !r.requestId) throw Object.assign(new Error(r.out ? '0G reply did not have 3 lines' : '0G reply had no usable lines'), { requestId: r.requestId });
-  return lines.map((l) => ({ text: l.trim().slice(0, 80), requestId: r.requestId }));
+export async function suggestHooks(brief, opts = {}) {
+  opts = { timeoutMs: 120000, maxTokens: 8192, ...opts }; // 16 hooks after the reasoning model thinks
+  const refused = checkBrief(brief);
+  if (refused) throw Object.assign(new Error(refused), { code: 'brief' });
+  const user = JSON.stringify({ product: brief.product, audience: brief.audience, offer: brief.offer ?? '', proofPoints: brief.proof ?? '', callToAction: brief.cta });
+  let r = await chat(HOOKS_SYSTEM, user, SMART, opts);
+  if (!Array.isArray(r.out?.hooks)) r = await chat(HOOKS_STRICT, user, SMART, opts);
+  const raw = Array.isArray(r.out?.hooks) ? r.out.hooks : [];
+  const hooks = [], dropped = [], perFormat = {};
+  for (const h of raw) {
+    const format = String(h?.format ?? '').toLowerCase(), text = String(h?.text ?? '').trim();
+    if (!FORMATS.includes(format)) continue;
+    const reason = checkHook(text, brief);
+    if (reason) { dropped.push({ format, text, reason }); continue; }
+    if ((perFormat[format] = (perFormat[format] ?? 0) + 1) > 2) continue;
+    hooks.push({ format, text, requestId: r.requestId });
+  }
+  if (!hooks.length || !r.requestId) {
+    throw Object.assign(new Error(raw.length ? '0G wrote no hooks that pass the claim checks' : '0G reply had no hooks'), { requestId: r.requestId, dropped });
+  }
+  return { hooks, dropped, requestId: r.requestId };
 }
 
 function sleep(reason, requestId) {
