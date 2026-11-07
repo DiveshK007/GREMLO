@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress, verifyMessage } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor, type Pending } from "./batch.ts";
@@ -30,18 +30,32 @@ type Store = {
 };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
-// shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
-const STORE_FILE = new URL("../data.json", import.meta.url);
+// shortcut: one JSON file, one process; fine for a single instance on a persistent volume (STORE_PATH).
+// Move to Postgres (PLAN_V2 A2) before running a second instance.
+const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta.url).pathname;
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
-const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
+// write-then-rename, so a crash mid-write can never leave a truncated store
+const save = () => {
+  writeFileSync(`${STORE_FILE}.tmp`, JSON.stringify(store, null, 2));
+  renameSync(`${STORE_FILE}.tmp`, STORE_FILE);
+};
 
 // Impressions are client-reported; this window plus one-human-one-pet is the defence. Mac app uses the same value.
 const IMPRESSION_WINDOW_MS = 60_000;
+const REQUIRE_SIGNED = process.env.REQUIRE_SIGNED === "1"; // production: views, think and clicks must be device-signed
+/** The visitor's IP; behind a host proxy (TRUST_PROXY=1) it comes from the proxy's header, not the socket. */
+const clientIp = (req: IncomingMessage) => {
+  if (process.env.TRUST_PROXY === "1") {
+    const h = req.headers["fly-client-ip"] ?? req.headers["x-real-ip"] ?? String(req.headers["x-forwarded-for"] ?? "").split(",")[0];
+    if (typeof h === "string" && h.trim()) return h.trim();
+  }
+  return req.socket.remoteAddress ?? "unknown";
+};
 const CLICK_WINDOW_MS = 10 * 60_000; // one counted click per pet per campaign per 10 minutes
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
@@ -141,7 +155,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
   const rows = body.impressions.map((i: any) => {
     const pet = findPet(String(i?.petKey ?? ""));
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
-    mustBeFrom(pet, signed);
+    mustBeFrom(pet, signed, REQUIRE_SIGNED);
     const id = String(i.campaignId);
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
     const hook = i.hook === undefined ? null : Number(i.hook);
@@ -285,8 +299,11 @@ function checkCampaign(rawBrief: unknown, hooks: string[]) {
 }
 
 /** 2 hooks per format from one 0G call; hooks that fail the claim checks come back in `dropped` with the reason. */
-async function campaignHooks(body: any) {
+const hooksHits = new Map<string, number[]>();
+async function campaignHooks(req: IncomingMessage, body: any) {
   if (body?.attest !== true) throw bad("confirm the proof points are your own, accurate claims");
+  // each call is a large 0G request: 10 per visitor per hour
+  if (!allow(hooksHits, clientIp(req), Date.now(), 10, 3_600_000)) throw new HttpError(429, "That's 10 hook sets this hour. Pick from the ones you have, or try again later.");
   const brief = parseBrief(body?.brief);
   checkUrl(body?.url);
   try {
@@ -338,7 +355,7 @@ function signClick(id: string, hookStr: string, petKey: string | null, q: URLSea
       } catch {
         pet = undefined;
       }
-    } else if (pet.devices?.length) pet = undefined; // unsigned click for a paired pet: still redirect, never count
+    } else if (pet.devices?.length || REQUIRE_SIGNED) pet = undefined; // unsigned click: still redirect, never count
   }
   if (pet && countImpression(store.lastClick, `${id}:${pet.petKey}`, Date.now(), CLICK_WINDOW_MS)) {
     (store.clicks[id] ??= [0, 0, 0, 0, 0])[hook]++;
@@ -381,8 +398,7 @@ async function tryHook(req: IncomingMessage, body: any) {
   const key = product.toLowerCase().replace(/\s+/g, " ");
   const hit = tryCache.get(key);
   if (hit && Date.now() - hit.at < 24 * 3_600_000) return hit.body;
-  // shortcut: the socket address is the visitor while the server runs behind no proxy; read x-forwarded-for once deployed behind one
-  const ip = req.socket.remoteAddress ?? "unknown";
+  const ip = clientIp(req);
   if (!allow(tryHits, ip, Date.now(), 3, 3_600_000)) throw new HttpError(429, "That's 3 tries this hour. Fund a campaign to get all 16 hooks.");
   if (tryDay.day !== utcDay()) tryDay = { day: utcDay(), calls: 0 };
   if (tryDay.calls >= TRY_DAILY_CAP) throw new HttpError(429, "Today's free tries are used up. Come back tomorrow, or fund a campaign.");
@@ -448,7 +464,7 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
-  if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(await readBody(req));
+  if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(req, await readBody(req));
   if (m === "GET" && pathname === "/stats") return publicStats();
   if (m === "POST" && pathname === "/try") return tryHook(req, await readBody(req));
   if (m === "POST" && pathname === "/campaigns/check") {
@@ -467,7 +483,7 @@ async function route(req: IncomingMessage) {
     const raw = await readRaw(req);
     const pet = findPet(decodeURIComponent(thinkPath[1]));
     const signed = signer(req, pathname, raw); // think spends real 0G
-    if (pet) mustBeFrom(pet, signed);
+    if (pet) mustBeFrom(pet, signed, REQUIRE_SIGNED);
     return petThink(decodeURIComponent(thinkPath[1]), parse(raw));
   }
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
@@ -480,8 +496,9 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 const port = Number(process.env.PORT ?? 8787);
-// Loopback only: /think and /campaigns/hooks spend real 0G and have no auth, so nothing on the venue wifi may reach them.
+// Loopback by default. Expose it (HOST=0.0.0.0) only with REQUIRE_SIGNED=1 and TRUST_PROXY=1 set, as in fly.toml.
 const host = process.env.HOST ?? "127.0.0.1";
+if (host !== "127.0.0.1" && !REQUIRE_SIGNED) throw new Error("refusing to listen publicly without REQUIRE_SIGNED=1: unpaired pets could spend 0G");
 createServer((req, res) => {
   if (cors(req, res)) return;
   route(req).then(

@@ -48,4 +48,7 @@ test("a paired pet only accepts its own device; an unpaired pet still works unsi
   assert.throws(() => mustBeFrom(paired, { petKey: "0xB" }), /different pet/);
   mustBeFrom(unpaired, null);
   assert.throws(() => mustBeFrom(unpaired, { petKey: "0xA" }), /different pet/);
+  // production: every request must be signed, paired or not
+  assert.throws(() => mustBeFrom(unpaired, null, true), (e: any) => e.status === 401 && /pair this Mac/.test(e.message));
+  mustBeFrom(paired, { petKey: "0xA" }, true);
 });

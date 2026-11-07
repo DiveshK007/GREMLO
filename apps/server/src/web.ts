@@ -10,7 +10,7 @@ export function worldSign(action: string | null, signingKeyHex: string) {
   return { sig: s.sig, nonce: s.nonce, created_at: s.createdAt, expires_at: s.expiresAt };
 }
 
-export const WEB_ORIGIN = "http://localhost:3000";
+export const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000"; // the deployed web app in production
 
 /** CORS for apps/web. Returns true when it fully answered a preflight. */
 export function cors(req: IncomingMessage, res: ServerResponse) {

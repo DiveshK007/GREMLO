@@ -45,8 +45,12 @@ export function checkSigned(opts: { key: string; time: string; sig: string; mess
 export const pairMessage = (petName: string, deviceKeyId: string) =>
   `Pair this device to my Notchi pet.\nPet: ${petName}\nDevice: ${deviceKeyId}`;
 
-/** The request must be from `pet`'s device if it has one; an unsigned request is fine only for unpaired pets. */
-export function mustBeFrom(pet: Pick<PetRecord, "petKey" | "devices">, signed: Pick<PetRecord, "petKey"> | null) {
+/**
+ * The request must come from `pet`'s own device. Unsigned is accepted only for unpaired pets, and only when
+ * `requireSigned` is off (local/dev); production sets REQUIRE_SIGNED=1 so nobody can spend 0G as an unpaired pet.
+ */
+export function mustBeFrom(pet: Pick<PetRecord, "petKey" | "devices">, signed: Pick<PetRecord, "petKey"> | null, requireSigned = false) {
   if (signed && signed.petKey !== pet.petKey) throw new HttpError(401, "device is paired to a different pet");
   if (!signed && pet.devices?.length) throw new HttpError(401, "this pet has a paired device; requests must be signed");
+  if (!signed && requireSigned) throw new HttpError(401, "pair this Mac with your pet first (Notchi menu → Settings)");
 }
