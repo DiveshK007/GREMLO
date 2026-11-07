@@ -9,7 +9,18 @@ test("campaign shape the Mac app decodes", () => {
     { id: 1n, brand: "0xB", lineHash: "0xh", rate: 1000n },
     { lines: { "0xh": "Ship faster with Acme CI" }, brands: { "0xB": "Acme" } },
   );
-  assert.deepEqual(v, { campaignId: "1", line: "Ship faster with Acme CI", brand: "Acme", ratePerImpression: "1000" });
+  assert.deepEqual(v, { campaignId: "1", line: "Ship faster with Acme CI", hooks: ["Ship faster with Acme CI"], url: null, brand: "Acme", ratePerImpression: "1000" });
+});
+
+test("a hook set is split for rotation and carries the campaign URL", () => {
+  const v = campaignView(
+    { id: 7n, brand: "0xB", lineHash: "0xh", rate: 1000n },
+    { lines: { "0xh": "Hook one\nHook two\nHook three" }, brands: {}, urls: { "7": "https://acme.dev/" } },
+  );
+  assert.deepEqual(v.hooks, ["Hook one", "Hook two", "Hook three"]);
+  assert.equal(v.line, "Hook one");
+  assert.equal(v.url, "https://acme.dev/");
+  assert.equal(v.brand, "0xB"); // no display name saved: the address, never a made-up name
 });
 
 test("mood thresholds, inclusive at each boundary", () => {

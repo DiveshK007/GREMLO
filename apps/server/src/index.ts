@@ -6,9 +6,11 @@ import { countImpression, markSettled, planSettlement, type Pending } from "./ba
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
-import { checkLine, cors, worldSign } from "./web.ts";
+import { checkLine, checkUrl, clickTarget, cors, worldSign } from "./web.ts";
 // @ts-expect-error plain ESM JS package, no types
-import { suggestLines, think, TONES } from "../../../packages/brain/index.js";
+import { suggestHooks, think } from "../../../packages/brain/index.js";
+// @ts-expect-error plain ESM JS package, no types
+import { checkBrief, checkHook } from "../../../packages/brain/claims.js";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -19,12 +21,19 @@ type Store = {
   today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
   thoughts: Record<string, Thought[]>; // pet key -> last 0G decisions with request IDs
   lastImpression: Record<string, number>; // "campaignId:petKey" -> ms of the last counted impression
+  urls: Record<string, string>; // campaign id -> brand landing page (https)
+  briefs: Record<string, Brief>; // campaign id -> the brand's brief (private, never served)
+  hookViews: Record<string, number[]>; // campaign id -> counted impressions per hook index
+  clicks: Record<string, number[]>; // campaign id -> deduped sign clicks per hook index
+  lastClick: Record<string, number>; // "campaignId:petKey" -> ms of the last counted click
 };
+type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
 // shortcut: one JSON file, single process; move to DATABASE_URL if the server ever runs twice
 const STORE_FILE = new URL("../data.json", import.meta.url);
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
+  urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -32,6 +41,7 @@ const save = () => writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
 
 // Impressions are client-reported; this window plus one-human-one-pet is the defence. Mac app uses the same value.
 const IMPRESSION_WINDOW_MS = 60_000;
+const CLICK_WINDOW_MS = 10 * 60_000; // one counted click per pet per campaign per 10 minutes
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
 const RP_ID = process.env.RP_ID;
@@ -89,7 +99,9 @@ function addImpressions(body: any) {
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
     const id = String(i.campaignId);
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
-    return { id, petKey: pet.petKey };
+    const hook = i.hook === undefined ? null : Number(i.hook);
+    if (hook !== null && !(Number.isInteger(hook) && hook >= 0 && hook < 5)) throw bad("hook must be 0-4");
+    return { id, petKey: pet.petKey, hook };
   });
   let accepted = 0;
   for (const r of rows) {
@@ -97,6 +109,7 @@ function addImpressions(body: any) {
     accepted++;
     const p = (store.pending[r.id] ??= {});
     p[r.petKey] = (p[r.petKey] ?? 0) + 1;
+    if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
     const t = store.today[r.petKey];
     store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
   }
@@ -201,16 +214,27 @@ async function petThink(key: string, body: any) {
   return r;
 }
 
-/** 3 ad lines for a brand brief, one 0G call. No fallback lines: a failure is a 502 the web page shows. */
-async function campaignLines(body: any) {
-  const brief = str(body.brief, 500);
-  if (!brief?.trim()) throw bad("brief is required");
-  const tone = body.tone === undefined ? undefined : str(body.tone, 20);
-  if (tone !== undefined && !Object.hasOwn(TONES, tone)) throw bad(`tone must be one of ${Object.keys(TONES).join(", ")}`);
+/** A brand brief from the web form. Field limits are the trust boundary; the claim checks run on top. */
+function parseBrief(b: any): Brief {
+  const field = (k: string, max: number, required: boolean) => {
+    const v = typeof b?.[k] === "string" ? b[k].trim() : "";
+    if (required && !v) throw bad(`${k} is required`);
+    if (v.length > max) throw bad(`${k} must be at most ${max} characters`);
+    return v;
+  };
+  return { product: field("product", 160, true), audience: field("audience", 120, true), offer: field("offer", 120, false), proof: field("proof", 600, false), cta: field("cta", 40, true) };
+}
+
+/** 2 hooks per format from one 0G call; hooks that fail the claim checks come back in `dropped` with the reason. */
+async function campaignHooks(body: any) {
+  if (body?.attest !== true) throw bad("confirm the proof points are your own, accurate claims");
+  const brief = parseBrief(body?.brief);
+  checkUrl(body?.url);
   try {
-    return { lines: await suggestLines(brief, { tone }) };
+    return await suggestHooks(brief);
   } catch (e: any) {
-    throw new HttpError(502, e.message);
+    if (e.code === "brief") throw bad(e.message);
+    throw Object.assign(new HttpError(502, e.message), { requestId: e.requestId });
   }
 }
 
@@ -224,12 +248,49 @@ async function saveCampaign(body: any) {
   }
   const [brand, , , rate, , , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
   if (rate === 0n) throw new HttpError(404, "unknown campaign");
-  const h = checkLine(body.line, body.lineHash, onchainHash);
-  store.lines[h] = body.line;
+  const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
+  if (body.brief !== undefined) {
+    // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
+    const brief = parseBrief(body.brief);
+    const refused = checkBrief(brief);
+    if (refused) throw bad(refused);
+    for (const hook of String(line).split("\n")) {
+      const why = checkHook(hook, brief);
+      if (why) throw bad(`"${hook}": ${why}`);
+    }
+    store.briefs[id] = brief;
+  }
+  const h = checkLine(line, body.lineHash, onchainHash);
+  store.lines[h] = line;
+  if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
   const name = str(body.brand, 40);
   if (name) store.brands[brand] = name;
   save();
   return { ok: true };
+}
+
+/** A sign click: counted at most once per pet per campaign per window, then off to the brand with UTM tags. */
+function signClick(id: string, hookStr: string, petKey: string | null) {
+  if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
+  const url = store.urls[id];
+  if (!url) throw new HttpError(404, "this campaign has no link");
+  const hook = Number(hookStr);
+  if (!(Number.isInteger(hook) && hook >= 0 && hook < 5)) throw bad("hook must be 0-4");
+  // shortcut: clicks are counted from registered pets but not yet signed; they are reported, not paid, until signing lands (PLAN_V2 A3/E1)
+  const pet = petKey ? findPet(petKey) : undefined;
+  if (pet && countImpression(store.lastClick, `${id}:${pet.petKey}`, Date.now(), CLICK_WINDOW_MS)) {
+    (store.clicks[id] ??= [0, 0, 0, 0, 0])[hook]++;
+    save();
+  }
+  return { redirect: clickTarget(url, id, hook) };
+}
+
+/** What a brand sees for one campaign: per-hook views and clicks, queued views, link. Brief stays private. */
+function campaignStats(id: string) {
+  if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
+  const views = store.hookViews[id] ?? [0, 0, 0, 0, 0], clicks = store.clicks[id] ?? [0, 0, 0, 0, 0];
+  const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
+  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending };
 }
 
 async function route(req: IncomingMessage) {
@@ -240,7 +301,11 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname === "/impressions") return addImpressions(await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
-  if (m === "POST" && pathname === "/campaigns/lines") return campaignLines(await readBody(req));
+  if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(await readBody(req));
+  const click = pathname.match(/^\/c\/([^/]+)\/([^/]+)$/);
+  if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"));
+  const stats = pathname.match(/^\/campaigns\/([^/]+)\/stats$/);
+  if (m === "GET" && stats) return campaignStats(stats[1]);
   if (m === "POST" && pathname === "/campaigns") return saveCampaign(await readBody(req));
   const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
   if (m === "POST" && thinkPath) return petThink(decodeURIComponent(thinkPath[1]), await readBody(req));
@@ -254,12 +319,15 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 const port = Number(process.env.PORT ?? 8787);
-// Loopback only: /think and /campaigns/lines spend real 0G and have no auth, so nothing on the venue wifi may reach them.
+// Loopback only: /think and /campaigns/hooks spend real 0G and have no auth, so nothing on the venue wifi may reach them.
 const host = process.env.HOST ?? "127.0.0.1";
 createServer((req, res) => {
   if (cors(req, res)) return;
   route(req).then(
-    (body) => reply(res, 200, body),
+    (body: any) => {
+      if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
+      reply(res, 200, body);
+    },
     (e) => {
       const status = e instanceof HttpError ? e.status : 502; // anything else is the chain or RPC failing
       if (status === 502) console.error(errMsg(e));

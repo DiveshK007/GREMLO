@@ -2,11 +2,15 @@
 
 export function campaignView(
   c: { id: bigint; brand: string; lineHash: string; rate: bigint },
-  names: { lines: Record<string, string>; brands: Record<string, string> },
+  names: { lines: Record<string, string>; brands: Record<string, string>; urls?: Record<string, string> },
 ) {
+  const text = names.lines[c.lineHash] ?? null; // the chain stores only the hash
+  const hooks = text ? text.split("\n") : [];
   return {
     campaignId: c.id.toString(),
-    line: names.lines[c.lineHash] ?? null, // the chain stores only the hash
+    line: hooks[0] ?? null, // first hook, for clients that show one line
+    hooks,
+    url: names.urls?.[c.id.toString()] ?? null,
     brand: names.brands[c.brand] ?? c.brand,
     ratePerImpression: c.rate.toString(),
   };
