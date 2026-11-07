@@ -17,7 +17,8 @@ fly secrets set \
   ZG_API_KEY=... ZG_API_BASE=... ZG_MODEL_SMART=... ZG_MODEL_CHEAP=... \
   ZG_CHAIN_RPC=... ZG_CHAIN_ID=16602 ZG_VAULT_ADDRESS=... ZG_VAULT_DEPLOY_BLOCK=... ZG_OPERATOR_KEY=... \
   MOOD_THRIVING_WEI=... MOOD_STABLE_WEI=... MOOD_HUNGRY_WEI=... \
-  WEB_ORIGIN=https://<your-vercel-domain>
+  WEB_ORIGIN=https://<your-vercel-domain> \
+  ARKIV_ACCESS_KEY=... ARKIV_KEY=...        # optional: public campaign cards + receipts on Arkiv (Rabdi testnet); key needs tGLM
 fly deploy --dockerfile Dockerfile --build-context ../..          # or from the repo root: fly deploy -c apps/server/fly.toml
 curl https://<your-app-name>.fly.dev/health                       # {"ok":true}
 ```
@@ -54,6 +55,12 @@ Then set `WEB_ORIGIN` on Fly to the Vercel URL (CORS) and redeploy the API.
 Point it at production with `NOTCHI_SERVER=https://<your-app-name>.fly.dev NOTCHI_WEB=https://<your-vercel-domain>`.
 Each user then pairs their Mac once: Notchi menu → Settings → Pair this Mac with my pet (signs with the pet owner's wallet).
 Signed, notarised .dmg + Sparkle auto-update need an Apple Developer account; see PLAN_V2 phase G.
+
+## Arkiv (optional)
+
+Get an access key at hub.arkiv.network/access-keys and testnet tGLM for the `ARKIV_KEY` account at hub.arkiv.network/faucet.
+With both set, each saved campaign publishes a `notchi.campaign` card and each settlement a `notchi.receipt`, all expiring with the campaign.
+Without them Arkiv is simply off; nothing else changes.
 
 ## 4. Checks after deploying
 
