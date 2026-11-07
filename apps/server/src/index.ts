@@ -225,6 +225,19 @@ function parseBrief(b: any): Brief {
   return { product: field("product", 160, true), audience: field("audience", 120, true), offer: field("offer", 120, false), proof: field("proof", 600, false), cta: field("cta", 40, true) };
 }
 
+/** Brief + chosen hooks pass every claim check, or a 400 that names the hook and the reason. No 0G call. */
+function checkCampaign(rawBrief: unknown, hooks: string[]) {
+  const brief = parseBrief(rawBrief);
+  const refused = checkBrief(brief);
+  if (refused) throw bad(refused);
+  if (hooks.length < 1 || hooks.length > 5) throw bad("pick 1 to 5 hooks");
+  for (const hook of hooks) {
+    const why = checkHook(hook, brief);
+    if (why) throw bad(`"${hook}": ${why}`);
+  }
+  return brief;
+}
+
 /** 2 hooks per format from one 0G call; hooks that fail the claim checks come back in `dropped` with the reason. */
 async function campaignHooks(body: any) {
   if (body?.attest !== true) throw bad("confirm the proof points are your own, accurate claims");
@@ -249,17 +262,8 @@ async function saveCampaign(body: any) {
   const [brand, , , rate, , , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
   if (rate === 0n) throw new HttpError(404, "unknown campaign");
   const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
-  if (body.brief !== undefined) {
-    // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
-    const brief = parseBrief(body.brief);
-    const refused = checkBrief(brief);
-    if (refused) throw bad(refused);
-    for (const hook of String(line).split("\n")) {
-      const why = checkHook(hook, brief);
-      if (why) throw bad(`"${hook}": ${why}`);
-    }
-    store.briefs[id] = brief;
-  }
+  // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
+  if (body.brief !== undefined) store.briefs[id] = checkCampaign(body.brief, String(line).split("\n"));
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
   if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
@@ -302,6 +306,12 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(await readBody(req));
+  if (m === "POST" && pathname === "/campaigns/check") {
+    // run before the brand pays, so nothing they wrote can be refused after the money moved
+    const b = await readBody(req);
+    checkCampaign(b?.brief, Array.isArray(b?.hooks) ? b.hooks.map(String) : []);
+    return { ok: true, url: checkUrl(b?.url) };
+  }
   const click = pathname.match(/^\/c\/([^/]+)\/([^/]+)$/);
   if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"));
   const stats = pathname.match(/^\/campaigns\/([^/]+)\/stats$/);
