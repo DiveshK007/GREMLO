@@ -1,6 +1,34 @@
 import AppKit
+import CryptoKit
 import Network
 import UserNotifications
+
+// ---- Device key (PLAN_V2 A3) ----
+// A P-256 key inside this Mac's Secure Enclave. The blob in UserDefaults is opaque and only usable by this chip;
+// the private key never leaves it. Views, think calls and clicks are signed with it once the pet is paired.
+let deviceSigner: SecureEnclave.P256.Signing.PrivateKey? = {
+    guard SecureEnclave.isAvailable else { return nil }
+    let store = "deviceKey"
+    if let blob = UserDefaults.standard.data(forKey: store), let k = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob) { return k }
+    guard let k = try? SecureEnclave.P256.Signing.PrivateKey() else { return nil }
+    UserDefaults.standard.set(k.dataRepresentation, forKey: store)
+    return k
+}()
+
+func b64url(_ d: Data) -> String {
+    d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+}
+let devicePublicKey: String? = deviceSigner.map { b64url($0.publicKey.x963Representation) }
+
+/** Signature over the server's canonical string: METHOD, path, unix ms, SHA-256 hex of the body. */
+func deviceSign(method: String, path: String, body: Data) -> (key: String, time: String, sig: String)? {
+    guard let k = deviceSigner, let pub = devicePublicKey else { return nil }
+    let time = String(Int64(Date().timeIntervalSince1970 * 1000))
+    let hash = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
+    let message = "\(method)\n\(path)\n\(time)\n\(hash)"
+    guard let sig = try? k.signature(for: Data(message.utf8)) else { return nil }
+    return (pub, time, b64url(sig.derRepresentation))
+}
 
 let tickHz = 30.0
 // Seconds of quiet after the agent stops before the pet climbs home. Override with NOTCHI_HOME_AFTER.
@@ -1053,8 +1081,12 @@ final class Backend: NSObject {
         // A sign click goes through the server, which counts it once per window and redirects to the brand.
         pet.onSignClick = { [weak self] in
             guard let self, let c = self.campaign, c.url != nil else { return }
-            let pet = self.petName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self.petName
-            if let u = URL(string: "\(self.base)/c/\(c.campaignId)/\(self.currentHook)?pet=\(pet)") { NSWorkspace.shared.open(u) }
+            let enc = { (v: String) in v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v }
+            let path = "/c/\(c.campaignId)/\(self.currentHook)"
+            var q = "pet=\(enc(self.petName))"
+            // a browser can't send headers, so the click's signature rides in the query (over the pet name)
+            if let s = deviceSign(method: "GET", path: path, body: Data(self.petName.utf8)) { q += "&key=\(s.key)&t=\(s.time)&sig=\(s.sig)" }
+            if let u = URL(string: "\(self.base)\(path)?\(q)") { NSWorkspace.shared.open(u) }
         }
         item.button?.title = "Notchi"
         item.button?.target = self
@@ -1113,7 +1145,14 @@ final class Backend: NSObject {
         if let body {
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            let data = (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
+            req.httpBody = data
+            // the server checks this for paired pets; unpaired pets are accepted unsigned until paired
+            if let s = deviceSign(method: "POST", path: path, body: data) {
+                req.setValue(s.key, forHTTPHeaderField: "X-Notchi-Key")
+                req.setValue(s.time, forHTTPHeaderField: "X-Notchi-Time")
+                req.setValue(s.sig, forHTTPHeaderField: "X-Notchi-Sig")
+            }
         }
         URLSession.shared.dataTask(with: req) { data, resp, err in
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -1289,6 +1328,15 @@ final class Backend: NSObject {
         let home = NSButton(title: "Send pet home", target: self, action: #selector(sendHome))
         home.bezelStyle = .rounded
         stack.addArrangedSubview(home)
+
+        // pairing ties this Mac's Secure Enclave key to the pet; the owner approves it with their wallet on the web
+        if devicePublicKey != nil {
+            let pair = NSButton(title: "Pair this Mac with my pet", target: self, action: #selector(pairDevice))
+            pair.bezelStyle = .rounded
+            stack.addArrangedSubview(pair)
+        } else {
+            stack.addArrangedSubview(caption("This Mac has no Secure Enclave; views stay unsigned"))
+        }
         popover.contentSize = stack.fittingSize
     }
 
@@ -1330,6 +1378,12 @@ final class Backend: NSObject {
     }
 
     @objc func sendHome() { pet.goHome(lock: false) }
+    @objc func pairDevice() {
+        guard let key = devicePublicKey else { return }
+        let web = ProcessInfo.processInfo.environment["NOTCHI_WEB"] ?? "http://localhost:3000"
+        let pet = petName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? petName
+        if let u = URL(string: "\(web)/pair?pet=\(pet)&key=\(key)") { NSWorkspace.shared.open(u) }
+    }
 
     // Brings the terminal running Claude Code forward. The approval itself happens there; the app never answers a hook.
     @objc func approveInTerminal() {
