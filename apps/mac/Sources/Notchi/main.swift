@@ -1080,6 +1080,29 @@ final class Backend: NSObject {
     // Rebuild the popover only when what it shows changes, so a "copied" click survives the 10s polls.
     var shown = ""
     var showingSettings = false
+    // Demo mode: lets you trigger every pet reaction from the menu bar for a demo. Local only: while it is on,
+    // no 0G think calls and no views are reported, so nothing is spent or paid. Demo content is labelled [demo].
+    var demoMode = false
+    var demoHooks: [String]?
+    var showingDemo = false
+    let demoEvents: [(String, String)] = [
+        ("Session starts (pet wakes behind the door)", "SessionStart"),
+        ("You send a prompt (door opens, pet drops out)", "UserPromptSubmit"),
+        ("Agent working (walks with the sign)", "PreToolUse"),
+        ("Show a sponsored hook (demo ad)", "demo.ad"),
+        ("Needs your approval (flag + jump)", "PermissionRequest"),
+        ("Waiting for your input (taps foot)", "idle"),
+        ("Agent done (celebrates)", "Stop"),
+        ("Agent failed (trips, sad)", "StopFailure"),
+        ("Session ends (goes home, door locks)", "SessionEnd"),
+        ("Gets paid: eats +0G", "demo.eat"),
+        ("0G brain says something (bubble)", "demo.say"),
+        ("Come-back reminder notification", "demo.remind"),
+        ("Mood: thriving", "mood.thriving"),
+        ("Mood: hungry", "mood.hungry"),
+        ("Mood: asleep (wallet empty)", "mood.asleep"),
+    ]
+    var demoPick = 0
     lazy var reminders: Reminders = Reminders(pet: self.pet)
 
     init(pet: Pet) {
@@ -1127,6 +1150,7 @@ final class Backend: NSObject {
 
     func reportImpression() {
         rotateHooks()
+        if demoMode { return } // demo views are never reported or paid
         guard let c = campaign, !c.allHooks.isEmpty, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
         if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
         lastImpression[c.campaignId] = Date()
@@ -1198,7 +1222,7 @@ final class Backend: NSObject {
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
     func think(_ hook: [String: Any]) {
-        guard !thinking else { return }
+        guard !thinking, !demoMode else { return } // no 0G spend while demoing
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
@@ -1218,12 +1242,17 @@ final class Backend: NSObject {
     func render() {
         let seeded = info?.seeded ?? false
         let tag = seeded ? " [seeded]" : ""
-        let hooks = campaign?.allHooks ?? []
-        pet.signLinks = showHooks && campaign?.url != nil
-        pet.setSign(showHooks && !hooks.isEmpty ? "Sponsored \u{00B7} " + hooks[currentHook] + tag : nil)
-        if let i = info { pet.setMood(i.mood, reason: i.moodReason) }
-        if showingSettings { return }  // don't rebuild under a dragging slider
-        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)"
+        if let demo = demoHooks, !demo.isEmpty {
+            pet.signLinks = false
+            pet.setSign("Sponsored \u{00B7} " + demo[hookIndex % demo.count] + " [demo]")
+        } else {
+            let hooks = campaign?.allHooks ?? []
+            pet.signLinks = showHooks && campaign?.url != nil
+            pet.setSign(showHooks && !hooks.isEmpty ? "Sponsored \u{00B7} " + hooks[currentHook] + tag : nil)
+        }
+        if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
+        if showingSettings || showingDemo { return }  // don't rebuild under a dragging slider
+        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
         if key == shown { return }
         shown = key
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1240,7 +1269,11 @@ final class Backend: NSObject {
         names.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let head = NSStackView(views: [avatar(), names, spacer, gear])
+        let demoButton = NSButton(title: demoMode ? "Demo \u{25CF}" : "Demo", target: self, action: #selector(openDemo))
+        demoButton.isBordered = false
+        demoButton.font = .systemFont(ofSize: 12)
+        demoButton.contentTintColor = demoMode ? .systemRed : .secondaryLabelColor
+        let head = NSStackView(views: [avatar(), names, spacer, demoButton, gear])
         head.alignment = .centerY
         head.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
         stack.addArrangedSubview(head)
@@ -1340,6 +1373,9 @@ final class Backend: NSObject {
         let home = NSButton(title: "Send pet home", target: self, action: #selector(sendHome))
         home.bezelStyle = .rounded
         stack.addArrangedSubview(home)
+        let demo = NSButton(title: "Demo controls\u{2026}", target: self, action: #selector(openDemo))
+        demo.bezelStyle = .rounded
+        stack.addArrangedSubview(demo)
 
         // one click instead of hand-editing ~/.claude/settings.json; other hooks are kept and a backup is written first
         let connected = ClaudeHooks.isConnected
@@ -1360,6 +1396,61 @@ final class Backend: NSObject {
     }
 
     @objc func openSettings() { showingSettings = true; renderSettings() }
+
+    @objc func openDemo() { showingSettings = false; showingDemo = true; renderDemo() }
+    @objc func closeDemo() { showingDemo = false; shown = ""; render() }
+    func renderDemo() {
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let back = NSButton(title: "Back", target: self, action: #selector(closeDemo))
+        back.isBordered = false
+        back.font = .systemFont(ofSize: 12)
+        back.contentTintColor = .secondaryLabelColor
+        stack.addArrangedSubview(back)
+        stack.addArrangedSubview(label("Demo", 22, .semibold))
+        stack.addArrangedSubview(caption("Play any event to see what the pet does. Local only: while demo mode is on there are no 0G calls and no paid views."))
+        let toggle = NSButton(checkboxWithTitle: "Demo mode", target: self, action: #selector(toggleDemo(_:)))
+        toggle.state = demoMode ? .on : .off
+        stack.addArrangedSubview(toggle)
+        let picker = NSPopUpButton(frame: .zero, pullsDown: false)
+        picker.addItems(withTitles: demoEvents.map { $0.0 })
+        picker.selectItem(at: demoPick)
+        picker.target = self
+        picker.action = #selector(pickDemo(_:))
+        stack.addArrangedSubview(picker)
+        let play = NSButton(title: "Play", target: self, action: #selector(playDemo))
+        play.bezelStyle = .rounded
+        play.keyEquivalent = "\r"
+        stack.addArrangedSubview(play)
+        popover.contentSize = stack.fittingSize
+    }
+    @objc func pickDemo(_ sender: NSPopUpButton) { demoPick = sender.indexOfSelectedItem }
+    @objc func toggleDemo(_ sender: NSButton) {
+        demoMode = sender.state == .on
+        if !demoMode { demoHooks = nil; shown = ""; refresh() } // back to real campaign and real mood
+        render()
+    }
+    @objc func playDemo() {
+        if !demoMode { demoMode = true; renderDemo() }
+        let code = demoEvents[demoPick].1
+        switch code {
+        case "demo.ad":
+            demoHooks = ["Clearlog: logs, found. Try it free", "Still grepping logs at 2am? Clearlog.", "Your hook here, carried by the pet"]
+            pet.handle(event: "PreToolUse", notification: nil)
+        case "idle": pet.handle(event: "Notification", notification: "idle_prompt")
+        case "demo.eat": pet.eat("+0.0005 0G [demo]")
+        case "demo.say": pet.say("On it! Tests look green. [demo]", for: 4)
+        case "demo.remind":
+            reminders.message = "Claude Code is done and waiting for you [demo]"
+            reminders.fire()
+        case let m where m.hasPrefix("mood."):
+            let mood = String(m.dropFirst(5))
+            pet.setMood(mood, reason: mood == "asleep" ? "demo: wallet empty" : nil)
+        default:
+            if code == "SessionEnd" || code == "Stop" { demoHooks = nil }
+            pet.handle(event: code, notification: nil)
+        }
+        render()
+    }
     @objc func closeSettings() { showingSettings = false; shown = ""; render() }
 
     @objc func pickSkin(_ sender: NSPopUpButton) {
