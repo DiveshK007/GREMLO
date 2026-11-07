@@ -92,3 +92,8 @@ export function workFor(c: { closed: boolean; endTime: bigint; remaining: bigint
   if (now > graceEnd && c.remaining > 0n) return "refund" as const; // anyone may close; the brand gets the rest back
   return "none" as const;
 }
+
+export const DAILY_VIEW_CAP = 120; // per pet per UTC day; the Mac app stops showing hooks at the same number
+
+/** Whether another view can count today for a pet that already has `today` counted views. */
+export const underDailyCap = (today: number, cap = DAILY_VIEW_CAP) => today < cap;

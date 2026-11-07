@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement, underDailyCap, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -77,4 +77,10 @@ test("worker: settle while the contract pays, refund once the grace is over, nev
   assert.equal(workFor(c, 3, 1000n + 3601n), "refund"); // queued views can't be paid any more
   assert.equal(workFor({ ...c, remaining: 0n }, 0, 9999n), "none"); // fully spent: nothing to refund
   assert.equal(workFor({ ...c, closed: true }, 3, 900n), "none");
+});
+
+test("daily view cap per pet", () => {
+  assert.equal(underDailyCap(0), true);
+  assert.equal(underDailyCap(119), true);
+  assert.equal(underDailyCap(120), false);
 });

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress, verifyMessage } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { allow, countImpression, hookOrder, markSettled, planSettlement, workFor, type Pending } from "./batch.ts";
+import { allow, countImpression, hookOrder, markSettled, planSettlement, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -164,6 +164,8 @@ function addImpressions(req: IncomingMessage, raw: string) {
   });
   let accepted = 0;
   for (const r of rows) {
+    const t0 = store.today[r.petKey];
+    if (!underDailyCap(t0?.day === utcDay() ? t0.count : 0)) continue; // respect the developer: 120 views a day at most
     if (!countImpression(store.lastImpression, `${r.id}:${r.petKey}`, Date.now(), IMPRESSION_WINDOW_MS)) continue;
     accepted++;
     const p = (store.pending[r.id] ??= {});
