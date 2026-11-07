@@ -95,5 +95,13 @@ export const settleImpressions = (campaignId: string) =>
   call<Settlement>(`/settle/${encodeURIComponent(campaignId)}`, { method: "POST" });
 
 /** GET /campaigns/active -> what the pet is showing now, or null when nothing is live. */
-export type ActiveCampaign = { campaignId: string; line: string | null; brand: string; ratePerImpression: string } | null;
+export type ActiveCampaign = { campaignId: string; line: string | null; hooks: string[]; url: string | null; order?: number[]; brand: string; ratePerImpression: string } | null;
 export const activeCampaign = () => call<ActiveCampaign>(`/campaigns/active`);
+
+/** GET /stats -> homepage numbers from the chain's own events. */
+export type PublicStats = { campaigns: number; settledViews: string; paidWei: string; pets: number; chainId: number; seeded: boolean };
+export const publicStats = () => call<PublicStats>(`/stats`);
+
+/** POST /try -> 3 example hooks for the homepage; rate-limited, labelled as examples. */
+export const tryHook = (product: string, audience: string) =>
+  call<{ hooks: Hook[]; requestId: string; example: true }>(`/try`, { method: "POST", body: JSON.stringify({ product, audience }) });
