@@ -10,6 +10,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
       - uses: foundry-rs/foundry-toolchain@v1
+        with: { version: v1.5.1 } # pinned: resolving "latest" kept failing with GitHub 504s
       - run: forge test
         working-directory: contracts
 
