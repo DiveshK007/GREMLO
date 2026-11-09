@@ -19,6 +19,7 @@ fly secrets set \
   MOOD_THRIVING_WEI=... MOOD_STABLE_WEI=... MOOD_HUNGRY_WEI=... \
   WEB_ORIGIN=https://<your-vercel-domain> \
   ARKIV_ACCESS_KEY=... ARKIV_KEY=...        # optional: public campaign cards + receipts on Arkiv (Rabdi testnet); key needs tGLM
+  RESEND_API_KEY=... MAIL_FROM=...          # optional: brand budget alerts (50/80/100%) and weekly reports by email
 fly deploy --dockerfile Dockerfile --build-context ../..          # or from the repo root: fly deploy -c apps/server/fly.toml
 curl https://<your-app-name>.fly.dev/health                       # {"ok":true}
 ```
@@ -61,6 +62,12 @@ Signed, notarised .dmg + Sparkle auto-update need an Apple Developer account; se
 Get an access key at hub.arkiv.network/access-keys and testnet tGLM for the `ARKIV_KEY` account at hub.arkiv.network/faucet.
 With both set, each saved campaign publishes a `notchi.campaign` card and each settlement a `notchi.receipt`, all expiring with the campaign.
 Without them Arkiv is simply off; nothing else changes.
+
+## Brand emails (optional)
+
+Brands can leave an email when they fund a campaign. With `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified in Resend)
+set, the worker emails each level of budget alert once (50, 80, 100% spent) and a weekly report (views, verified humans, clicks,
+spend, best hook). Addresses stay in the server store; they are never served back or published. Without the keys mail is off.
 
 ## 4. Checks after deploying
 

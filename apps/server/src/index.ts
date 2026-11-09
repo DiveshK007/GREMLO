@@ -6,9 +6,10 @@ import { allow, countImpression, hookOrder, level, markDay, markSettled, planSet
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
-import { checkLine, checkUrl, clickTarget, cors, worldSign } from "./web.ts";
+import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
+import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
@@ -29,6 +30,10 @@ type Store = {
   clicks: Record<string, number[]>; // campaign id -> deduped sign clicks per hook index
   lastClick: Record<string, number>; // "campaignId:petKey" -> ms of the last counted click
   days: Record<string, string[]>; // pet key -> recent UTC days with a hook event or a counted view (streaks)
+  payouts: Payout[]; // settlements this server sent, newest last (weekly numbers); the chain stays the record
+  emails: Record<string, string>; // campaign id -> brand email for alerts (private, never served)
+  alerted: Record<string, number>; // campaign id -> last budget alert level emailed
+  reported: Record<string, number>; // campaign id -> ms of the last weekly report
 };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
@@ -37,7 +42,7 @@ type Brief = { product: string; audience: string; offer: string; proof: string; 
 const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta.url).pathname;
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
-  urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {},
+  urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -205,6 +210,7 @@ async function settle(id: string) {
         const txHash = await send("settleImpressions", [BigInt(id), s.pet, BigInt(s.count)]);
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
         markSettled(store.pending[id], s.pet, s.count, "paid");
+        store.payouts = [...store.payouts, { at: Date.now(), id, pet: getAddress(s.pet), views: s.count, wei: s.amount.toString() }].slice(-5000);
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
         void publishReceipt({ campaignId: id, pet: getAddress(s.pet), views: s.count, amountWei: s.amount, settleTx: txHash, chainId: chain.id, endTime });
@@ -275,6 +281,7 @@ async function getPet(key: string) {
     earnedWei: earned?.wei.toString() ?? null,
     level: earned ? level(earned.views) : null,
     streak: streak(store.days[petKey], utcDay()),
+    week: (({ views, wei }) => ({ views, wei: wei.toString() }))(sumSince(store.payouts, Date.now() - WEEK_MS, (p) => p.pet === petKey)),
   };
 }
 
@@ -349,6 +356,8 @@ async function saveCampaign(body: any) {
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
   if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
+  const email = checkEmail(body.email);
+  if (email) store.emails[id] = email;
   // public, self-expiring card on Arkiv; never blocks the brand (failures are logged)
   void publishCampaign({ id, brand, hooks: line.split("\n"), url: store.urls[id] ?? "", rateWei: rate, endTime, chainId: chain.id, fundingTx: String(body.txHash ?? "") });
   const name = str(body.brand, 40);
@@ -390,7 +399,7 @@ function campaignStats(id: string) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
   const views = store.hookViews[id] ?? [0, 0, 0, 0, 0], clicks = store.clicks[id] ?? [0, 0, 0, 0, 0];
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
-  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending };
+  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id] };
 }
 
 /** Homepage numbers, read from the chain's own events (never seeded). Cached for a minute. */
@@ -464,7 +473,7 @@ async function workerPass() {
     for (const ev of created) {
       const id = ev.args.id!;
       try {
-        const [, , , , endTime, closed] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [id] });
+        const [, budget, spent, , endTime, closed, lineHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [id] });
         const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [id] });
         const pending = Object.values(store.pending[id.toString()] ?? {}).reduce((a, b) => a + b, 0);
         const job = workFor({ closed, endTime, remaining }, pending, block.timestamp);
@@ -474,6 +483,7 @@ async function workerPass() {
         } else if (job === "refund") {
           console.log(`worker: closed campaign ${id}, refund tx ${await send("close", [id])}`);
         }
+        if (!closed) await brandMail(id.toString(), budget, spent, lineHash);
       } catch (e) {
         console.error(`worker: campaign ${id}: ${errMsg(e)}`);
       }
@@ -482,6 +492,27 @@ async function workerPass() {
     console.error(`worker: ${errMsg(e)}`);
   } finally {
     working = false;
+  }
+}
+/** Budget alerts and the weekly report for one live campaign, when the brand left an email and mail is on. */
+async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0x${string}`) {
+  const to = store.emails[id];
+  if (!to || !mailOn) return;
+  const link = `${WEB_ORIGIN}/brand?c=${id}`;
+  const pct = usedPct(spent, budget), level = alertDue(pct, store.alerted[id] ?? 0);
+  if (level && (await sendMail(to, `Notchi campaign #${id}: ${level}% of the budget is spent`,
+    `${level >= 100 ? "Your budget is used up and your hooks have stopped showing." : `Campaign #${id} has spent ${pct}% of its budget.`}\nTop up or check the numbers: ${link}`))) {
+    store.alerted[id] = level;
+    save();
+  }
+  if (store.reported[id] === undefined) { store.reported[id] = Date.now(); return save(); } // first report a week after we first see it
+  if (Date.now() - store.reported[id] < WEEK_MS) return;
+  const humans = new Set([...store.payouts.filter((p) => p.id === id).map((p) => p.pet), ...Object.keys(store.pending[id] ?? {})]).size;
+  const hooks = store.lines[lineHash]?.split("\n") ?? [];
+  const text = weeklyReport({ id, hooks, views: store.hookViews[id] ?? [], clicks: store.clicks[id] ?? [], spent, budget, humans, link });
+  if (await sendMail(to, `Notchi campaign #${id}: your week`, text)) {
+    store.reported[id] = Date.now();
+    save();
   }
 }
 if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
