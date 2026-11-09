@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { formatEther } from "viem";
 import { getPet, type PetPublic } from "@/lib/api";
 import { PetSmall } from "@/components/PetArt";
+import Feed from "./Feed";
 
 const KEY = "notchi.pet";
 const og = (wei: string | null) => (wei === null ? "unknown" : `${Number(formatEther(BigInt(wei))).toFixed(4)} 0G`);
@@ -68,6 +69,7 @@ export default function Me() {
           {share && <a className="button ghost" href={share} target="_blank" rel="noreferrer">Share this week on X</a>}
         </div>
       )}
+      {pet?.feed && <Feed pet={pet} reload={() => void load(pet.name)} />}
     </div>
   );
 }

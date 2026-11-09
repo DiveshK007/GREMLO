@@ -115,7 +115,19 @@ export const pairDevice = (pet: string, key: string, signature: string) =>
 export type PetPublic = {
   name: string; mood: string; moodReason: string | null; walletBalance: string | null; impressionsToday: number; seeded: boolean;
   paidViews: number | null; earnedWei: string | null; level: number | null; streak: number; week: { views: number; wei: string };
+  petKey: string; computeBalance: string | null;
+  /** null when self-feeding is off on the server */
+  feed: null | {
+    wallet: string; on: boolean; capWei: string; fedTodayWei: string;
+    meals: { amount: string; txHash: string; at: number }[];
+    approval: null | { id: string; amount: string; day: string; status: "pending" | "approved" | "declined" | "denied"; reason?: string };
+  };
 };
+/** Owner actions on a self-feeding pet; each is signed with the owner's wallet (and World ID for approve). */
+export const feedAction = (name: string, action: "approve" | "decline" | "cap" | "withdraw", body: Record<string, unknown>) =>
+  call<{ ok: true; txHash?: string }>(`/pets/${encodeURIComponent(name)}/${action}`, { method: "POST", body: JSON.stringify(body) });
+/** Must match the server's ownerMessage. */
+export const ownerMessage = (action: string, pet: string, detail: string, time: number) => `${action}\nPet: ${pet}\n${detail}\nTime: ${time}`;
 export const getPet = (name: string) => call<PetPublic>(`/pets/${encodeURIComponent(name)}`);
 
 /** GET /campaigns/:id/arkiv -> what Arkiv holds for this campaign, read back from Arkiv. */

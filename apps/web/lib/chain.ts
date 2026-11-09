@@ -28,6 +28,13 @@ export const vaultAbi = [
   },
   {
     type: "function",
+    name: "setPayout",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "pet", type: "address" }, { name: "payout", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "topUp",
     stateMutability: "payable",
     inputs: [{ name: "id", type: "uint256" }],
@@ -176,6 +183,14 @@ export async function readCampaign(id: bigint) {
     args: [id],
   });
   return { brand, budget, spent, rate, endTime, closed, lineHash: lh, remaining };
+}
+
+/** Points a pet's earnings at `payout`. Only the pet's owner can (the contract checks). */
+export async function setPayout(account: Address, pet: Address, payout: Address): Promise<Hash> {
+  const txHash = await walletClient(account).writeContract({ address: VAULT_ADDRESS, abi: vaultAbi, functionName: "setPayout", args: [pet, payout], gas: 100_000n });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== "success") throw new Error(`Changing the payout failed: ${txHash}`);
+  return txHash;
 }
 
 /** Adds budget to a running campaign. Only the brand that created it can, and only before it ends (the contract checks). */

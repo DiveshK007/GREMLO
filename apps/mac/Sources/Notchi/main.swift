@@ -1245,7 +1245,10 @@ final class Backend: NSObject {
                 self.pet.setMood("asleep", reason: "can't reach the Notchi server")
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
-                if self.info?.seeded == new.seeded, let gain = ogGain(self.info?.walletBalance, new.walletBalance) {
+                if let meal = new.lastMeal, self.info != nil, meal.txHash != self.info?.lastMeal?.txHash {
+                    // a self-feeding pet eats when its deposit into the 0G Router lands (real tx)
+                    self.pet.eat((ogGain("0", meal.amount) ?? og4(meal.amount)) + " food" + (new.seeded ? " [seeded]" : ""))
+                } else if new.lastMeal == nil, self.info?.seeded == new.seeded, let gain = ogGain(self.info?.walletBalance, new.walletBalance) {
                     self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
                 }
                 self.info = new
