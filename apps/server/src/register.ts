@@ -1,4 +1,4 @@
-import { getAddress, isAddress } from "viem";
+import { getAddress, isAddress, keccak256 } from "viem";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -61,6 +61,20 @@ export async function verifyWorldProof(result: unknown, rpId: string): Promise<V
   return nullifier ? { ok: true, nullifier } : { ok: false, code: "no_nullifier" };
 }
 
+/** IDKit's hashSignal for an address signal: keccak of the 20 bytes, shifted into the field, 32-byte hex. */
+export const signalHash = (address: `0x${string}`) => `0x${(BigInt(keccak256(address)) >> 8n).toString(16).padStart(64, "0")}`;
+
+/**
+ * The proof must be made for this owner (the web passes signal = owner address), so a proof seen once can't
+ * register a pet for someone else's wallet. Every signal_hash in the result must match, and there must be one.
+ */
+export function signalMatches(proof: any, owner: `0x${string}`) {
+  const hashes = [proof?.signal_hash, ...(Array.isArray(proof?.responses) ? proof.responses.map((r: any) => r?.signal_hash) : [])]
+    .filter((h) => h !== undefined && h !== null);
+  const want = signalHash(owner);
+  return hashes.length > 0 && hashes.every((h) => typeof h === "string" && h.toLowerCase() === want);
+}
+
 export function makeRegister(deps: {
   verify: (result: unknown) => Promise<Verdict>;
   registerOnChain: (pet: string, owner: string, payout: string) => Promise<string>;
@@ -79,6 +93,7 @@ export function makeRegister(deps: {
     // shape is the portal's call, not ours; we only need something to forward
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw bad("worldProof is required");
     const { pets, nullifiers } = deps.store;
+    if (!signalMatches(proof, owner as `0x${string}`)) throw new HttpError(403, "World proof rejected: it was made for a different wallet");
 
     // World first: a returning human must hear "already has a pet", not a name clash with their own pet
     const verdict = await deps.verify(proof);

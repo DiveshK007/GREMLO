@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HttpError, makeRegister, verifyWorldProof, type Verdict } from "./register.ts";
+import { HttpError, makeRegister, signalHash, signalMatches, verifyWorldProof, type Verdict } from "./register.ts";
 
-const proof = { protocol_version: "4.0", nonce: "0x1", action: "register-pet", responses: [{ nullifier: "42" }], environment: "production" };
+const OWNER = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65";
+const SIG = signalHash(OWNER);
+const proof = { protocol_version: "4.0", nonce: "0x1", action: "register-pet", responses: [{ nullifier: "42", signal_hash: SIG }], environment: "production" };
 const body = (pet: string) => ({
   petKey: pet,
   ownerAddress: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
@@ -61,7 +63,20 @@ test("two concurrent requests with one nullifier: one wins, one gets 409", async
   assert.equal((results.find((r) => r.status === "rejected") as any).reason.status, 409);
 });
 
-const legacy = { proof: "0xabc", merkle_root: "0xdef", nullifier_hash: "0x2a", verification_level: "orb" };
+const legacy = { proof: "0xabc", merkle_root: "0xdef", nullifier_hash: "0x2a", verification_level: "orb", signal_hash: SIG };
+
+test("the proof is bound to the owner wallet (signal = owner address)", async () => {
+  // reference value from @worldcoin/idkit-core hashSignal("0x1111...1111")
+  assert.equal(signalHash("0x1111111111111111111111111111111111111111"), "0x00e2c07404b8c1df4c46226425cac68c28d27a766bbddce62309f36724839b22");
+  assert.equal(signalMatches(proof, OWNER), true);
+  assert.equal(signalMatches({ responses: [{ nullifier: "1" }] }, OWNER), false); // no signal: replayable, refused
+  assert.equal(signalMatches({ responses: [{ signal_hash: signalHash("0x1111111111111111111111111111111111111111") }] }, OWNER), false);
+  let verified = false;
+  const store = { pets: {}, nullifiers: [] as string[] };
+  const register = makeRegister({ verify: async () => ((verified = true), { ok: true, nullifier: "42" }), registerOnChain: async () => "0xtx", store, save() {} });
+  await status(register({ ...body(PET_A), ownerAddress: "0x1111111111111111111111111111111111111111" }), 403);
+  assert.equal(verified, false); // refused before the portal is even asked
+});
 
 test("registration does not check the proof shape: v4 and legacy both go to verify", async () => {
   for (const [i, p] of [proof, legacy].entries()) {
