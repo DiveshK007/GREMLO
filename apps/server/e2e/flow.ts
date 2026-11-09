@@ -45,8 +45,11 @@ const server = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     ZG_CHAIN_ID: "31337", ZG_CHAIN_RPC: RPC, ZG_VAULT_ADDRESS: vault, ZG_VAULT_DEPLOY_BLOCK: "0", ZG_OPERATOR_KEY: KEYS[1],
     RP_ID: "rp_e2e", RP_SIGNING_KEY: KEYS[3].slice(2), WORLD_API_BASE: `http://127.0.0.1:${WORLD_PORT}`,
     MOOD_THRIVING_WEI: "1000", MOOD_STABLE_WEI: "100", MOOD_HUNGRY_WEI: "10",
+    ZG_MODEL: "e2e-unused", ZG_API_BASE: "http://127.0.0.1:9/v1", ZG_API_KEY: "", // no 0G in this flow; a stray call fails loudly
   },
 });
+let exited = false;
+server.on("exit", () => (exited = true));
 const call = async (path: string, body?: unknown) => {
   const r = await fetch(API + path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, json: (await r.json()) as any };
@@ -55,7 +58,7 @@ const call = async (path: string, body?: unknown) => {
 try {
   for (let i = 0; ; i++) {
     if (await fetch(`${API}/health`).then((r) => r.ok, () => false)) break;
-    if (i > 60) throw new Error("server did not start");
+    if (exited || i > 60) throw new Error("server did not start (see its log above)");
     await new Promise((r) => setTimeout(r, 500));
   }
 
