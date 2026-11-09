@@ -28,6 +28,13 @@ export const vaultAbi = [
   },
   {
     type: "function",
+    name: "topUp",
+    stateMutability: "payable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "close",
     stateMutability: "nonpayable",
     inputs: [{ name: "id", type: "uint256" }],
@@ -169,6 +176,16 @@ export async function readCampaign(id: bigint) {
     args: [id],
   });
   return { brand, budget, spent, rate, endTime, closed, lineHash: lh, remaining };
+}
+
+/** Adds budget to a running campaign. Only the brand that created it can, and only before it ends (the contract checks). */
+export async function topUpCampaign(account: Address, id: bigint, valueWei: bigint): Promise<Hash> {
+  const [balance, gasPrice] = await Promise.all([publicClient.getBalance({ address: account }), publicClient.getGasPrice()]);
+  if (balance < valueWei + CREATE_GAS * gasPrice) throw new Error(`Not enough 0G: this wallet has ${formatEther(balance)} 0G.`);
+  const txHash = await walletClient(account).writeContract({ address: VAULT_ADDRESS, abi: vaultAbi, functionName: "topUp", args: [id], value: valueWei, gas: CREATE_GAS });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== "success") throw new Error(`Top-up failed: ${txHash}`);
+  return txHash;
 }
 
 export async function closeCampaign(account: Address, id: bigint): Promise<{ txHash: Hash; refund: bigint }> {

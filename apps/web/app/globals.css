@@ -163,6 +163,12 @@ label.check input { width: auto; margin-top: 3px; }
 .stats-table { width: 100%; border-collapse: collapse; margin: var(--s-2) 0; font-variant-numeric: tabular-nums; }
 .stats-table th { text-align: left; font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--on-paper-muted); padding: var(--s-1) 0; border-bottom: 1px solid var(--rule-on-paper); }
 .stats-table td { padding: var(--s-1) 0; border-bottom: 1px solid var(--rule-on-paper); }
+.budget-meter { height: 6px; background: var(--rule-on-paper); margin: var(--s-1) 0 var(--s-2); }
+.budget-meter span { display: block; height: 100%; background: var(--ink); transition: width 0.4s ease-out; }
+.budget-meter span[data-level="high"] { background: var(--signal); }
+.topup { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--s-2); align-items: end; max-width: 360px; }
+.topup label { grid-column: 1 / -1; }
+@media (prefers-reduced-motion: reduce) { .budget-meter span { transition: none; } }
 
 /* ---------- homepage v2 ---------- */
 .eyebrow-live { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--on-paper-muted); margin-bottom: var(--s-3); }

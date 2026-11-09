@@ -6,7 +6,7 @@ import {
   ApiError, arkivCampaign, campaignStats, checkCampaign, FORMATS, type ArkivView, recordCampaign, settleImpressions, suggestHooks,
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
-import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign } from "@/lib/chain";
+import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign, topUpCampaign } from "@/lib/chain";
 import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
 import { HookTicker } from "@/components/HookTicker";
@@ -57,6 +57,8 @@ export default function FundCampaign() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [arkiv, setArkiv] = useState<ArkivView | null>(null);
   const [refund, setRefund] = useState<{ txHash: Hash; amount: bigint } | null>(null);
+  const [topUp, setTopUp] = useState("0.5");
+  const [toppedUp, setToppedUp] = useState<{ txHash: Hash; amount: string } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -169,6 +171,7 @@ export default function FundCampaign() {
   async function loadCampaign(id: string) {
     setCampaignError("");
     setRefund(null);
+    setToppedUp(null);
     if (!/^\d+$/.test(id)) return setCampaignError("Enter a campaign ID number, like 2.");
     setBusy("lookup");
     try {
@@ -213,6 +216,30 @@ export default function FundCampaign() {
     }
   }
 
+  async function onTopUp(e: React.FormEvent) {
+    e.preventDefault();
+    setCampaignError("");
+    setToppedUp(null);
+    if (!account) return setCampaignError("Connect the wallet that created this campaign first.");
+    let wei: bigint;
+    try {
+      wei = parseEther(topUp);
+    } catch {
+      return setCampaignError("Enter an amount in 0G, like 0.5.");
+    }
+    if (wei <= 0n) return setCampaignError("Enter an amount in 0G, like 0.5.");
+    setBusy("topup");
+    try {
+      const txHash = await topUpCampaign(account, BigInt(lookupId), wei);
+      setToppedUp({ txHash, amount: topUp });
+      setLookup(await readCampaign(BigInt(lookupId)));
+    } catch (e) {
+      setCampaignError((e as Error).message.split("\n")[0]);
+    } finally {
+      setBusy("");
+    }
+  }
+
   function onShare() {
     if (!funded) return;
     void navigator.clipboard?.writeText(`${window.location.origin}/brand?c=${funded.campaignId}`);
@@ -221,6 +248,7 @@ export default function FundCampaign() {
   }
 
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const usedPct = lookup && lookup.budget > 0n ? Number((lookup.spent * 100n) / lookup.budget) : 0; // integer math on wei
   const estimate = (() => {
     try {
       const r = parseEther(rate);
@@ -417,6 +445,28 @@ export default function FundCampaign() {
             <p>
               Budget {formatEther(lookup.budget)} 0G · spent {formatEther(lookup.spent)} 0G · left {formatEther(lookup.remaining)} 0G
             </p>
+            <div className="budget-meter" role="meter" aria-label="Budget spent" aria-valuemin={0} aria-valuemax={100} aria-valuenow={usedPct}>
+              <span style={{ width: `${Math.min(usedPct, 100)}%` }} data-level={usedPct >= 80 ? "high" : usedPct >= 50 ? "half" : undefined} />
+            </div>
+            {!lookup.closed && usedPct >= 50 && (
+              <p className={usedPct >= 80 ? "bad" : "muted"} role="status">
+                {usedPct >= 100 ? "Budget used up: your hooks have stopped showing." : `${usedPct}% of the budget is spent.`}
+                {lookup.endTime > nowSec ? " Top up below to keep them running." : ""}
+              </p>
+            )}
+            {!lookup.closed && lookup.endTime > nowSec && (
+              <form className="topup" onSubmit={onTopUp}>
+                <label htmlFor="topup">Add budget (0G)</label>
+                <input id="topup" inputMode="decimal" value={topUp} onChange={(e) => setTopUp(e.target.value)} />
+                <button type="submit" disabled={busy === "topup"}>{busy === "topup" ? "Topping up…" : "Top up"}</button>
+              </form>
+            )}
+            {toppedUp && (
+              <p className="ok">
+                Added {toppedUp.amount} 0G:{" "}
+                <a className="mono" href={txLink(toppedUp.txHash)} target="_blank" rel="noreferrer">{toppedUp.txHash}</a>
+              </p>
+            )}
             <p className="muted">
               {lookup.closed
                 ? "Closed. Unspent budget was refunded."
