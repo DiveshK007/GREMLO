@@ -4,6 +4,7 @@ import "./tokens.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"), // absolute URLs for share cards
   title: "Notchi",
   description: "A desktop pet that earns its own food while your coding agent works.",
 };
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <nav>
             <Link href="/pet">Get your pet</Link>
+            <Link href="/me">Your pet</Link>
             <Link href="/brand">Fund a campaign</Link>
           </nav>
         </header>

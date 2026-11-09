@@ -1334,6 +1334,7 @@ final class Backend: NSObject {
         if let l = info?.level, let s = info?.streak {
             stack.addArrangedSubview(row("Level \(l)", s == 0 ? "no streak yet" : "\(s)-day streak"))
         }
+        stack.addArrangedSubview(NSButton(title: "Your pet page and weekly recap", target: self, action: #selector(openPetPage)))
 
         stack.addArrangedSubview(caption("Now showing"))
         let line = !sponsoredOn ? "Sponsored hooks are off" : inQuietHours() ? "Quiet hours: no hooks until 08:00"
@@ -1567,6 +1568,12 @@ final class Backend: NSObject {
             a.runModal()
         }
         renderSettings()
+    }
+    @objc func openPetPage() {
+        let web = ProcessInfo.processInfo.environment["NOTCHI_WEB"] ?? "http://localhost:3000"
+        let pet = petName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? petName
+        if let u = URL(string: "\(web)/me?pet=\(pet)") { NSWorkspace.shared.open(u) }
+        popover.close()
     }
     @objc func pairDevice() {
         guard let key = devicePublicKey else { return }

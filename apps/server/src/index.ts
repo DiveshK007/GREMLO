@@ -356,7 +356,8 @@ async function saveCampaign(body: any) {
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
   if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
-  const email = checkEmail(body.email);
+  // checked before payment (/campaigns/check); after the money moved a bad address is dropped, never an error
+  const email = (() => { try { return checkEmail(body.email); } catch { return undefined; } })();
   if (email) store.emails[id] = email;
   // public, self-expiring card on Arkiv; never blocks the brand (failures are logged)
   void publishCampaign({ id, brand, hooks: line.split("\n"), url: store.urls[id] ?? "", rateWei: rate, endTime, chainId: chain.id, fundingTx: String(body.txHash ?? "") });
@@ -535,7 +536,7 @@ async function route(req: IncomingMessage) {
     // run before the brand pays, so nothing they wrote can be refused after the money moved
     const b = await readBody(req);
     checkCampaign(b?.brief, Array.isArray(b?.hooks) ? b.hooks.map(String) : []);
-    return { ok: true, url: checkUrl(b?.url) };
+    return { ok: true, url: checkUrl(b?.url), email: checkEmail(b?.email) ?? null };
   }
   const click = pathname.match(/^\/c\/([^/]+)\/([^/]+)$/);
   if (m === "GET" && click) return signClick(click[1], click[2], searchParams.get("pet"), searchParams);

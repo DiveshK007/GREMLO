@@ -38,6 +38,7 @@ export default function FundCampaign() {
   const [brief, setBrief] = useState<Brief>(emptyBrief);
   const [url, setUrl] = useState("");
   const [attest, setAttest] = useState(false);
+  const [email, setEmail] = useState("");
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [dropped, setDropped] = useState<Dropped[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
@@ -141,7 +142,7 @@ export default function FundCampaign() {
 
     setBusy("check");
     try {
-      await checkCampaign(brief, picked, url.trim()); // refuse here, before any money moves
+      await checkCampaign(brief, picked, url.trim(), email.trim()); // refuse here, before any money moves
     } catch (e) {
       setBusy("");
       return setError((e as Error).message);
@@ -154,7 +155,7 @@ export default function FundCampaign() {
       let recordWarning: string | undefined;
       setBusy("record");
       try {
-        await recordCampaign({ campaignId: campaignId.toString(), hooks: picked, lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief });
+        await recordCampaign({ campaignId: campaignId.toString(), hooks: picked, lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief, email: email.trim() || undefined });
       } catch (e) {
         recordWarning = `Paid onchain, but the server didn't save your hooks: ${(e as Error).message}. Your budget is safe; contact us with the receipt.`;
       }
@@ -394,6 +395,9 @@ export default function FundCampaign() {
             <input id="hours" value={hours} onChange={(e) => setHours(e.target.value)} />
           </div>
         </div>
+        <label htmlFor="email">Email for budget alerts and a weekly report (optional)</label>
+        <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} placeholder="you@company.com" />
+        <p className="muted">Only used to email you about this campaign. Never shown or shared.</p>
         <div className="summary">
           <span className="estimate">{estimate}</span>
           <p>views, roughly, at this price. Any unspent budget is refunded when the campaign ends.</p>
@@ -501,6 +505,10 @@ export default function FundCampaign() {
                 )}
               </div>
             )}
+            {stats?.best != null && (
+              <p>Best hook so far: #{stats.best + 1}, {((stats.clicks[stats.best] / stats.views[stats.best]) * 100).toFixed(1)}% of views clicked.</p>
+            )}
+            {stats?.emailAlerts && <p className="muted">Budget alerts and the weekly report go to the email you gave.</p>}
             {stats && stats.pendingViews > 0 && <p className="muted">{stats.pendingViews} view{stats.pendingViews === 1 ? "" : "s"} waiting to be settled.</p>}
             {!lookup.closed && lookup.endTime + 3600n <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>{busy === "close" ? "Closing…" : "Close and refund"}</button>

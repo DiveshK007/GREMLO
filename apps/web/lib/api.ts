@@ -71,15 +71,15 @@ export const suggestHooks = (brief: Brief, url: string) =>
   });
 
 /** POST /campaigns/check -> the same checks the server runs after payment, run before it. */
-export const checkCampaign = (brief: Brief, hooks: string[], url: string) =>
-  call<{ ok: true; url: string }>(`/campaigns/check`, { method: "POST", body: JSON.stringify({ brief, hooks, url }) });
+export const checkCampaign = (brief: Brief, hooks: string[], url: string, email = "") =>
+  call<{ ok: true; url: string }>(`/campaigns/check`, { method: "POST", body: JSON.stringify({ brief, hooks, url, email }) });
 
 /** GET /campaigns/:id/stats -> per-hook views and clicks, queued views. */
-export type Stats = { campaignId: string; url: string | null; views: number[]; clicks: number[]; pendingViews: number };
+export type Stats = { campaignId: string; url: string | null; views: number[]; clicks: number[]; pendingViews: number; best: number | null; emailAlerts: boolean };
 export const campaignStats = (id: string) => call<Stats>(`/campaigns/${encodeURIComponent(id)}/stats`);
 
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
-export const recordCampaign = (body: { campaignId: string; hooks: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief }) =>
+export const recordCampaign = (body: { campaignId: string; hooks: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief; email?: string }) =>
   call<unknown>(`/campaigns`, { method: "POST", body: JSON.stringify(body) });
 
 /** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is wei as a string. */
@@ -111,7 +111,12 @@ export const pairDevice = (pet: string, key: string, signature: string) =>
   call<{ ok: true; pet: string; device: string }>(`/pets/${encodeURIComponent(pet)}/device`, { method: "POST", body: JSON.stringify({ key, signature }) });
 
 /** GET /pets/:name -> the pet's canonical name and mood. */
-export const getPet = (name: string) => call<{ name: string; mood: string }>(`/pets/${encodeURIComponent(name)}`);
+/** GET /pets/:name. Money is wei as strings; null means the chain couldn't be read (never shown as 0). */
+export type PetPublic = {
+  name: string; mood: string; moodReason: string | null; walletBalance: string | null; impressionsToday: number; seeded: boolean;
+  paidViews: number | null; earnedWei: string | null; level: number | null; streak: number; week: { views: number; wei: string };
+};
+export const getPet = (name: string) => call<PetPublic>(`/pets/${encodeURIComponent(name)}`);
 
 /** GET /campaigns/:id/arkiv -> what Arkiv holds for this campaign, read back from Arkiv. */
 export type ArkivView =
