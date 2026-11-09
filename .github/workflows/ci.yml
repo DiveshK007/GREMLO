@@ -70,6 +70,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift build
         working-directory: apps/mac
+      - run: ./scripts/release-mac.sh # unsigned here; signing and notarization need your Apple secrets
 
   api-image:
     runs-on: ubuntu-latest

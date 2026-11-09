@@ -103,3 +103,13 @@ at once, because the contract pays for only one more hour.
 - A new campaign funded on the web app shows on a paired Mac within 10 s.
 - An unsigned `POST /impressions` from curl gets 401.
 - The worker logs `worker: settled campaign N` within 10 minutes of queued views.
+
+## Mac app: signed, notarized dmg
+
+`scripts/release-mac.sh` builds a universal `Notchi.app` (pets and hook script inside), wraps it in a dmg, and with your Apple Developer account signs, notarizes and staples it. You need:
+
+1. An Apple Developer Program membership and a "Developer ID Application" certificate in your keychain. `security find-identity -v -p codesigning` shows its name.
+2. A notarytool profile, made once: `xcrun notarytool store-credentials notchi --apple-id you@example.com --team-id TEAMID --password <app-specific password>`.
+3. `SIGN_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=notchi VERSION=0.2.0 ./scripts/release-mac.sh`
+
+Output: `apps/mac/dist/Notchi-<version>.dmg`. Without `SIGN_ID` the script signs ad hoc, so the app runs only on the Mac that built it. CI runs it unsigned to prove the bundle builds. There is no auto-update yet; ship a new dmg per version.

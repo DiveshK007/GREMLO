@@ -67,7 +67,9 @@ enum ClaudeHooks {
     }
 
     static func connect() throws {
-        guard let bundled = Bundle.module.url(forResource: "notchi-hook", withExtension: "sh") else {
+        // The .app ships it in Contents/Resources; Bundle.module (swift run) is touched only when that's absent,
+        // because its accessor crashes when its bundle isn't next to the executable.
+        guard let bundled = Bundle.main.url(forResource: "notchi-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "notchi-hook", withExtension: "sh") else {
             throw NSError(domain: "Notchi", code: 2, userInfo: [NSLocalizedDescriptionKey: "hook script missing from the app"])
         }
         let fm = FileManager.default

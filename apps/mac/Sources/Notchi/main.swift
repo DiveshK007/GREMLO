@@ -101,8 +101,12 @@ struct Skin {
     let scale: CGFloat               // points per sheet pixel
 }
 
-let assetsDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-    .deletingLastPathComponent().appendingPathComponent("assets")
+// The packaged .app carries its pets in Contents/Resources/assets; swift run reads them from the repo.
+let assetsDir: URL = {
+    if let r = Bundle.main.resourceURL?.appendingPathComponent("assets/pets"), FileManager.default.fileExists(atPath: r.path) { return r.deletingLastPathComponent() }
+    return URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("assets")
+}()
 let defaultSkin = "notchi-ink"
 
 // Every folder with a pet.json in assets/demo-pets (gitignored) and assets/pets, demo first.
