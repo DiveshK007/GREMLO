@@ -509,6 +509,12 @@ export default function FundCampaign() {
               <p>Best hook so far: #{stats.best + 1}, {((stats.clicks[stats.best] / stats.views[stats.best]) * 100).toFixed(1)}% of views clicked.</p>
             )}
             {stats?.emailAlerts && <p className="muted">Budget alerts and the weekly report go to the email you gave.</p>}
+            {stats && stats.heldViews > 0 && (
+              <p className="muted">{stats.heldViews} view{stats.heldViews === 1 ? "" : "s"} in the fraud check{stats.holdbackHours ? ` (paid after ${stats.holdbackHours}h)` : ""}.</p>
+            )}
+            {stats && Object.entries(stats.voided).map(([reason, n]) => (
+              <p key={reason} className="muted">{n} view{n === 1 ? "" : "s"} voided, not charged: {reason}.</p>
+            ))}
             {stats && stats.pendingViews > 0 && <p className="muted">{stats.pendingViews} view{stats.pendingViews === 1 ? "" : "s"} waiting to be settled.</p>}
             {!lookup.closed && lookup.endTime + 3600n <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>{busy === "close" ? "Closing…" : "Close and refund"}</button>

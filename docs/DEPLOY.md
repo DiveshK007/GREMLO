@@ -90,6 +90,13 @@ Create a World action `approve-spend` (unlimited verifications) next to `registe
 pet wallet at any time. The pet's credit is Notchi's bookkeeping of its share of the router account, kept from the
 deposit tx hashes and the per-call `total_cost` the Router returns; the router account balance itself is onchain.
 
+## Holdback and fraud rules
+
+Views wait `HOLDBACK_HOURS` (24 in the Docker image, 0 locally) before they can be paid. Then fixed rules void what
+looks like a farm (more than 3 pets from one network in an hour) or a script (a pet seen in more than 20 hours of a
+day). Voided views are never charged; brands see the count and reason. When a campaign ends, held views are reviewed
+at once, because the contract pays for only one more hour.
+
 ## 4. Checks after deploying
 
 - `GET /health` is ok; `GET /stats` returns numbers from the chain.

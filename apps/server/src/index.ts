@@ -9,6 +9,8 @@ import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
+import { createHash } from "node:crypto";
+import { hold, review, type Held } from "./fraud.ts";
 import { costWei, DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
@@ -42,6 +44,8 @@ type Store = {
   caps: Record<string, string>; // pet key -> owner-set daily cap in wei (default FEED_DAILY_CAP)
   approvals: Record<string, Approval>; // pet key -> the latest spend-above-cap request
   approveNullifier: Record<string, string>; // pet key -> the World nullifier that approves its spends (first use pins it)
+  held: Record<string, Held[]>; // campaign id -> views waiting out the holdback, bucketed by pet, hour and network
+  voided: Record<string, Record<string, number>>; // campaign id -> reason -> views voided by the fraud rules
 };
 type Meal = { amount: string; txHash: string; at: number };
 type Approval = { id: string; amount: string; day: string; status: "pending" | "approved" | "declined" | "denied"; at: number; reason?: string };
@@ -53,7 +57,7 @@ const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
-  petIndex: {}, credit: {}, meals: {}, fed: {}, caps: {}, approvals: {}, approveNullifier: {},
+  petIndex: {}, credit: {}, meals: {}, fed: {}, caps: {}, approvals: {}, approveNullifier: {}, held: {}, voided: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -169,6 +173,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
   const body = parse(raw);
   if (!Array.isArray(body.impressions) || body.impressions.length === 0) throw bad("impressions must be a non-empty array");
   const signed = signer(req, "/impressions", raw); // verified once per request, then checked per row
+  const ipTag = createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 12); // for the one-network rule; raw IP never stored
   // validate all entries before touching the store so a bad batch changes nothing
   const rows = body.impressions.map((i: any) => {
     const pet = findPet(String(i?.petKey ?? ""));
@@ -186,8 +191,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
     if (!underDailyCap(t0?.day === utcDay() ? t0.count : 0)) continue; // respect the developer: 120 views a day at most
     if (!countImpression(store.lastImpression, `${r.id}:${r.petKey}`, Date.now(), IMPRESSION_WINDOW_MS)) continue;
     accepted++;
-    const p = (store.pending[r.id] ??= {});
-    p[r.petKey] = (p[r.petKey] ?? 0) + 1;
+    hold((store.held[r.id] ??= []), r.petKey, Math.floor(Date.now() / 3_600_000), ipTag); // paid after holdback + rules
     if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
     const t = store.today[r.petKey];
     store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
@@ -208,9 +212,10 @@ async function settle(id: string) {
     // the contract pays only until 1 hour after the end; say so instead of sending a tx that reverts
     const { timestamp } = await pub.getBlock();
     if (timestamp > endTime + 3600n) {
-      const queued = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
+      const queued = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0) + (store.held[id] ?? []).reduce((a, h) => a + h.n, 0);
       throw new HttpError(409, `campaign #${id}'s settlement window closed at ${new Date(Number(endTime + 3600n) * 1000).toLocaleTimeString()}; ${queued} queued impression${queued === 1 ? "" : "s"} can't be paid. Close it to refund the rest.`);
     }
+    release(id, timestamp >= endTime);
     const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [BigInt(id)] });
     const plan = planSettlement(store.pending[id] ?? {}, rate, remaining);
 
@@ -546,11 +551,28 @@ function signClick(id: string, hookStr: string, petKey: string | null, q: URLSea
 }
 
 /** What a brand sees for one campaign: per-hook views and clicks, queued views, link. Brief stays private. */
+const HOLDBACK_HOURS = Number(process.env.HOLDBACK_HOURS ?? 0); // 24 in production (Dockerfile); 0 keeps local demos instant
+/** Moves views that waited out the holdback into the payable queue, voiding what the fraud rules flag. */
+function release(id: string, ended: boolean) {
+  const held = store.held[id];
+  if (!held?.length) return;
+  // once the campaign has ended the contract pays for one more hour only, so nothing may wait past that
+  const r = review(held, Math.floor(Date.now() / 3_600_000), ended ? 0 : HOLDBACK_HOURS);
+  const p = (store.pending[id] ??= {});
+  for (const h of r.ok) p[h.pet] = (p[h.pet] ?? 0) + h.n;
+  const v = (store.voided[id] ??= {});
+  for (const h of r.voided) v[h.reason] = (v[h.reason] ?? 0) + h.n;
+  if (r.voided.length) console.log(`fraud: campaign ${id} voided ${r.voided.reduce((a, h) => a + h.n, 0)} views`);
+  store.held[id] = r.waiting;
+  save();
+}
+
 function campaignStats(id: string) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
   const views = store.hookViews[id] ?? [0, 0, 0, 0, 0], clicks = store.clicks[id] ?? [0, 0, 0, 0, 0];
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
-  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id] };
+  const heldViews = (store.held[id] ?? []).reduce((a, h) => a + h.n, 0);
+  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, heldViews, holdbackHours: HOLDBACK_HOURS, voided: store.voided[id] ?? {}, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id] };
 }
 
 /** Homepage numbers, read from the chain's own events (never seeded). Cached for a minute. */
@@ -626,6 +648,7 @@ async function workerPass() {
       try {
         const [, budget, spent, , endTime, closed, lineHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [id] });
         const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [id] });
+        release(id.toString(), block.timestamp >= endTime);
         const pending = Object.values(store.pending[id.toString()] ?? {}).reduce((a, b) => a + b, 0);
         const job = workFor({ closed, endTime, remaining }, pending, block.timestamp);
         if (job === "settle") {
