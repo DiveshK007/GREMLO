@@ -1187,8 +1187,14 @@ final class Backend: NSObject {
         if demoMode { return } // demo views are never reported or paid
         guard let c = campaign, !c.allHooks.isEmpty, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
         if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
+        // Viewability (README): unlocked screen, sign visible (placeSign), someone used the Mac in the last 5 minutes.
+        let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        if locked || idle > 300 { return }
         lastImpression[c.campaignId] = Date()
-        request("/impressions", body: ["impressions": [["petKey": petName, "campaignId": c.campaignId, "hook": currentHook]]]) { _, err in
+        let view: [String: Any] = ["petKey": petName, "campaignId": c.campaignId, "hook": currentHook,
+                                   "shownMs": Int(Date().timeIntervalSince(since) * 1000), "unlocked": true, "visible": true, "idleS": Int(idle)]
+        request("/impressions", body: ["impressions": [view]]) { _, err in
             if let err { print("impression not sent: \(err)") }
             self.refresh()
         }

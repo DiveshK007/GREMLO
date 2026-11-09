@@ -38,6 +38,17 @@ Built from scratch at ETHGlobal Mumbai 2026.
 - **Stays out of full-screen apps.** The pet shows on every normal desktop but never covers full-screen apps; a setting shows it there too. Impressions only count while the sign is actually on screen.
 - **Reacts to you.** Hover and it turns to smile; click it repeatedly and it gets annoyed, then calms down after 6 seconds. It never interrupts work, approvals or what its 0G brain says.
 
+## What counts as a paid view
+
+A view is paid only when all of these hold, measured on the Mac and sent inside the device-signed request:
+
+- the sign was on screen for at least 5 seconds;
+- the screen was unlocked;
+- the sign's window was visible (not on another Space, not behind a full-screen app);
+- someone used the keyboard or mouse in the last 5 minutes.
+
+The server refuses views that break a rule and says which one. At most one view per campaign per minute and 120 a day per pet. Views then wait out the holdback and the fraud rules before they are paid.
+
 ## How each sponsor is used
 
 **0G (Private Computer).** The pet's brain. Every pet decision and every set of ad lines is an inference call on 0G Private Computer (TEE routing), and the request ID is shown in the UI. We use 0G's own `0gm-1.0-35b-a3b` for everyday decisions and `glm-5.3` when the pet is thriving or writing ad lines. If 0G can't be reached, the pet goes to sleep and says why. It never invents a decision. The campaign contract also lives on 0G Galileo.

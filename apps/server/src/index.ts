@@ -11,6 +11,7 @@ import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } fro
 import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
 import { createHash } from "node:crypto";
 import { hold, review, type Held } from "./fraud.ts";
+import { checkViewable } from "./viewable.ts";
 import { costWei, DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
@@ -183,6 +184,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
     const hook = i.hook === undefined ? null : Number(i.hook);
     if (hook !== null && !(Number.isInteger(hook) && hook >= 0 && hook < 5)) throw bad("hook must be 0-4");
+    checkViewable(i);
     return { id, petKey: pet.petKey, hook };
   });
   let accepted = 0;
