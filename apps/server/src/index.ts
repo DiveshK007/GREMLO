@@ -85,6 +85,7 @@ const settling = new Set<string>(); // campaigns with a settlement in flight
 const RP_ID = process.env.RP_ID;
 const RP_SIGNING_KEY = process.env.RP_SIGNING_KEY;
 if (!RP_ID || !RP_SIGNING_KEY) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
+if (process.env.WORLD_API_BASE && !seeded) throw new Error("WORLD_API_BASE (a stub World verifier) is allowed on a local Anvil chain only");
 
 const wei = (name: string) => {
   const v = process.env[name];

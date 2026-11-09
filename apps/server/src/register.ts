@@ -36,6 +36,7 @@ function findNullifier(json: any, proof: any) {
 }
 
 let loggedShape = false;
+const WORLD_API = process.env.WORLD_API_BASE ?? "https://developer.worldcoin.org"; // overridden only by the e2e test (Anvil only, see index.ts)
 
 /**
  * Forwards the IDKit result unchanged to the Developer Portal v4 verify endpoint
@@ -47,7 +48,7 @@ export async function verifyWorldProof(result: unknown, rpId: string, action = R
     loggedShape = true;
     console.log(`worldProof top-level keys: ${Object.keys(result as object).join(", ")}`); // keys only, never values
   }
-  const res = await fetch(`https://developer.worldcoin.org/api/v4/verify/${encodeURIComponent(rpId)}`, {
+  const res = await fetch(`${WORLD_API}/api/v4/verify/${encodeURIComponent(rpId)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result),
