@@ -1030,6 +1030,15 @@ struct PetInfo: Decodable {
     let paidViews: Int?; let earnedWei: String?; let level: Int?; let streak: Int? // nil: older server or chain unreadable
 }
 
+/// Looks are earned, never bought: what a skin still needs, or nil when it's available. Unlisted skins are always open.
+func skinLock(_ name: String, _ i: PetInfo?) -> String? {
+    switch name {
+    case "notchi-bone": return (i?.level ?? 0) >= 2 ? nil : "level 2"
+    case "notchi-signal": return (i?.streak ?? 0) >= 3 ? nil : "a 3-day streak"
+    default: return nil
+    }
+}
+
 /// Time the agent worked while you waited today (prompt to stop), counted on this Mac from hook events, never uploaded.
 struct WaitClock {
     var day = "", seconds = 0.0, since: Date?
@@ -1367,8 +1376,14 @@ final class Backend: NSObject {
 
         stack.addArrangedSubview(caption("Avatar"))
         let picker = NSPopUpButton(frame: .zero, pullsDown: false)
-        picker.addItems(withTitles: petFolders().map(\.name))
-        picker.selectItem(withTitle: pet.skin.name)
+        picker.autoenablesItems = false
+        let folders = petFolders()
+        for f in folders {
+            let lock = skinLock(f.name, info)
+            picker.addItem(withTitle: lock.map { "\(f.name) (unlocks at \($0))" } ?? f.name)
+            picker.lastItem?.isEnabled = lock == nil || f.name == pet.skin.name // a look you already wear stays
+        }
+        if let i = folders.firstIndex(where: { $0.name == pet.skin.name }) { picker.selectItem(at: i) }
         picker.target = self
         picker.action = #selector(pickSkin(_:))
         stack.addArrangedSubview(picker)
@@ -1485,9 +1500,11 @@ final class Backend: NSObject {
     @objc func closeSettings() { showingSettings = false; shown = ""; render() }
 
     @objc func pickSkin(_ sender: NSPopUpButton) {
-        guard let name = sender.titleOfSelectedItem, let f = petFolders().first(where: { $0.name == name }),
-              let s = loadSkin(name: f.name, dir: f.dir) else { return }
-        defaults.set(name, forKey: "skin")
+        let folders = petFolders()
+        guard folders.indices.contains(sender.indexOfSelectedItem) else { return }
+        let f = folders[sender.indexOfSelectedItem]
+        guard skinLock(f.name, info) == nil || f.name == pet.skin.name, let s = loadSkin(name: f.name, dir: f.dir) else { return }
+        defaults.set(f.name, forKey: "skin")
         pet.setSkin(s)
     }
 
