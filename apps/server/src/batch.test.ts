@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allow, countImpression, hookOrder, markSettled, planSettlement, underDailyCap, workFor } from "./batch.ts";
+import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -83,4 +83,15 @@ test("daily view cap per pet", () => {
   assert.equal(underDailyCap(0), true);
   assert.equal(underDailyCap(119), true);
   assert.equal(underDailyCap(120), false);
+});
+
+test("streak: consecutive days ending today or yesterday; level from paid views", () => {
+  assert.deepEqual(markDay(markDay([], "2026-11-08"), "2026-11-08"), ["2026-11-08"]);
+  const days = ["2026-11-01", "2026-11-06", "2026-11-07", "2026-11-08"];
+  assert.equal(streak(days, "2026-11-08"), 3);
+  assert.equal(streak(days, "2026-11-09"), 3); // not coded yet today: still alive
+  assert.equal(streak(days, "2026-11-10"), 0); // a missed day ends it
+  assert.equal(streak(["2026-10-31", "2026-11-01"], "2026-11-01"), 2); // across a month
+  assert.equal(streak([], "2026-11-01"), 0);
+  assert.deepEqual([0, 9, 10, 39, 40, 90].map(level), [1, 1, 2, 2, 3, 4]);
 });

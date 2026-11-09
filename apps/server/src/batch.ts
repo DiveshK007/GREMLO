@@ -97,3 +97,15 @@ export const DAILY_VIEW_CAP = 120; // per pet per UTC day; the Mac app stops sho
 
 /** Whether another view can count today for a pet that already has `today` counted views. */
 export const underDailyCap = (today: number, cap = DAILY_VIEW_CAP) => today < cap;
+
+const dayBefore = (d: string) => new Date(Date.parse(d) - 86_400_000).toISOString().slice(0, 10);
+/** Recent UTC days the pet was active (a hook event or a counted view), oldest first, at most 60. */
+export const markDay = (days: string[] = [], day: string) => (days.at(-1) === day ? days : [...days, day].slice(-60));
+/** Consecutive active days ending today, or yesterday so the streak survives until you code today. Cosmetic only. */
+export function streak(days: string[] = [], today: string) {
+  let d = days.at(-1) === today ? today : dayBefore(today), n = 0;
+  for (let i = days.length - 1; i >= 0 && days[i] === d; i--, n++) d = dayBefore(d);
+  return n;
+}
+/** Level from views the chain has paid for: 1 at 0, 2 at 10, 3 at 40, 4 at 90... */
+export const level = (paidViews: number) => Math.floor(Math.sqrt(paidViews / 10)) + 1;

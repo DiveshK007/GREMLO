@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { BaseError, getAddress, isAddress, verifyMessage } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
-import { allow, countImpression, hookOrder, markSettled, planSettlement, underDailyCap, workFor, type Pending } from "./batch.ts";
+import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
@@ -28,6 +28,7 @@ type Store = {
   hookViews: Record<string, number[]>; // campaign id -> counted impressions per hook index
   clicks: Record<string, number[]>; // campaign id -> deduped sign clicks per hook index
   lastClick: Record<string, number>; // "campaignId:petKey" -> ms of the last counted click
+  days: Record<string, string[]>; // pet key -> recent UTC days with a hook event or a counted view (streaks)
 };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
@@ -36,7 +37,7 @@ type Brief = { product: string; audience: string; offer: string; proof: string; 
 const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta.url).pathname;
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
-  urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {},
+  urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -174,6 +175,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
     if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
     const t = store.today[r.petKey];
     store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
+    store.days[r.petKey] = markDay(store.days[r.petKey], utcDay());
   }
   save();
   return { accepted, pending: store.pending };
@@ -254,14 +256,26 @@ async function getPet(key: string) {
     if (e instanceof HttpError || !rec) throw e; // RPC down: a pet we registered still answers, asleep
   }
   const t = store.today[petKey];
-  return petView({
+  // earnings straight from the chain's settlements; null (not 0) when the chain can't be read
+  const earned = await settledEvents().then(
+    (ev) => ev.filter((e) => e.args.pet && getAddress(e.args.pet) === petKey)
+      .reduce((a, e) => ({ views: a.views + Number(e.args.count ?? 0n), wei: a.wei + (e.args.amount ?? 0n) }), { views: 0, wei: 0n }),
+    () => null,
+  );
+  return {
+    ...petView({
     name: rec?.name ?? petKey.toLowerCase(),
     walletBalance: await payoutBalance(getAddress(payout!)), // payout is where the pet's earnings land
     thresholds,
     impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
     lastThoughts: store.thoughts[petKey],
-  });
+    }),
+    paidViews: earned?.views ?? null,
+    earnedWei: earned?.wei.toString() ?? null,
+    level: earned ? level(earned.views) : null,
+    streak: streak(store.days[petKey], utcDay()),
+  };
 }
 
 const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
@@ -274,6 +288,7 @@ async function petThink(key: string, body: any) {
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
   const petKey = getAddress(findPet(key)?.petKey ?? key);
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
+  store.days[petKey] = markDay(store.days[petKey], utcDay());
   save();
   return r;
 }
@@ -379,12 +394,23 @@ function campaignStats(id: string) {
 }
 
 /** Homepage numbers, read from the chain's own events (never seeded). Cached for a minute. */
+let settledCache: { at: number; events: Promise<{ args: { pet?: `0x${string}`; count?: bigint; amount?: bigint } }[]> } | null = null;
+/** Every ImpressionsSettled event, read from the chain at most once a minute (shared by /stats and pet earnings). */
+function settledEvents() {
+  if (!settledCache || Date.now() - settledCache.at > 60_000) {
+    const events = pub.getContractEvents({ address: vault, abi, eventName: "ImpressionsSettled", fromBlock: deployBlock });
+    settledCache = { at: Date.now(), events };
+    events.catch(() => (settledCache = null)); // a failed read is retried on the next request
+  }
+  return settledCache.events;
+}
+
 let statsCache: { at: number; body: unknown } | null = null;
 async function publicStats() {
   if (statsCache && Date.now() - statsCache.at < 60_000) return statsCache.body;
   const [created, settled] = await Promise.all([
     pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
-    pub.getContractEvents({ address: vault, abi, eventName: "ImpressionsSettled", fromBlock: deployBlock }),
+    settledEvents(),
   ]);
   const views = settled.reduce((a, e) => a + (e.args.count ?? 0n), 0n);
   const paid = settled.reduce((a, e) => a + (e.args.amount ?? 0n), 0n);
