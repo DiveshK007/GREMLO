@@ -5,6 +5,8 @@ pragma solidity ^0.8.24;
 /// @notice Brands lock a budget in the native token (0G testnet). The operator settles
 /// impressions to verified pets. Unspent budget refunds to the brand after the end time.
 /// The pet's own key can never change where its money goes; only the human owner can.
+/// v2: the admin (meant to be a multisig) can pause new money in and payouts, but never refunds;
+/// admin hands over in two steps; the operator can settle many pets in one transaction.
 contract CampaignVault {
     struct Campaign {
         address brand;
@@ -27,6 +29,8 @@ contract CampaignVault {
     uint256 public constant SETTLE_GRACE = 1 hours;
 
     address public admin;
+    address public pendingAdmin;
+    bool public paused;
     address public operator;
     uint256 public nextCampaignId = 1;
 
@@ -43,6 +47,9 @@ contract CampaignVault {
     event PetVerified(address indexed pet, bool verified);
     event PayoutChanged(address indexed pet, address payout);
     event OperatorChanged(address operator);
+    event AdminProposed(address admin);
+    event AdminChanged(address admin);
+    event PausedSet(bool paused);
 
     error NotAdmin();
     error NotOperator();
@@ -57,6 +64,7 @@ contract CampaignVault {
     error OverBudget();
     error TransferFailed();
     error Reentrancy();
+    error IsPaused();
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
@@ -65,6 +73,11 @@ contract CampaignVault {
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) revert IsPaused();
         _;
     }
 
@@ -87,10 +100,30 @@ contract CampaignVault {
         emit OperatorChanged(operator_);
     }
 
+    /// @notice Stops new campaigns, top-ups, registrations and payouts. Refunds (close) and payout changes still work,
+    /// so a pause can never trap a brand's or a developer's money.
+    function setPaused(bool paused_) external onlyAdmin {
+        paused = paused_;
+        emit PausedSet(paused_);
+    }
+
+    /// @notice Two steps so a typo can't hand the vault to an address nobody controls.
+    function proposeAdmin(address admin_) external onlyAdmin {
+        pendingAdmin = admin_;
+        emit AdminProposed(admin_);
+    }
+
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin || msg.sender == address(0)) revert NotAdmin();
+        admin = msg.sender;
+        pendingAdmin = address(0);
+        emit AdminChanged(msg.sender);
+    }
+
     // ---------- pets ----------
 
     /// @notice Called by the backend after it has checked the owner's World ID proof.
-    function registerPet(address pet, address owner, address payout) external onlyOperator {
+    function registerPet(address pet, address owner, address payout) external onlyOperator whenNotPaused {
         if (pet == address(0) || owner == address(0) || payout == address(0)) revert BadParams();
         if (pets[pet].owner != address(0)) revert BadParams(); // one registration per pet key
         pets[pet] = Pet({owner: owner, payout: payout, verified: true});
@@ -114,7 +147,7 @@ contract CampaignVault {
 
     // ---------- campaigns ----------
 
-    function createCampaign(bytes32 lineHash, uint96 rate, uint64 endTime) external payable returns (uint256 id) {
+    function createCampaign(bytes32 lineHash, uint96 rate, uint64 endTime) external payable whenNotPaused returns (uint256 id) {
         if (rate == 0 || endTime <= block.timestamp || msg.value < rate || msg.value > type(uint128).max) {
             revert BadParams();
         }
@@ -131,7 +164,7 @@ contract CampaignVault {
         emit CampaignCreated(id, msg.sender, msg.value, rate, endTime, lineHash);
     }
 
-    function topUp(uint256 id) external payable {
+    function topUp(uint256 id) external payable whenNotPaused {
         Campaign storage c = _live(id);
         if (msg.sender != c.brand) revert NotBrand();
         if (block.timestamp > c.endTime) revert CampaignEnded();
@@ -141,7 +174,19 @@ contract CampaignVault {
         emit CampaignToppedUp(id, msg.value, newBudget);
     }
 
-    function settleImpressions(uint256 id, address pet, uint256 count) external onlyOperator nonReentrant {
+    function settleImpressions(uint256 id, address pet, uint256 count) external onlyOperator whenNotPaused nonReentrant {
+        _settle(id, pet, count);
+    }
+
+    /// @notice Many pets in one transaction, same checks as one by one. Any failing pet reverts the whole batch.
+    function settleBatch(uint256 id, address[] calldata pets_, uint256[] calldata counts) external onlyOperator whenNotPaused nonReentrant {
+        if (pets_.length == 0 || pets_.length != counts.length) revert BadParams();
+        for (uint256 i; i < pets_.length; ++i) {
+            _settle(id, pets_[i], counts[i]);
+        }
+    }
+
+    function _settle(uint256 id, address pet, uint256 count) internal {
         Campaign storage c = _live(id);
         if (block.timestamp > uint256(c.endTime) + SETTLE_GRACE) revert CampaignEnded();
         Pet memory p = pets[pet];

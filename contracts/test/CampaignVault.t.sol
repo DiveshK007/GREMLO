@@ -212,4 +212,143 @@ contract CampaignVaultTest is Test {
         assertLe(petWallet.balance, BUDGET);
         assertEq(petWallet.balance + vault.remaining(id), BUDGET);
     }
+
+    // ---------- v2 ----------
+
+    function test_pauseStopsMoneyInAndPayoutsButNotRefunds() public {
+        uint256 id = _create();
+        vm.prank(stranger);
+        vm.expectRevert(CampaignVault.NotAdmin.selector);
+        vault.setPaused(true);
+        vault.setPaused(true); // the test contract deployed the vault, so it is admin
+        vm.prank(brand);
+        vm.expectRevert(CampaignVault.IsPaused.selector);
+        vault.createCampaign{value: BUDGET}(LINE, RATE, uint64(block.timestamp + 1 days));
+        vm.prank(operator);
+        vm.expectRevert(CampaignVault.IsPaused.selector);
+        vault.settleImpressions(id, petKey, 1);
+        vm.prank(owner);
+        vault.setPayout(petKey, owner); // owners can still move their payout
+        vm.warp(block.timestamp + 1 days + 1 hours + 1);
+        uint256 before = brand.balance;
+        vault.close(id); // refunds never blocked
+        assertEq(brand.balance, before + BUDGET);
+    }
+
+    function test_adminHandoverIsTwoStep() public {
+        address safe = makeAddr("safe");
+        vault.proposeAdmin(safe);
+        assertEq(vault.admin(), address(this));
+        vm.prank(stranger);
+        vm.expectRevert(CampaignVault.NotAdmin.selector);
+        vault.acceptAdmin();
+        vm.prank(safe);
+        vault.acceptAdmin();
+        assertEq(vault.admin(), safe);
+        vm.expectRevert(CampaignVault.NotAdmin.selector);
+        vault.setPaused(true);
+    }
+
+    function test_settleBatchPaysEveryPet() public {
+        address pet2 = makeAddr("pet2");
+        address wallet2 = makeAddr("wallet2");
+        vm.prank(operator);
+        vault.registerPet(pet2, owner, wallet2);
+        uint256 id = _create();
+        address[] memory ps = new address[](2);
+        uint256[] memory cs = new uint256[](2);
+        (ps[0], ps[1], cs[0], cs[1]) = (petKey, pet2, 3, 7);
+        vm.prank(operator);
+        vault.settleBatch(id, ps, cs);
+        assertEq(petWallet.balance, 3 * uint256(RATE));
+        assertEq(wallet2.balance, 7 * uint256(RATE));
+        assertEq(vault.remaining(id), BUDGET - 10 * uint256(RATE));
+    }
+
+    function test_settleBatchRevertsWhole() public {
+        uint256 id = _create();
+        address[] memory ps = new address[](2);
+        uint256[] memory cs = new uint256[](2);
+        (ps[0], ps[1], cs[0], cs[1]) = (petKey, stranger, 3, 7); // stranger is not a verified pet
+        vm.prank(operator);
+        vm.expectRevert(CampaignVault.PetNotVerified.selector);
+        vault.settleBatch(id, ps, cs);
+        assertEq(petWallet.balance, 0);
+        vm.prank(operator);
+        vm.expectRevert(CampaignVault.BadParams.selector);
+        vault.settleBatch(id, ps, new uint256[](1));
+        (ps[1], cs[0], cs[1]) = (petKey, BUDGET / RATE, 1); // together over budget
+        vm.prank(operator);
+        vm.expectRevert(CampaignVault.OverBudget.selector);
+        vault.settleBatch(id, ps, cs);
+    }
+}
+
+/// Random creates, top-ups, settles and closes; the vault must always hold exactly what campaigns have left.
+contract VaultHandler is Test {
+    CampaignVault public vault;
+    address operator = makeAddr("operator");
+    address pet = makeAddr("pet");
+    uint256[] public ids;
+
+    constructor(CampaignVault v) {
+        vault = v;
+        vm.prank(operator);
+        vault.registerPet(pet, makeAddr("owner"), makeAddr("wallet"));
+    }
+
+    function create(uint96 rate, uint256 budget) external {
+        rate = uint96(bound(rate, 1, 1e18));
+        budget = bound(budget, rate, 100 ether);
+        vm.deal(address(this), budget);
+        ids.push(vault.createCampaign{value: budget}(bytes32(0), rate, uint64(block.timestamp + 1 days)));
+    }
+
+    function topUp(uint256 i, uint256 amount) external {
+        if (ids.length == 0) return;
+        amount = bound(amount, 1, 10 ether);
+        vm.deal(address(this), amount);
+        try vault.topUp{value: amount}(ids[i % ids.length]) {} catch {}
+    }
+
+    function settle(uint256 i, uint256 count) external {
+        if (ids.length == 0) return;
+        count = bound(count, 1, 1000);
+        vm.prank(operator);
+        try vault.settleImpressions(ids[i % ids.length], pet, count) {} catch {}
+    }
+
+    function close(uint256 i, uint256 dt) external {
+        if (ids.length == 0) return;
+        vm.warp(block.timestamp + bound(dt, 0, 3 days));
+        try vault.close(ids[i % ids.length]) {} catch {}
+    }
+
+    function count() external view returns (uint256) {
+        return ids.length;
+    }
+
+    receive() external payable {}
+}
+
+contract CampaignVaultInvariant is Test {
+    CampaignVault vault;
+    VaultHandler handler;
+
+    function setUp() public {
+        vault = new CampaignVault(makeAddr("operator"));
+        handler = new VaultHandler(vault);
+        targetContract(address(handler));
+    }
+
+    function invariant_balanceEqualsRemaining() public view {
+        uint256 sum;
+        for (uint256 i; i < handler.count(); ++i) {
+            uint256 id = handler.ids(i);
+            sum += vault.remaining(id);
+            (, uint128 budget, uint128 spent,,,,) = vault.campaigns(id);
+            assertLe(spent, budget);
+        }
+        assertEq(address(vault).balance, sum);
+    }
 }
