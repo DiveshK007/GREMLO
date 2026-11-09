@@ -1027,6 +1027,30 @@ struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
 struct PetInfo: Decodable {
     let name: String; let mood: String; let moodReason: String?; let walletBalance: String?; let computeBalance: String?
     let impressionsToday: Int; let lastThoughts: [Thought]; let lastMeal: Meal?; let seeded: Bool
+    let paidViews: Int?; let earnedWei: String?; let level: Int?; let streak: Int? // nil: older server or chain unreadable
+}
+
+/// Time the agent worked while you waited today (prompt to stop), counted on this Mac from hook events, never uploaded.
+struct WaitClock {
+    var day = "", seconds = 0.0, since: Date?
+    static let maxStretch = 3600.0 // a lost Stop (crash, kill) must not count the whole night
+    static func dayOf(_ d: Date) -> String { let c = Calendar.current.dateComponents([.year, .month, .day], from: d); return "\(c.year!)-\(c.month!)-\(c.day!)" }
+    mutating func handle(_ event: String, at now: Date = Date()) {
+        if WaitClock.dayOf(now) != day { day = WaitClock.dayOf(now); seconds = 0 }
+        switch event {
+        case "UserPromptSubmit": close(now); since = now
+        case "Stop", "StopFailure", "SessionEnd": close(now)
+        default: break
+        }
+    }
+    mutating func close(_ now: Date) {
+        if let s = since { seconds += min(max(now.timeIntervalSince(s), 0), WaitClock.maxStretch) }
+        since = nil
+    }
+    func minutes(at now: Date = Date()) -> Int {
+        guard WaitClock.dayOf(now) == day else { return 0 }
+        return Int((seconds + (since.map { min(now.timeIntervalSince($0), WaitClock.maxStretch) } ?? 0)) / 60)
+    }
 }
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
@@ -1065,6 +1089,7 @@ final class Backend: NSObject {
     var serverError: String?
     var thinking = false
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
+    var waited = WaitClock()
     // Hook rotation: the next hook on each new appearance of the sign, and every 45s while it stays up.
     var hookIndex = 0
     var hookSince = Date()
@@ -1293,7 +1318,13 @@ final class Backend: NSObject {
                 stack.addArrangedSubview(bar(CGFloat(truncating: (value / top) as NSDecimalNumber)))
             }
         }
-        stack.addArrangedSubview(row("Impressions today", info.map { "\($0.impressionsToday)" + tag } ?? "\u{2014}"))
+        stack.addArrangedSubview(row("Today", "waited \(waited.minutes()) min, \(info.map { "\($0.impressionsToday)" } ?? "\u{2014}") views" + tag))
+        if let i = info, let views = i.paidViews {
+            stack.addArrangedSubview(row("Paid by brands", "\(og4(i.earnedWei)) for \(views) views" + tag))
+        }
+        if let l = info?.level, let s = info?.streak {
+            stack.addArrangedSubview(row("Level \(l)", s == 0 ? "no streak yet" : "\(s)-day streak"))
+        }
 
         stack.addArrangedSubview(caption("Now showing"))
         let line = !sponsoredOn ? "Sponsored hooks are off" : inQuietHours() ? "Quiet hours: no hooks until 08:00"
@@ -1613,6 +1644,13 @@ assert(og4("19279999998320000") == "0.0192 0G" && og4("0") == "0.0000 0G" && og4
 assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "\u{2014}")
 assert(og4("-5") == "\u{2014}" && og4("0x1f") == "\u{2014}" && og4(" 5") == "\u{2014}" && og4("") == "\u{2014}")
 assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
+do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt closes the open stretch
+    var w = WaitClock(); let t0 = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())! // away from midnight
+    w.handle("UserPromptSubmit", at: t0); w.handle("PreToolUse", at: t0 + 60); w.handle("Stop", at: t0 + 120)
+    assert(w.minutes(at: t0 + 130) == 2)
+    w.handle("UserPromptSubmit", at: t0 + 200); w.handle("UserPromptSubmit", at: t0 + 200 + 7200)
+    assert(w.minutes(at: t0 + 200 + 7200) == 62)
+}
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
@@ -1624,6 +1662,7 @@ let server: HookServer
 do {
     server = try HookServer(port: 47474) { hook in
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
+        backend.waited.handle(hook["hook_event_name"] as! String)
         backend.think(hook)
         backend.reminders.handle(hook)
         backend.render()
