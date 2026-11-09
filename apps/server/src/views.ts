@@ -30,18 +30,20 @@ export function petView(p: {
   impressionsToday: number;
   seeded: boolean;
   lastThoughts?: { action: string; requestId: string; at: number }[];
+  /** set when the pet feeds itself: its 0G credit drives the mood, and the last deposit is its meal */
+  computeBalance?: bigint | null;
+  lastMeal?: { amount: string; txHash: string; at: number } | null;
 }) {
+  const moodWei = p.computeBalance !== undefined ? p.computeBalance : p.walletBalance;
   return {
     name: p.name,
-    mood: p.walletBalance === null ? "asleep" : moodFor(p.walletBalance, p.thresholds),
-    moodReason: p.walletBalance === null ? "can't read balance" : null,
+    mood: moodWei === null ? "asleep" : moodFor(moodWei, p.thresholds),
+    moodReason: moodWei === null ? "can't read balance" : p.computeBalance !== undefined && moodFor(moodWei, p.thresholds) === "asleep" ? "0G credit used up; it eats when it earns" : null,
     walletBalance: p.walletBalance?.toString() ?? null,
-    // shortcut: brain does not report its compute balance or meals yet, so these stay empty
-    // instead of invented; fill them when brain posts its compute balance and deposits
-    computeBalance: null as string | null,
+    computeBalance: p.computeBalance?.toString() ?? null, // null unless the pet feeds itself
     impressionsToday: p.impressionsToday,
     lastThoughts: p.lastThoughts ?? [],
-    lastMeal: null as { amount: string; txHash: string; at: number } | null,
+    lastMeal: p.lastMeal ?? null,
     seeded: p.seeded,
   };
 }

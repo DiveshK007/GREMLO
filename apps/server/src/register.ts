@@ -10,7 +10,7 @@ export const addr = (v: unknown, field: string) => {
 };
 
 /** World ID actions this server signs for. Anything else gets a 400. */
-export const WORLD_ACTIONS = new Set(["register-pet"]);
+export const WORLD_ACTIONS = new Set(["register-pet", "approve-spend"]);
 const REGISTER_ACTION = "register-pet";
 
 export type Verdict = { ok: true; nullifier: string } | { ok: false; code: string };
@@ -42,7 +42,7 @@ let loggedShape = false;
  * (POST https://developer.worldcoin.org/api/v4/verify/{rp_id}) and trusts its `success`.
  * Network or portal outages throw, so they surface as 502 rather than a false "denied".
  */
-export async function verifyWorldProof(result: unknown, rpId: string): Promise<Verdict> {
+export async function verifyWorldProof(result: unknown, rpId: string, action = REGISTER_ACTION): Promise<Verdict> {
   if (!loggedShape) {
     loggedShape = true;
     console.log(`worldProof top-level keys: ${Object.keys(result as object).join(", ")}`); // keys only, never values
@@ -56,7 +56,7 @@ export async function verifyWorldProof(result: unknown, rpId: string): Promise<V
   if (res.status >= 500) throw new Error(`World verify unavailable (${res.status})`);
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json.success !== true) return { ok: false, code: json.code ?? `http_${res.status}` };
-  if (json.action && json.action !== REGISTER_ACTION) return { ok: false, code: "wrong_action" };
+  if (json.action && json.action !== action) return { ok: false, code: "wrong_action" };
   const nullifier = findNullifier(json, result);
   return nullifier ? { ok: true, nullifier } : { ok: false, code: "no_nullifier" };
 }

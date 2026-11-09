@@ -20,6 +20,7 @@ fly secrets set \
   WEB_ORIGIN=https://<your-vercel-domain> \
   ARKIV_ACCESS_KEY=... ARKIV_KEY=...        # optional: public campaign cards + receipts on Arkiv (Rabdi testnet); key needs tGLM
   RESEND_API_KEY=... MAIL_FROM=...          # optional: brand budget alerts (50/80/100%) and weekly reports by email
+  PET_WALLET_MNEMONIC=... ZG_ROUTER_ACCOUNT=0x...  # optional: pets pay for their own 0G brain (see below)
 fly deploy --dockerfile Dockerfile --build-context ../..          # or from the repo root: fly deploy -c apps/server/fly.toml
 curl https://<your-app-name>.fly.dev/health                       # {"ok":true}
 ```
@@ -68,6 +69,26 @@ Without them Arkiv is simply off; nothing else changes.
 Brands can leave an email when they fund a campaign. With `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified in Resend)
 set, the worker emails each level of budget alert once (50, 80, 100% spent) and a weekly report (views, verified humans, clicks,
 spend, best hook). Addresses stay in the server store; they are never served back or published. Without the keys mail is off.
+
+## Pets that pay for their own brain (optional)
+
+The loop: brand pays the pet -> the pet's own wallet -> deposit into the 0G Router's Payment Layer -> the pet's next
+think is charged against that credit at the cost the Router reports. It only closes on testnet if the brain uses the
+testnet Router, because campaigns pay in Galileo testnet 0G:
+
+  ZG_API_BASE=https://router-api-testnet.integratenetwork.work/v1
+  ZG_API_KEY=sk-...            # created at pc.testnet.0g.ai by the ZG_ROUTER_ACCOUNT wallet
+  ZG_MODEL=qwen3-omni-flash    # the model the testnet Router serves (GET /v1/models)
+  ZG_ROUTER_ACCOUNT=0x...      # that wallet's address; deposits are made for it via depositFor
+  PET_WALLET_MNEMONIC="..."    # a fresh 12-word phrase used only for pet wallets; each pet gets one index
+  FEED_DAILY_CAP=0.05          # 0G per pet per day the worker may deposit without asking (owner can change it)
+  FEED_RESERVE=0.002           # left in each pet wallet for gas
+
+The owner opts in on /me ("Let it pay for its brain"), which points the pet's payout at its wallet. Every deposit is
+decided by a fixed rule (reserve, daily cap); above the cap the owner signs with their wallet and proves with World ID.
+Create a World action `approve-spend` (unlimited verifications) next to `register-pet`. The owner can withdraw the
+pet wallet at any time. The pet's credit is Notchi's bookkeeping of its share of the router account, kept from the
+deposit tx hashes and the per-call `total_cost` the Router returns; the router account balance itself is onchain.
 
 ## 4. Checks after deploying
 

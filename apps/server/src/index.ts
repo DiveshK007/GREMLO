@@ -1,14 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { BaseError, getAddress, isAddress, verifyMessage } from "viem";
+import { BaseError, createWalletClient, formatEther, getAddress, http, isAddress, parseEther, verifyMessage } from "viem";
 import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView } from "./views.ts";
-import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
+import { bad, HttpError, makeRegister, signalMatches, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
+import { costWei, DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
@@ -34,7 +35,16 @@ type Store = {
   emails: Record<string, string>; // campaign id -> brand email for alerts (private, never served)
   alerted: Record<string, number>; // campaign id -> last budget alert level emailed
   reported: Record<string, number>; // campaign id -> ms of the last weekly report
+  petIndex: Record<string, number>; // pet key -> index of its server-held wallet (PET_WALLET_MNEMONIC); never reused
+  credit: Record<string, string>; // pet key -> 0G credit in wei: deposits minus Router-reported call costs
+  meals: Record<string, Meal[]>; // pet key -> its deposits into the 0G Router, newest last
+  fed: Record<string, { day: string; wei: string }>; // pet key -> deposited today (UTC), for the daily cap
+  caps: Record<string, string>; // pet key -> owner-set daily cap in wei (default FEED_DAILY_CAP)
+  approvals: Record<string, Approval>; // pet key -> the latest spend-above-cap request
+  approveNullifier: Record<string, string>; // pet key -> the World nullifier that approves its spends (first use pins it)
 };
+type Meal = { amount: string; txHash: string; at: number };
+type Approval = { id: string; amount: string; day: string; status: "pending" | "approved" | "declined" | "denied"; at: number; reason?: string };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
 // shortcut: one JSON file, one process; fine for a single instance on a persistent volume (STORE_PATH).
@@ -43,6 +53,7 @@ const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
+  petIndex: {}, credit: {}, meals: {}, fed: {}, caps: {}, approvals: {}, approveNullifier: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -268,6 +279,8 @@ async function getPet(key: string) {
       .reduce((a, e) => ({ views: a.views + Number(e.args.count ?? 0n), wei: a.wei + (e.args.amount ?? 0n) }), { views: 0, wei: 0n }),
     () => null,
   );
+  const wallet = rec ? petWallet(petKey) : null;
+  const feeding = !!wallet && getAddress(payout!) === wallet;
   return {
     ...petView({
     name: rec?.name ?? petKey.toLowerCase(),
@@ -276,13 +289,144 @@ async function getPet(key: string) {
     impressionsToday: t?.day === utcDay() ? t.count : 0,
     seeded,
     lastThoughts: store.thoughts[petKey],
+    ...(feeding ? { computeBalance: BigInt(store.credit[petKey] ?? "0"), lastMeal: store.meals[petKey]?.at(-1) ?? null } : {}),
     }),
+    petKey,
+    feed: wallet && {
+      wallet, // the pet's own wallet; point the payout here to let it pay for its brain
+      on: feeding,
+      capWei: capOf(petKey).toString(),
+      fedTodayWei: fedToday(petKey).toString(),
+      meals: (store.meals[petKey] ?? []).slice(-5),
+      approval: store.approvals[petKey] ?? null,
+    },
     paidViews: earned?.views ?? null,
     earnedWei: earned?.wei.toString() ?? null,
     level: earned ? level(earned.views) : null,
     streak: streak(store.days[petKey], utcDay()),
     week: (({ views, wei }) => ({ views, wei: wei.toString() }))(sumSince(store.payouts, Date.now() - WEEK_MS, (p) => p.pet === petKey)),
   };
+}
+
+/** The pet's server-held wallet address, assigning it a fresh index on first use. Null when feeding is off. */
+function petWallet(petKey: string) {
+  if (!feedOn) return null;
+  if (store.petIndex[petKey] === undefined) {
+    store.petIndex[petKey] = Math.max(-1, ...Object.values(store.petIndex)) + 1;
+    save();
+  }
+  return getAddress(petAccount(store.petIndex[petKey]).address);
+}
+const capOf = (petKey: string) => BigInt(store.caps[petKey] ?? DAILY_CAP_WEI);
+const fedToday = (petKey: string) => (store.fed[petKey]?.day === utcDay() ? BigInt(store.fed[petKey].wei) : 0n);
+const approvedToday = (petKey: string) => {
+  const a = store.approvals[petKey];
+  return a?.status === "approved" && a.day === utcDay() ? BigInt(a.amount) : 0n;
+};
+
+/** One feeding pass: every pet whose payout is its own wallet deposits what the plan allows. */
+async function feedPass() {
+  if (!feedOn) return;
+  for (const pet of Object.values(store.pets)) {
+    const petKey = getAddress(pet.petKey), idx = store.petIndex[petKey];
+    if (idx === undefined) continue;
+    try {
+      const wallet = getAddress(petAccount(idx).address);
+      const [, payout] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
+      if (getAddress(payout) !== wallet) continue; // owner hasn't let it feed itself
+      const credit = BigInt(store.credit[petKey] ?? "0");
+      const plan = planFeed({ balance: await pub.getBalance({ address: wallet }), fedToday: fedToday(petKey), cap: capOf(petKey), approved: approvedToday(petKey), credit });
+      if (plan.deposit > 0n) {
+        const txHash = await deposit(idx, plan.deposit);
+        store.credit[petKey] = (credit + plan.deposit).toString();
+        store.fed[petKey] = { day: utcDay(), wei: (fedToday(petKey) + plan.deposit).toString() };
+        store.meals[petKey] = [...(store.meals[petKey] ?? []), { amount: plan.deposit.toString(), txHash, at: Date.now() }].slice(-50);
+        save();
+        console.log(`feed: ${pet.name} deposited ${plan.deposit} wei into the 0G Router, tx ${txHash}`);
+      }
+      const a = store.approvals[petKey];
+      // one open question a day: a pending or declined request waits; a denied proof or a used approval may ask again
+      if (plan.ask > 0n && !(a?.day === utcDay() && (a.status === "pending" || a.status === "declined"))) {
+        store.approvals[petKey] = { id: crypto.randomUUID(), amount: plan.ask.toString(), day: utcDay(), status: "pending", at: Date.now() };
+        save();
+        console.log(`feed: ${pet.name} hit its daily cap and asks its owner to approve ${plan.ask} wei`);
+      }
+    } catch (e) {
+      console.error(`feed: ${pet.name}: ${errMsg(e)}`); // safe-stop: nothing recorded, retried next pass
+    }
+  }
+}
+
+const usedOwnerSigs = new Map<string, number>();
+/** An owner action signed with the wallet that owns the pet, within 5 minutes and never reused. */
+async function ownerSigned(pet: PetRecord, action: string, detail: string, body: any) {
+  const time = Number(body?.time), signature = String(body?.signature ?? "");
+  if (!Number.isFinite(time) || Math.abs(Date.now() - time) > 300_000) throw bad("signature time is missing or too old; try again");
+  if (!/^0x[0-9a-fA-F]+$/.test(signature)) throw bad("signature is required");
+  for (const [sig, at] of usedOwnerSigs) if (Date.now() - at > 600_000) usedOwnerSigs.delete(sig);
+  if (usedOwnerSigs.has(signature)) throw new HttpError(401, "signature already used");
+  const message = ownerMessage(action, pet.name, detail, time);
+  const ok = await verifyMessage({ address: getAddress(pet.owner), message, signature: signature as `0x${string}` }).catch(() => false);
+  if (!ok) throw new HttpError(403, "signature is not from this pet's owner");
+  usedOwnerSigs.set(signature, Date.now());
+}
+const ownerMessage = (action: string, pet: string, detail: string, time: number) => `${action}\nPet: ${pet}\n${detail}\nTime: ${time}`;
+
+/** Owner actions on the pet's food: approve above the cap (wallet + World ID), decline, set the cap, withdraw. */
+async function feedAction(name: string, action: string, body: any) {
+  const pet = findPet(name);
+  if (!pet || !feedOn) throw new HttpError(404, feedOn ? "unknown pet" : "self-feeding is off on this server");
+  const petKey = getAddress(pet.petKey);
+  if (action === "cap") {
+    const cap = (() => { try { return parseEther(String(body?.cap ?? "")); } catch { return -1n; } })();
+    if (cap < 0n || cap > parseEther("10")) throw bad("cap must be 0 to 10 0G a day");
+    await ownerSigned(pet, "Set my Notchi pet's daily food cap", `Cap: ${formatEther(cap)} 0G`, body);
+    store.caps[petKey] = cap.toString();
+    save();
+    return { ok: true, capWei: cap.toString() };
+  }
+  if (action === "withdraw") {
+    const idx = store.petIndex[petKey];
+    if (idx === undefined) throw bad("this pet has no wallet yet");
+    await ownerSigned(pet, "Send my Notchi pet's wallet to me", `To: ${getAddress(pet.owner)}`, body);
+    return { ok: true, txHash: await sweep(idx, getAddress(pet.owner)) };
+  }
+  const a = store.approvals[petKey];
+  if (!a || a.id !== String(body?.id ?? "") || a.status !== "pending") throw new HttpError(409, "no pending request with that id");
+  const detail = `Request: ${a.id}\nAmount: ${formatEther(BigInt(a.amount))} 0G`;
+  if (action === "decline") {
+    await ownerSigned(pet, "Decline my Notchi pet's spend", detail, body);
+    a.status = "declined";
+    save();
+    return { ok: true, approval: a };
+  }
+  if (action !== "approve") throw new HttpError(404, "not found");
+  await ownerSigned(pet, "Approve my Notchi pet's spend", detail, body);
+  // the wallet proves the owner, World proves a human is present; a failed proof is shown, never retried silently
+  const proof = body?.worldProof;
+  const deny = (reason: string) => { a.status = "denied"; a.reason = reason; save(); throw new HttpError(403, `Not approved: ${reason}`); };
+  if (!proof || typeof proof !== "object" || !signalMatches(proof, getAddress(pet.owner))) deny("the World ID proof was not made for the owner wallet");
+  const v = await verifyWorldProof(proof, RP_ID!, "approve-spend");
+  if (!v.ok) deny(`World ID said no (${v.code})`);
+  const n = (v as { nullifier: string }).nullifier;
+  if (store.approveNullifier[petKey] && store.approveNullifier[petKey] !== n) deny("a different human approved this pet before");
+  store.approveNullifier[petKey] = n;
+  a.status = "approved";
+  save();
+  void feedPass(); // feed now rather than in 10 minutes
+  return { ok: true, approval: a };
+}
+
+/** Everything above gas from the pet wallet back to the owner. */
+async function sweep(idx: number, to: `0x${string}`) {
+  const account = petAccount(idx);
+  const [balance, gasPrice] = await Promise.all([pub.getBalance({ address: account.address }), pub.getGasPrice()]);
+  const fee = 21_000n * gasPrice * 2n;
+  if (balance <= fee) throw bad("the pet wallet is empty");
+  const hash = await createWalletClient({ chain, transport: http(), account }).sendTransaction({ to, value: balance - fee, gas: 21_000n, gasPrice });
+  const r = await pub.waitForTransactionReceipt({ hash });
+  if (r.status !== "success") throw new Error(`withdraw ${hash} failed`);
+  return hash;
 }
 
 const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
@@ -294,6 +438,12 @@ async function petThink(key: string, body: any) {
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
   const petKey = getAddress(findPet(key)?.petKey ?? key);
+  if (pet.feed?.on && r.requestId) {
+    // the pet pays: charge its credit exactly what the Router reported for this call
+    const charge = costWei(r.cost);
+    if (charge === null) console.error(`feed: ${petKey} call ${r.requestId} has no cost from the Router; not charged`);
+    else store.credit[petKey] = (BigInt(store.credit[petKey] ?? "0") - charge).toString();
+  }
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
   store.days[petKey] = markDay(store.days[petKey], utcDay());
   save();
@@ -516,6 +666,7 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0
     save();
   }
 }
+if (process.env.WORKER !== "off" && feedOn) setInterval(feedPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 
 async function route(req: IncomingMessage) {
@@ -525,6 +676,8 @@ async function route(req: IncomingMessage) {
   if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
+  const feedRoute = pathname.match(/^\/pets\/([^/]+)\/(approve|decline|cap|withdraw)$/);
+  if (m === "POST" && feedRoute) return feedAction(decodeURIComponent(feedRoute[1]), feedRoute[2], await readBody(req));
   const pair = pathname.match(/^\/pets\/([^/]+)\/device$/);
   if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
