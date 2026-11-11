@@ -2,19 +2,37 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 // set before import: index.js reads model env at load
-process.env.ZG_MODEL_SMART = 'smart-model';
-process.env.ZG_MODEL_CHEAP = 'cheap-model';
+process.env.NEAR_AI_MODEL_SMART = 'smart-model';
+process.env.NEAR_AI_MODEL_CHEAP = 'cheap-model';
 const { think } = await import('./index.js');
 
 const reply = (status, body) => async () => new Response(JSON.stringify(body), { status });
-const ok = reply(200, { choices: [{ message: { content: '{"action":"work","say":"on it"}' } }], x_0g_trace: { request_id: 'r' } });
+const ok = reply(200, { choices: [{ message: { content: '{"action":"work","say":"on it"}' } }], id: 'chatcmpl-r' });
 
-test('parses action, say and request id', async () => {
-  const out = await think({ mood: 'stable' }, { fetch: reply(200, {
-    choices: [{ message: { content: '```json\n{"action":"wave","say":"need you"}\n```' } }],
-    x_0g_trace: { request_id: 'r1', billing: { total_cost: '5' } },
-  }) });
-  assert.deepEqual(out, { action: 'wave', say: 'need you', requestId: 'r1', cost: '5' });
+test('parses action, say, the completion id and usage', async () => {
+  const usage = { prompt_tokens: 40, completion_tokens: 12, total_tokens: 52 };
+  const out = await think({ mood: 'stable' }, { fetch: async () => new Response(JSON.stringify({
+    id: 'chatcmpl-1', choices: [{ message: { content: '```json\n{"action":"wave","say":"need you"}\n```' } }], usage,
+  }), { headers: { 'x-request-id': 'trace-1' } }) });
+  assert.deepEqual(out, { action: 'wave', say: 'need you', requestId: 'chatcmpl-1', usage });
+});
+
+test('calls NEAR AI Cloud with the bearer key; a failed call carries X-Request-Id', async () => {
+  let url, auth;
+  const spy = async (u, init) => { url = u; auth = init.headers.Authorization; return new Response('{"error":"no credits"}', { status: 402, headers: { 'x-request-id': 'trace-2' } }); };
+  const out = await think({ mood: 'stable' }, { fetch: spy, key: 'k' });
+  assert.equal(url, 'https://cloud-api.near.ai/v1/chat/completions');
+  assert.equal(auth, 'Bearer k');
+  assert.equal(out.requestId, 'trace-2');
+  assert.match(out.reason, /NEAR AI HTTP 402/);
+});
+
+test('defaults to the NEAR-hosted TEE models', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const env = { ...process.env, NEAR_AI_MODEL_SMART: '', NEAR_AI_MODEL_CHEAP: '' };
+  const js = "const m = (await import('./index.js')).MODEL_BY_MOOD; console.log(m.thriving + ' ' + m.stable)";
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', js], { env, cwd: import.meta.dirname }).toString().trim();
+  assert.equal(out, 'deepseek-ai/DeepSeek-V4.1-Flash-1017 Qwen/Qwen3.8-27B');
 });
 
 test('picks the model by mood, no call when asleep', async () => {
@@ -39,11 +57,11 @@ test('safe-stops on HTTP error, unknown action and network failure', async () =>
   assert.equal(odd.action, 'sleep');
 
   const down = await think({ mood: 'stable' }, { fetch: async () => { throw new Error('ECONNREFUSED'); } });
-  assert.deepEqual(down, { action: 'sleep', reason: '0G unreachable: ECONNREFUSED', requestId: null });
+  assert.deepEqual(down, { action: 'sleep', reason: 'NEAR AI unreachable: ECONNREFUSED', requestId: null });
 });
 
 const BRIEF = { product: 'Clearlog, log search for TypeScript teams', audience: 'backend developers', offer: 'first 1M logs free', proof: 'Indexes 1M logs in 30 seconds', cta: 'Try it free' };
-const turn = (content, id) => new Response(JSON.stringify({ choices: [{ message: { content } }], x_0g_trace: { request_id: id } }));
+const turn = (content, id) => new Response(JSON.stringify({ choices: [{ message: { content } }], id }));
 const hooksJson = (list) => JSON.stringify({ hooks: list.map(([format, text]) => ({ format, text })) });
 
 test('suggestHooks keeps hooks that pass the claim checks and reports the rest with reasons', async () => {
@@ -75,7 +93,7 @@ test('suggestHooks keeps hooks that pass the claim checks and reports the rest w
   assert.equal(sent[0].max_tokens, 8192);
 });
 
-test('suggestHooks refuses financial-return briefs before spending a 0G call', async () => {
+test('suggestHooks refuses financial-return briefs before spending an AI call', async () => {
   const { suggestHooks } = await import('./index.js');
   let called = false;
   const fetch = async () => { called = true; return turn('{}', 'X'); };

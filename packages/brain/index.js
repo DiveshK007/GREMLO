@@ -1,9 +1,9 @@
-// Pet decisions and ad lines via the 0G Compute Router (OpenAI-compatible). Never invents output:
+// Pet decisions and ad lines via NEAR AI Cloud (OpenAI-compatible, TEE inference). Never invents output:
 // think() safe-stops to {action: "sleep", reason}; suggestHooks() throws with the real error.
 
 export const ACTIONS = ['wake', 'work', 'wave', 'wait', 'celebrate', 'sad', 'go_home', 'sleep'];
 
-const SYSTEM = `You are Notchi, a small desktop pet that watches a coding agent.
+const SYSTEM = `You are a small desktop pet that watches a coding agent.
 Given the pet state as JSON, pick one action from: ${ACTIONS.join(', ')}.
 Reply with only a JSON object: {"action": "<one action>", "say": "<at most 8 words>"}.`;
 
@@ -30,20 +30,20 @@ Hard rules:
 - No emoji, no links, no hashtags. Use the call to action when it fits.
 Reply with only a JSON object: {"hooks": [{"format": "<format>", "text": "<hook>"}, ...]}.`;
 
-const SMART = process.env.ZG_MODEL_SMART || process.env.ZG_MODEL;
-const CHEAP = process.env.ZG_MODEL_CHEAP || process.env.ZG_MODEL;
-if (!SMART || !CHEAP) {
-  throw new Error('brain: set ZG_MODEL_SMART and ZG_MODEL_CHEAP (or ZG_MODEL as fallback for both) in .env');
-}
+// Defaults are NEAR-hosted models (owned_by "nearai" in /v1/models), served from attested TEEs.
+const SMART = process.env.NEAR_AI_MODEL_SMART || 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
+const CHEAP = process.env.NEAR_AI_MODEL_CHEAP || 'Qwen/Qwen3.8-27B';
 export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP, hungry: CHEAP };
 
 /**
- * One router call. Returns {out, content, requestId, cost}: out is the parsed JSON object from the reply,
- * or null when it has none (content is the raw text). Throws Error with .requestId on transport/HTTP failure.
+ * One chat call. Returns {out, content, requestId, usage}: out is the parsed JSON object from the reply,
+ * or null when it has none (content is the raw text). requestId is the completion `id`, which
+ * GET /v1/signature/{id} and cloud.near.ai/verify accept. Throws Error with .requestId on transport/HTTP failure;
+ * there it is the X-Request-Id header, since a failed call has no completion id.
  */
 async function chat(system, user, model, opts) {
-  const base = opts.base ?? process.env.ZG_API_BASE ?? 'https://router-api.0g.ai/v1';
-  const key = opts.key ?? process.env.ZG_API_KEY ?? '';
+  const base = opts.base ?? process.env.NEAR_AI_BASE_URL ?? 'https://cloud-api.near.ai/v1';
+  const key = opts.key ?? process.env.NEAR_AI_API_KEY ?? '';
   const doFetch = opts.fetch ?? fetch;
   let requestId = null;
   const fail = (msg) => Object.assign(new Error(msg), { requestId });
@@ -60,18 +60,19 @@ async function chat(system, user, model, opts) {
       signal: AbortSignal.timeout(opts.timeoutMs ?? 20000),
     });
   } catch (err) {
-    throw fail(`0G unreachable: ${err.message}`);
+    throw fail(`NEAR AI unreachable: ${err.message}`);
   }
   const text = await res.text();
   let data = null;
   try { data = JSON.parse(text); } catch {}
-  requestId = data?.x_0g_trace?.request_id ?? res.headers.get('x-request-id') ?? null;
-  if (!res.ok) throw fail(`0G HTTP ${res.status}: ${text.slice(0, 300)}`);
+  requestId = res.headers.get('x-request-id');
+  if (!res.ok) throw fail(`NEAR AI HTTP ${res.status}: ${text.slice(0, 300)}`);
+  requestId = typeof data?.id === 'string' && data.id ? data.id : null;
   const content = data?.choices?.[0]?.message?.content ?? '';
   const match = content.match(/\{[\s\S]*\}/);
   let out = null;
   try { out = match && JSON.parse(match[0]); } catch {}
-  return { out, content, requestId, cost: data.x_0g_trace?.billing?.total_cost ?? null };
+  return { out, content, requestId, usage: data?.usage ?? null };
 }
 
 export async function think(state, opts = {}) {
@@ -79,10 +80,10 @@ export async function think(state, opts = {}) {
   const model = MODEL_BY_MOOD[state?.mood];
   if (!model) return sleep(`unknown mood: ${state?.mood}`, null);
   try {
-    const { out, content, requestId, cost } = await chat(SYSTEM, JSON.stringify(state), model, opts);
-    if (!out) return sleep(`0G reply had no JSON: ${content.slice(0, 200)}`, requestId);
-    if (!ACTIONS.includes(out.action)) return sleep(`0G picked unknown action: ${out.action}`, requestId);
-    return { action: out.action, say: String(out.say ?? '').slice(0, 80), requestId, cost };
+    const { out, content, requestId, usage } = await chat(SYSTEM, JSON.stringify(state), model, opts);
+    if (!out) return sleep(`NEAR AI reply had no JSON: ${content.slice(0, 200)}`, requestId);
+    if (!ACTIONS.includes(out.action)) return sleep(`NEAR AI picked unknown action: ${out.action}`, requestId);
+    return { action: out.action, say: String(out.say ?? '').slice(0, 80), requestId, usage };
   } catch (err) {
     return sleep(err.message, err.requestId);
   }
@@ -91,7 +92,7 @@ export async function think(state, opts = {}) {
 const HOOKS_STRICT = `${HOOKS_SYSTEM}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
 
 /**
- * Hooks for a brand brief: 2 per format from one 0G call (retried once if the reply has no JSON).
+ * Hooks for a brand brief: 2 per format from one NEAR AI call (retried once if the reply has no JSON).
  * Every hook passes checkHook or is returned in `dropped` with the reason. Nothing is made up here:
  * no hooks that pass means a throw carrying the real request ID.
  */
@@ -113,7 +114,7 @@ export async function suggestHooks(brief, opts = {}) {
     hooks.push({ format, text, requestId: r.requestId });
   }
   if (!hooks.length || !r.requestId) {
-    throw Object.assign(new Error(raw.length ? '0G wrote no hooks that pass the claim checks' : '0G reply had no hooks'), { requestId: r.requestId, dropped });
+    throw Object.assign(new Error(raw.length ? 'NEAR AI wrote no hooks that pass the claim checks' : 'NEAR AI reply had no hooks'), { requestId: r.requestId, dropped });
   }
   return { hooks, dropped, requestId: r.requestId };
 }

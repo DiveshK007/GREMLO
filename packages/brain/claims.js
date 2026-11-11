@@ -1,3 +1,4 @@
+import { PRODUCT } from './product.js';
 // Deterministic checks on ad copy. The model writes hooks; this decides what may run.
 // Rules: no numbers, multipliers, percentages or superlatives the brand did not supply,
 // and no return/performance promises for financial products at all.
@@ -22,12 +23,12 @@ const superlatives = (s) => (s.match(SUPERLATIVE) ?? []).map((w) => w.toLowerCas
 /** Brand-supplied text the copy may draw claims from. */
 const claimSource = (brief) => [brief.proof ?? '', brief.offer ?? ''].join('\n');
 
-/** Rejects a brief that asks for money promises, before any 0G call is spent. Returns a reason or null. */
+/** Rejects a brief that asks for money promises, before any AI call is spent. Returns a reason or null. */
 export function checkBrief(brief) {
   const all = [brief.product, brief.audience, brief.offer, brief.proof, brief.cta].filter(Boolean).join('\n');
-  if (FIN_PROMISE.test(all)) return 'Notchi does not run promises of returns, profit or guaranteed gains.';
+  if (FIN_PROMISE.test(all)) return `${PRODUCT} does not run promises of returns, profit or guaranteed gains.`;
   if (FIN_CONTEXT.test(all) && numbers(claimSource(brief)).length) {
-    return 'Notchi does not run performance numbers for trading, investing or crypto products. Describe what the product does instead.';
+    return `${PRODUCT} does not run performance numbers for trading, investing or crypto products. Describe what the product does instead.`;
   }
   return null;
 }
