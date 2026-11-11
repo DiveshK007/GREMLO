@@ -25,3 +25,6 @@ node_modules/
 apps/mac/assets/demo-pets/
 .gstack/
 apps/mac/dist/
+
+# NEAR contract
+contracts-near/target/

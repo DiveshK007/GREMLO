@@ -14,6 +14,19 @@ jobs:
       - run: forge test
         working-directory: contracts
 
+  contracts-near:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: contracts-near }
+      # near-workspaces builds the wasm with the cargo-near CLI, then runs the tests on a local NEAR sandbox
+      - run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-installer.sh | sh
+      - run: cargo test
+        working-directory: contracts-near
+
   server:
     runs-on: ubuntu-latest
     steps:
