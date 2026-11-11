@@ -12,12 +12,14 @@ import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
 import { createHash } from "node:crypto";
 import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
-import { costWei, DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
+import { DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
 import { checkBrief, checkHook } from "../../../packages/brain/claims.js";
+// @ts-expect-error plain ESM JS package, no types
+import { PRODUCT } from "../../../packages/brain/product.js";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -26,7 +28,7 @@ type Store = {
   lines: Record<string, string>; // lineHash -> ad line text (the chain only stores the hash)
   brands: Record<string, string>; // brand address -> display name
   today: Record<string, { day: string; count: number }>; // pet key -> impressions accepted today (UTC)
-  thoughts: Record<string, Thought[]>; // pet key -> last 0G decisions with request IDs
+  thoughts: Record<string, Thought[]>; // pet key -> last NEAR AI decisions with completion ids
   lastImpression: Record<string, number>; // "campaignId:petKey" -> ms of the last counted impression
   urls: Record<string, string>; // campaign id -> brand landing page (https)
   briefs: Record<string, Brief>; // campaign id -> the brand's brief (private, never served)
@@ -446,12 +448,6 @@ async function petThink(key: string, body: any) {
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
   const petKey = getAddress(findPet(key)?.petKey ?? key);
-  if (pet.feed?.on && r.requestId) {
-    // the pet pays: charge its credit exactly what the Router reported for this call
-    const charge = costWei(r.cost);
-    if (charge === null) console.error(`feed: ${petKey} call ${r.requestId} has no cost from the Router; not charged`);
-    else store.credit[petKey] = (BigInt(store.credit[petKey] ?? "0") - charge).toString();
-  }
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
   store.days[petKey] = markDay(store.days[petKey], utcDay());
   save();
@@ -469,7 +465,7 @@ function parseBrief(b: any): Brief {
   return { product: field("product", 160, true), audience: field("audience", 120, true), offer: field("offer", 120, false), proof: field("proof", 600, false), cta: field("cta", 40, true) };
 }
 
-/** Brief + chosen hooks pass every claim check, or a 400 that names the hook and the reason. No 0G call. */
+/** Brief + chosen hooks pass every claim check, or a 400 that names the hook and the reason. No AI call. */
 function checkCampaign(rawBrief: unknown, hooks: string[]) {
   const brief = parseBrief(rawBrief);
   const refused = checkBrief(brief);
@@ -482,11 +478,11 @@ function checkCampaign(rawBrief: unknown, hooks: string[]) {
   return brief;
 }
 
-/** 2 hooks per format from one 0G call; hooks that fail the claim checks come back in `dropped` with the reason. */
+/** 2 hooks per format from one NEAR AI call; hooks that fail the claim checks come back in `dropped` with the reason. */
 const hooksHits = new Map<string, number[]>();
 async function campaignHooks(req: IncomingMessage, body: any) {
   if (body?.attest !== true) throw bad("confirm the proof points are your own, accurate claims");
-  // each call is a large 0G request: 10 per visitor per hour
+  // each call is a large NEAR AI request: 10 per visitor per hour
   if (!allow(hooksHits, clientIp(req), Date.now(), 10, 3_600_000)) throw new HttpError(429, "That's 10 hook sets this hour. Pick from the ones you have, or try again later.");
   const brief = parseBrief(body?.brief);
   checkUrl(body?.url);
@@ -604,7 +600,7 @@ async function publicStats() {
   return body;
 }
 
-// "Try a hook" on the homepage: one real 0G call, limited per visitor and per day, cached by product.
+// "Try a hook" on the homepage: one real NEAR AI call, limited per visitor and per day, cached by product.
 const tryHits = new Map<string, number[]>();
 const tryCache = new Map<string, { at: number; body: unknown }>();
 const TRY_DAILY_CAP = Number(process.env.TRY_DAILY_CAP ?? 100);
@@ -677,7 +673,7 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0
   if (!to || !mailOn) return;
   const link = `${WEB_ORIGIN}/brand?c=${id}`;
   const pct = usedPct(spent, budget), level = alertDue(pct, store.alerted[id] ?? 0);
-  if (level && (await sendMail(to, `Notchi campaign #${id}: ${level}% of the budget is spent`,
+  if (level && (await sendMail(to, `${PRODUCT} campaign #${id}: ${level}% of the budget is spent`,
     `${level >= 100 ? "Your budget is used up and your hooks have stopped showing." : `Campaign #${id} has spent ${pct}% of its budget.`}\nTop up or check the numbers: ${link}`))) {
     store.alerted[id] = level;
     save();
@@ -687,7 +683,7 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0
   const humans = new Set([...store.payouts.filter((p) => p.id === id).map((p) => p.pet), ...Object.keys(store.pending[id] ?? {})]).size;
   const hooks = store.lines[lineHash]?.split("\n") ?? [];
   const text = weeklyReport({ id, hooks, views: store.hookViews[id] ?? [], clicks: store.clicks[id] ?? [], spent, budget, humans, link });
-  if (await sendMail(to, `Notchi campaign #${id}: your week`, text)) {
+  if (await sendMail(to, `${PRODUCT} campaign #${id}: your week`, text)) {
     store.reported[id] = Date.now();
     save();
   }
@@ -728,7 +724,7 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && thinkPath) {
     const raw = await readRaw(req);
     const pet = findPet(decodeURIComponent(thinkPath[1]));
-    const signed = signer(req, pathname, raw); // think spends real 0G
+    const signed = signer(req, pathname, raw); // think spends real NEAR AI credits
     if (pet) mustBeFrom(pet, signed, REQUIRE_SIGNED);
     return petThink(decodeURIComponent(thinkPath[1]), parse(raw));
   }
@@ -744,7 +740,7 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 const port = Number(process.env.PORT ?? 8787);
 // Loopback by default. Expose it (HOST=0.0.0.0) only with REQUIRE_SIGNED=1 and TRUST_PROXY=1 set, as in fly.toml.
 const host = process.env.HOST ?? "127.0.0.1";
-if (host !== "127.0.0.1" && !REQUIRE_SIGNED) throw new Error("refusing to listen publicly without REQUIRE_SIGNED=1: unpaired pets could spend 0G");
+if (host !== "127.0.0.1" && !REQUIRE_SIGNED) throw new Error("refusing to listen publicly without REQUIRE_SIGNED=1: unpaired pets could spend AI credits");
 createServer((req, res) => {
   if (cors(req, res)) return;
   route(req).then(

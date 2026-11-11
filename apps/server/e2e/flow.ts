@@ -1,6 +1,6 @@
 // End-to-end on a local Anvil chain: register (World stubbed at its HTTP boundary) -> fund onchain -> views -> settle,
 // then check the payout landed onchain. Denied paths too. CI only: it expects Anvil on :8545 and `forge build` done.
-// No 0G call is made; nothing here runs against a real network.
+// No AI call is made; nothing here runs against a real network.
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -45,7 +45,7 @@ const server = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     ZG_CHAIN_ID: "31337", ZG_CHAIN_RPC: RPC, ZG_VAULT_ADDRESS: vault, ZG_VAULT_DEPLOY_BLOCK: "0", ZG_OPERATOR_KEY: KEYS[1],
     RP_ID: "rp_e2e", RP_SIGNING_KEY: KEYS[3].slice(2), WORLD_API_BASE: `http://127.0.0.1:${WORLD_PORT}`,
     MOOD_THRIVING_WEI: "1000", MOOD_STABLE_WEI: "100", MOOD_HUNGRY_WEI: "10",
-    ZG_MODEL: "e2e-unused", ZG_API_BASE: "http://127.0.0.1:9/v1", ZG_API_KEY: "", // no 0G in this flow; a stray call fails loudly
+    NEAR_AI_BASE_URL: "http://127.0.0.1:9/v1", NEAR_AI_API_KEY: "", // no AI call in this flow; a stray call fails loudly
   },
 });
 let exited = false;

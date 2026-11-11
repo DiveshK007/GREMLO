@@ -1,6 +1,6 @@
 # Build from the repo root:  docker build -f apps/server/Dockerfile .
 # The server imports packages/brain, so both go in the image. Secrets come from the host, never the image.
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 COPY packages/brain packages/brain
 COPY apps/server/package.json apps/server/package-lock.json apps/server/

@@ -1,5 +1,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { HttpError, type PetRecord } from "./register.ts";
+// @ts-expect-error plain ESM JS package, no types
+import { PRODUCT } from "../../../packages/brain/product.js";
 
 // Device signatures: each Mac install holds a P-256 key in the Secure Enclave. Requests that cost or earn money
 // carry a DER ECDSA signature over a canonical string, so a view, think or click can't be forged by a script.
@@ -47,10 +49,10 @@ export const pairMessage = (petName: string, deviceKeyId: string) =>
 
 /**
  * The request must come from `pet`'s own device. Unsigned is accepted only for unpaired pets, and only when
- * `requireSigned` is off (local/dev); production sets REQUIRE_SIGNED=1 so nobody can spend 0G as an unpaired pet.
+ * `requireSigned` is off (local/dev); production sets REQUIRE_SIGNED=1 so nobody can spend AI credits as an unpaired pet.
  */
 export function mustBeFrom(pet: Pick<PetRecord, "petKey" | "devices">, signed: Pick<PetRecord, "petKey"> | null, requireSigned = false) {
   if (signed && signed.petKey !== pet.petKey) throw new HttpError(401, "device is paired to a different pet");
   if (!signed && pet.devices?.length) throw new HttpError(401, "this pet has a paired device; requests must be signed");
-  if (!signed && requireSigned) throw new HttpError(401, "pair this Mac with your pet first (Notchi menu → Settings)");
+  if (!signed && requireSigned) throw new HttpError(401, `pair this Mac with your pet first (${PRODUCT} menu → Settings)`);
 }
