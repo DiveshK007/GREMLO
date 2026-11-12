@@ -4,17 +4,17 @@ import { LiveStats } from "@/components/LiveStats";
 import { NotchReveal } from "@/components/NotchReveal";
 import { Reveal } from "@/components/Reveal";
 import { TryHook } from "@/components/TryHook";
-import { addressLink, VAULT_ADDRESS } from "@/lib/config";
+import { addressLink, PRODUCT, VAULT_ID } from "@/lib/config";
 
 export default function Home() {
   return (
     <>
       <section className="hero hero-v2">
         <div className="hero-copy">
-          <p className="mono eyebrow-live"><span className="dot" /> Live on 0G Galileo testnet</p>
+          <p className="mono eyebrow-live"><span className="dot" /> Live on NEAR testnet</p>
           <h1 className="loud">
             Your agent makes you wait.
-            <span className="on-signal-type"> Notchi makes the wait pay.</span>
+            <span className="on-signal-type"> {PRODUCT} makes the wait pay.</span>
           </h1>
           <p className="lead">
             A tiny pet lives behind a hidden door in your MacBook notch. While your coding agent works, it walks your
@@ -33,9 +33,9 @@ export default function Home() {
       <Reveal className="how">
         <h2 className="section-title">How it works</h2>
         <ol className="steps-3">
-          <li><span className="mono">01</span><strong>Your agent starts working</strong><p>Claude Code tells Notchi. The door in your notch opens and the pet drops out.</p></li>
+          <li><span className="mono">01</span><strong>Your agent starts working</strong><p>Claude Code tells the pet. The door in your notch opens and the pet drops out.</p></li>
           <li><span className="mono">02</span><strong>It carries one hook</strong><p>A brand's line scrolls across its sign. Hover to pause, click to open it. Never during an approval.</p></li>
-          <li><span className="mono">03</span><strong>Real views get paid</strong><p>Views settle onchain to your pet's wallet. One human, one pet, verified with World ID.</p></li>
+          <li><span className="mono">03</span><strong>Real views get paid</strong><p>Views settle on NEAR to your pet's account, and a share refills its compute budget. One human, one pet, verified with World ID.</p></li>
         </ol>
       </Reveal>
 
@@ -43,7 +43,7 @@ export default function Home() {
         <div>
           <p className="mono section-kicker">Try it</p>
           <h2 className="section-title">Type your product. Watch the pet pitch it.</h2>
-          <p className="muted">One real call to 0G. Hooks may only use claims you give us, and never promise returns.</p>
+          <p className="muted">One real call to NEAR AI Cloud. Hooks may only use claims you give us, and never promise returns.</p>
         </div>
         <TryHook />
       </Reveal>
@@ -51,9 +51,9 @@ export default function Home() {
       <Reveal className="stats-section">
         <p className="mono section-kicker">Live from the chain</p>
         <LiveStats />
-        {VAULT_ADDRESS && (
+        {VAULT_ID && (
           <p className="muted small">
-            Read from the <a href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">campaign contract</a>'s own events. These numbers only grow with real use.
+            Read from the <a href={addressLink(VAULT_ID)} target="_blank" rel="noreferrer">campaign vault</a>'s own totals. These numbers only grow with real use.
           </p>
         )}
       </Reveal>
@@ -68,13 +68,13 @@ export default function Home() {
         <div className="split-half ink">
           <p className="mono section-kicker">Brands</p>
           <h3>Reach developers who block every banner.</h3>
-          <p>Notchi writes 16 hooks in 8 formats on 0G. Pick 3 to 5; the pet rotates them and favours the ones developers click. Pay only for verified views; unspent budget comes back.</p>
+          <p>The pet writes 16 hooks in 8 formats on NEAR AI Cloud. Pick 3 to 5; the pet rotates them and favours the ones developers click. Pay only for verified views; unspent budget comes back.</p>
           <Link href="/brand" className="button">Fund a campaign</Link>
         </div>
       </Reveal>
 
       <Reveal className="demo">
-        <video src="/demo.mp4" autoPlay muted loop playsInline preload="none" aria-label="Notchi dropping out of the notch while the agent works" />
+        <video src="/demo.mp4" autoPlay muted loop playsInline preload="none" aria-label="The pet dropping out of the notch while the agent works" />
       </Reveal>
 
       <section className="band">

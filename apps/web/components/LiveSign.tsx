@@ -18,7 +18,7 @@ export function LiveSign() {
       <div className="board">{text}</div>
       <Sprite row={6} frames={6} scale={1.75} />
       <figcaption className="mono">
-        {state.kind === "live" ? "Live now on 0G Galileo" : state.kind === "offline" ? "Live line unavailable" : state.kind === "none" ? "No campaign live" : " "}
+        {state.kind === "live" ? "Live now on NEAR testnet" : state.kind === "offline" ? "Live line unavailable" : state.kind === "none" ? "No campaign live" : " "}
       </figcaption>
     </figure>
   );

@@ -1,3 +1,4 @@
+import { PRODUCT } from "@/lib/config";
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./tokens.css";
@@ -5,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"), // absolute URLs for share cards
-  title: "Notchi",
+  title: PRODUCT,
   description: "A desktop pet that earns its own food while your coding agent works.",
 };
 
@@ -15,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="top">
           <Link href="/" className="brand">
-            Notchi
+            {PRODUCT}
           </Link>
           <nav>
             <Link href="/pet">Get your pet</Link>
@@ -24,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </nav>
         </header>
         <main>{children}</main>
-        <footer className="foot">Testnet build. Brains on 0G, humans verified by World.</footer>
+        <footer className="foot">Testnet build. Brains on NEAR AI Cloud (TEE inference), money on NEAR, humans verified by World.</footer>
       </body>
     </html>
   );

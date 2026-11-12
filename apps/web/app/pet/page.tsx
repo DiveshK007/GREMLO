@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { isAddress, type Address } from "viem";
 import { ApiError, registerPet, worldSign } from "@/lib/api";
 import { connectWallet } from "@/lib/chain";
 import { PetSmall } from "@/components/PetArt";
@@ -12,23 +11,24 @@ type Phase =
   | { kind: "form" }
   | { kind: "scan"; uri: string }
   | { kind: "registering" }
-  | { kind: "done"; name: string; txHash?: string }
+  | { kind: "done"; name: string; txHash?: string; verifyTx?: string }
   | { kind: "denied" }
   | { kind: "error"; message: string };
 
 const ACTION = "register-pet";
+// NEAR account id rules: 2-64 chars, lowercase parts joined by "." with "-" or "_" inside a part
+const isAccountId = (v: string) => v.length >= 2 && v.length <= 64 && /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(v);
 
 export default function GetYourPet() {
-  const [owner, setOwner] = useState<Address | null>(null);
+  const [owner, setOwner] = useState<string | null>(null);
   const [name, setName] = useState("mochi");
-  const [petKey, setPetKey] = useState("");
   const [payout, setPayout] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [walletError, setWalletError] = useState(""); // shown next to Connect wallet
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const fullName = `${name.trim().toLowerCase()}.notchi.eth`;
+  const fullName = name.trim().toLowerCase();
 
   async function onConnect() {
     setWalletError("");
@@ -42,10 +42,9 @@ export default function GetYourPet() {
   }
 
   function validate(): string {
-    if (!owner) return "Connect your wallet first.";
-    if (!/^[a-z0-9-]{2,24}$/.test(name.trim().toLowerCase())) return "Name: 2-24 letters, numbers or dashes.";
-    if (!isAddress(payout)) return "Payout address isn't a valid address.";
-    if (petKey && !isAddress(petKey)) return "Pet key isn't a valid address.";
+    if (!owner) return "Connect your NEAR wallet first.";
+    if (!/^[a-z0-9-]{2,24}$/.test(fullName)) return "Name: 2-24 letters, numbers or dashes.";
+    if (!isAccountId(payout.trim())) return "Payout must be a NEAR account, like mochi.testnet.";
     if (!WORLD_APP_ID || !WORLD_RP_ID) return "World app ID / RP ID missing in .env.";
     return "";
   }
@@ -81,14 +80,8 @@ export default function GetYourPet() {
       }
 
       setPhase({ kind: "registering" });
-      const res = await registerPet({
-        name: fullName,
-        petKey: petKey || payout,
-        ownerAddress: owner,
-        payoutAddress: payout,
-        worldProof: completion.result,
-      });
-      setPhase({ kind: "done", name: res.name ?? fullName, txHash: res.txHash });
+      const res = await registerPet({ name: fullName, owner, payout: payout.trim(), worldProof: completion.result });
+      setPhase({ kind: "done", name: res.name ?? fullName, txHash: res.txHash, verifyTx: res.verifyTx });
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.message === "already has a pet") setPhase({ kind: "denied" });
       else setPhase({ kind: "error", message: (e as Error).message });
@@ -113,7 +106,7 @@ export default function GetYourPet() {
         <div className="card">
           {!owner ? (
             <>
-              <button onClick={onConnect}>Connect wallet</button>
+              <button onClick={onConnect}>Connect NEAR wallet</button>
               {walletError && <p className="bad">{walletError}</p>}
             </>
           ) : (
@@ -126,13 +119,9 @@ export default function GetYourPet() {
           <input value={name} onChange={(e) => setName(e.target.value)} />
           <p className="muted mono">{fullName}</p>
 
-          <label>Payout address</label>
-          <input className="mono" value={payout} onChange={(e) => setPayout(e.target.value)} placeholder="0x..." />
-          <p className="hint">Where the pet's earnings go. Only you can change it later.</p>
-
-          <label>Pet key (optional)</label>
-          <input className="mono" value={petKey} onChange={(e) => setPetKey(e.target.value)} placeholder="0x..." />
-          <p className="hint">Leave empty to use the payout address.</p>
+          <label>Payout account</label>
+          <input className="mono" value={payout} onChange={(e) => setPayout(e.target.value)} placeholder="mochi.testnet" />
+          <p className="hint">The NEAR account the pet&apos;s earnings go to. It must already exist. Only you can change it later.</p>
 
           {formError && <p className="bad">{formError}</p>}
           <p>
@@ -140,7 +129,7 @@ export default function GetYourPet() {
               {busy ? "Starting…" : "Prove you're a real person"}
             </button>
           </p>
-          {!owner && <p className="hint">Connect your wallet first.</p>}
+          {!owner && <p className="hint">Connect your NEAR wallet first.</p>}
         </div>
       )}
 
@@ -174,7 +163,7 @@ export default function GetYourPet() {
 
       {phase.kind === "registering" && (
         <div className="card">
-          <p>Verified. Checking the proof on our server and registering your pet onchain…</p>
+          <p>Verified. Checking the proof on our server and registering your pet on NEAR…</p>
         </div>
       )}
 
@@ -182,12 +171,10 @@ export default function GetYourPet() {
         <div className="card">
           <PetSmall />
           <h2 style={{ textAlign: "center" }}>{phase.name} is moving into your notch.</h2>
-          {phase.txHash ? (
+          {phase.txHash || phase.verifyTx ? (
             <p className="muted" style={{ textAlign: "center" }}>
-              Registered onchain:{" "}
-              <a className="mono" href={txLink(phase.txHash)} target="_blank" rel="noreferrer">
-                {phase.txHash}
-              </a>
+              {phase.txHash && <>Registered on NEAR:{" "}<a className="mono" href={txLink(phase.txHash)} target="_blank" rel="noreferrer">{phase.txHash}</a><br /></>}
+              {phase.verifyTx && <>Marked verified:{" "}<a className="mono" href={txLink(phase.verifyTx)} target="_blank" rel="noreferrer">{phase.verifyTx}</a></>}
             </p>
           ) : (
             <p className="muted" style={{ textAlign: "center" }}>

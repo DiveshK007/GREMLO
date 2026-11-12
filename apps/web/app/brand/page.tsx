@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatEther, parseEther, type Address, type Hash } from "viem";
 import {
   ApiError, arkivCampaign, campaignStats, checkCampaign, FORMATS, type ArkivView, recordCampaign, settleImpressions, suggestHooks,
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign, topUpCampaign } from "@/lib/chain";
-import { addressLink, txLink, VAULT_ADDRESS } from "@/lib/config";
+import { addressLink, formatNear, parseNear, txLink, VAULT_ID } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
 import { HookTicker } from "@/components/HookTicker";
 
-/** Seconds since mount, so a long 0G call visibly moves. */
+/** Seconds since mount, so a long AI call visibly moves. */
 function Elapsed() {
   const [s, setS] = useState(0);
   useEffect(() => {
@@ -28,13 +27,13 @@ const FORMAT_LABEL: Record<string, string> = {
   urgency: "Urgency", story: "Mini story", "dev-meme": "Dev meme", own: "Your own",
 };
 
-type Funded = { campaignId: bigint; txHash: Hash; hooks: string[]; budgetWei: bigint; rateWei: bigint; endTime: bigint; recordWarning?: string };
+type Funded = { campaignId: bigint; txHash: string; hooks: string[]; budgetWei: bigint; rateWei: bigint; endTime: bigint; recordWarning?: string };
 type Lookup = Awaited<ReturnType<typeof readCampaign>>;
 
 const emptyBrief: Brief = { product: "", audience: "", offer: "", proof: "", cta: "" };
 
 export default function FundCampaign() {
-  const [account, setAccount] = useState<Address | null>(null);
+  const [account, setAccount] = useState<string | null>(null);
   const [brief, setBrief] = useState<Brief>(emptyBrief);
   const [url, setUrl] = useState("");
   const [attest, setAttest] = useState(false);
@@ -43,8 +42,8 @@ export default function FundCampaign() {
   const [dropped, setDropped] = useState<Dropped[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [own, setOwn] = useState("");
-  const [budget, setBudget] = useState("0.01");
-  const [rate, setRate] = useState("0.0005");
+  const [budget, setBudget] = useState("0.1");
+  const [rate, setRate] = useState("0.001");
   const [hours, setHours] = useState("2");
   const [walletError, setWalletError] = useState("");
   const [busy, setBusy] = useState("");
@@ -57,9 +56,9 @@ export default function FundCampaign() {
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [arkiv, setArkiv] = useState<ArkivView | null>(null);
-  const [refund, setRefund] = useState<{ txHash: Hash; amount: bigint } | null>(null);
+  const [refund, setRefund] = useState<{ txHash: string; amount: bigint } | null>(null);
   const [topUp, setTopUp] = useState("0.5");
-  const [toppedUp, setToppedUp] = useState<{ txHash: Hash; amount: string } | null>(null);
+  const [toppedUp, setToppedUp] = useState<{ txHash: string; amount: string } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -105,7 +104,7 @@ export default function FundCampaign() {
       setHooks([]);
       setDropped([]);
       const msg = (e as Error).message;
-      setHooksError(e instanceof ApiError && e.status === 400 ? msg : `Notchi couldn't write hooks: ${msg}. Try again, or write your own below.`);
+      setHooksError(e instanceof ApiError && e.status === 400 ? msg : `Couldn't write hooks: ${msg}. Try again, or write your own below.`);
     } finally {
       setBusy("");
     }
@@ -130,8 +129,8 @@ export default function FundCampaign() {
     if (picked.length < MIN_PICK || picked.length > MAX_PICK) return setError(`Pick ${MIN_PICK} to ${MAX_PICK} hooks for the pet to rotate.`);
     let budgetWei: bigint, rateWei: bigint;
     try {
-      budgetWei = parseEther(budget);
-      rateWei = parseEther(rate);
+      budgetWei = parseNear(budget);
+      rateWei = parseNear(rate);
     } catch {
       return setError("Budget and price must be numbers.");
     }
@@ -224,11 +223,11 @@ export default function FundCampaign() {
     if (!account) return setCampaignError("Connect the wallet that created this campaign first.");
     let wei: bigint;
     try {
-      wei = parseEther(topUp);
+      wei = parseNear(topUp);
     } catch {
-      return setCampaignError("Enter an amount in 0G, like 0.5.");
+      return setCampaignError("Enter an amount in NEAR, like 0.5.");
     }
-    if (wei <= 0n) return setCampaignError("Enter an amount in 0G, like 0.5.");
+    if (wei <= 0n) return setCampaignError("Enter an amount in NEAR, like 0.5.");
     setBusy("topup");
     try {
       const txHash = await topUpCampaign(account, BigInt(lookupId), wei);
@@ -252,8 +251,8 @@ export default function FundCampaign() {
   const usedPct = lookup && lookup.budget > 0n ? Number((lookup.spent * 100n) / lookup.budget) : 0; // integer math on wei
   const estimate = (() => {
     try {
-      const r = parseEther(rate);
-      return r > 0n ? (parseEther(budget) / r).toString() : "–";
+      const r = parseNear(rate);
+      return r > 0n ? (parseNear(budget) / r).toString() : "–";
     } catch {
       return "–";
     }
@@ -264,13 +263,13 @@ export default function FundCampaign() {
   if (funded) {
     return (
       <div className="narrow live">
-        <p className="mono live-tag">Campaign #{funded.campaignId.toString()} · live on 0G Galileo</p>
+        <p className="mono live-tag">Campaign #{funded.campaignId.toString()} · live on NEAR testnet</p>
         <h1>Your campaign is live.</h1>
         <p className="lead">Developers will see your hooks the next time their coding agent starts working. The pet rotates them and shifts toward whichever gets clicked.</p>
         <HookTicker hooks={funded.hooks} scale={1.6} label="Preview: what developers see" />
         <dl className="receipt">
-          <div><dt>Budget</dt><dd>{formatEther(funded.budgetWei)} 0G</dd></div>
-          <div><dt>Price per view</dt><dd>{formatEther(funded.rateWei)} 0G</dd></div>
+          <div><dt>Budget</dt><dd>{formatNear(funded.budgetWei)} NEAR</dd></div>
+          <div><dt>Price per view</dt><dd>{formatNear(funded.rateWei)} NEAR</dd></div>
           <div><dt>Estimated views</dt><dd>{(funded.budgetWei / funded.rateWei).toString()} <span className="muted">(estimate)</span></dd></div>
           <div><dt>Ends</dt><dd>{new Date(Number(funded.endTime) * 1000).toLocaleString()}</dd></div>
           <div><dt>Receipt</dt><dd><a className="mono" href={txLink(funded.txHash)} target="_blank" rel="noreferrer">{funded.txHash.slice(0, 10)}…{funded.txHash.slice(-6)}</a></dd></div>
@@ -294,7 +293,7 @@ export default function FundCampaign() {
 
       {!account ? (
         <>
-          <button onClick={onConnect}>Connect wallet</button>
+          <button onClick={onConnect}>Connect NEAR wallet</button>
           {walletError && <p className="bad">{walletError}</p>}
         </>
       ) : (
@@ -335,7 +334,7 @@ export default function FundCampaign() {
           <div className="thinking" role="status">
             <PetSmall />
             <div>
-              <strong>Notchi is writing 16 hooks on 0G…</strong>
+              <strong>Writing 16 hooks on NEAR AI Cloud…</strong>
               <span className="muted">Then every hook is checked against your proof points. This can take up to two minutes. <Elapsed /></span>
             </div>
           </div>
@@ -383,11 +382,11 @@ export default function FundCampaign() {
         <h2><span className="mono num">{hooks.length ? "03" : "02"}</span>Budget</h2>
         <div className="row">
           <div>
-            <label htmlFor="budget">Total budget (0G)</label>
+            <label htmlFor="budget">Total budget (NEAR)</label>
             <input id="budget" value={budget} onChange={(e) => setBudget(e.target.value)} />
           </div>
           <div>
-            <label htmlFor="rate">Price per view (0G)</label>
+            <label htmlFor="rate">Price per view (NEAR)</label>
             <input id="rate" value={rate} onChange={(e) => setRate(e.target.value)} />
           </div>
           <div>
@@ -407,7 +406,7 @@ export default function FundCampaign() {
           {account && picked.length < MIN_PICK && <p className="hint">Pick at least {MIN_PICK} hooks first.</p>}
           <p className="muted">
             Contract:{" "}
-            <a className="mono" href={addressLink(VAULT_ADDRESS)} target="_blank" rel="noreferrer">{VAULT_ADDRESS}</a>
+            <a className="mono" href={addressLink(VAULT_ID)} target="_blank" rel="noreferrer">{VAULT_ID}</a>
           </p>
         </div>
       </div>
@@ -431,8 +430,8 @@ export default function FundCampaign() {
             {settlement.count === 0 && !settlement.error && <p className="muted">No views queued for this campaign yet.</p>}
             {settlement.count > 0 && (
               <p className="ok">
-                Paid {settlement.count} view{settlement.count === 1 ? "" : "s"}, {formatEther(BigInt(settlement.amount))} 0G
-                {settlement.seeded ? " [seeded, local chain]" : ""}
+                Paid {settlement.count} view{settlement.count === 1 ? "" : "s"}, {formatNear(BigInt(settlement.amount))} NEAR
+                {settlement.seeded ? " [seeded, local sandbox]" : ""}
               </p>
             )}
             {settlement.settled.map((s) => (
@@ -447,7 +446,7 @@ export default function FundCampaign() {
         {lookup && (
           <>
             <p>
-              Budget {formatEther(lookup.budget)} 0G · spent {formatEther(lookup.spent)} 0G · left {formatEther(lookup.remaining)} 0G
+              Budget {formatNear(lookup.budget)} NEAR · spent {formatNear(lookup.spent)} NEAR · left {formatNear(lookup.remaining)} NEAR
             </p>
             <div className="budget-meter" role="meter" aria-label="Budget spent" aria-valuemin={0} aria-valuemax={100} aria-valuenow={usedPct}>
               <span style={{ width: `${Math.min(usedPct, 100)}%` }} data-level={usedPct >= 80 ? "high" : usedPct >= 50 ? "half" : undefined} />
@@ -460,14 +459,14 @@ export default function FundCampaign() {
             )}
             {!lookup.closed && lookup.endTime > nowSec && (
               <form className="topup" onSubmit={onTopUp}>
-                <label htmlFor="topup">Add budget (0G)</label>
+                <label htmlFor="topup">Add budget (NEAR)</label>
                 <input id="topup" inputMode="decimal" value={topUp} onChange={(e) => setTopUp(e.target.value)} />
                 <button type="submit" disabled={busy === "topup"}>{busy === "topup" ? "Topping up…" : "Top up"}</button>
               </form>
             )}
             {toppedUp && (
               <p className="ok">
-                Added {toppedUp.amount} 0G:{" "}
+                Added {toppedUp.amount} NEAR:{" "}
                 <a className="mono" href={txLink(toppedUp.txHash)} target="_blank" rel="noreferrer">{toppedUp.txHash}</a>
               </p>
             )}
@@ -523,7 +522,7 @@ export default function FundCampaign() {
         )}
         {refund && (
           <p className="ok">
-            Refunded {formatEther(refund.amount)} 0G:{" "}
+            Refunded {formatNear(refund.amount)} NEAR:{" "}
             <a className="mono" href={txLink(refund.txHash)} target="_blank" rel="noreferrer">{refund.txHash}</a>
           </p>
         )}

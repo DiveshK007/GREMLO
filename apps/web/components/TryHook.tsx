@@ -5,7 +5,7 @@ import { tryHook, type Hook } from "@/lib/api";
 import { HookTicker } from "./HookTicker";
 import { PetSmall } from "./PetArt";
 
-/** One real 0G call: type a product, the pet holds three example hooks. Rate-limited on the server. */
+/** One real NEAR AI call: type a product, the pet holds three example hooks. Rate-limited on the server. */
 export function TryHook() {
   const [product, setProduct] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +39,7 @@ export function TryHook() {
       {busy && (
         <div className="thinking" role="status">
           <PetSmall />
-          <div><strong>Notchi is writing on 0G…</strong><span className="muted">Real inference, usually 20 to 60 seconds.</span></div>
+          <div><strong>Writing on NEAR AI Cloud…</strong><span className="muted">Real inference, usually 20 to 60 seconds.</span></div>
         </div>
       )}
       {error && <p className="bad" role="alert">{error}</p>}

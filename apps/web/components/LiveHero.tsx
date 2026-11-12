@@ -14,7 +14,7 @@ export function LiveHero() {
   }, []);
   return (
     <div className="stroll">
-      <HookTicker hooks={live ?? EXAMPLES} scale={1.5} label={live ? "Live now on 0G Galileo" : "Example hooks"} />
+      <HookTicker hooks={live ?? EXAMPLES} scale={1.5} label={live ? "Live now on NEAR testnet" : "Example hooks"} />
     </div>
   );
 }

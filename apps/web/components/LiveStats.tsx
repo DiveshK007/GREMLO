@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formatEther } from "viem";
+import { formatNear } from "@/lib/config";
 import { publicStats, type PublicStats } from "@/lib/api";
 
 /** Counts up to a real number once visible. */
@@ -25,7 +25,7 @@ function Count({ to, decimals = 0 }: { to: number; decimals?: number }) {
   return <span ref={ref}>{v.toFixed(decimals)}</span>;
 }
 
-/** Live numbers from the chain's events. A dash means the server could not be reached, never a zero. */
+/** Live numbers from the vault's own totals. A dash means the server could not be reached, never a zero. */
 export function LiveStats() {
   const [s, setS] = useState<PublicStats | null | undefined>(undefined);
   useEffect(() => { publicStats().then(setS).catch(() => setS(null)); }, []);
@@ -35,7 +35,7 @@ export function LiveStats() {
     <ul className="stats live-stats">
       {cell("Campaigns funded", s ? <Count to={s.campaigns} /> : dash)}
       {cell("Views settled onchain", s ? <Count to={Number(s.settledViews)} /> : dash)}
-      {cell("Paid to developers", s ? <><Count to={Number(formatEther(BigInt(s.paidWei)))} decimals={4} /> 0G</> : dash)}
+      {cell("Paid to developers", s ? <><Count to={Number(formatNear(BigInt(s.paidWei)))} decimals={4} /> NEAR</> : dash)}
       {cell("Verified pets", s ? <Count to={s.pets} /> : dash)}
     </ul>
   );

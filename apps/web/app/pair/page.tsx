@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Address } from "viem";
 import { ApiError, getPet, pairDevice } from "@/lib/api";
-import { connectWallet, signText } from "@/lib/chain";
+import { connectWallet, signOwnerMessage } from "@/lib/chain";
+import { PRODUCT } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
 
 /** Same id the server derives: first 16 hex chars of SHA-256 over the raw public key. */
@@ -17,7 +17,7 @@ export default function Pair() {
   const [pet, setPet] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [device, setDevice] = useState("");
-  const [account, setAccount] = useState<Address | null>(null);
+  const [account, setAccount] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "signing" | "done" | "error">("loading");
   const [message, setMessage] = useState("");
 
@@ -26,7 +26,7 @@ export default function Pair() {
     const name = q.get("pet"), k = q.get("key");
     if (!name || !k || !/^[A-Za-z0-9_-]{80,100}$/.test(k)) {
       setState("error");
-      setMessage("This link is missing the pet or the device key. Open it from the Notchi menu: Settings → Pair this Mac with my pet.");
+      setMessage(`This link is missing the pet or the device key. Open it from the ${PRODUCT} menu: Settings → Pair this Mac with my pet.`);
       return;
     }
     setKey(k);
@@ -41,12 +41,13 @@ export default function Pair() {
       const a = account ?? (await connectWallet());
       setAccount(a);
       setState("signing");
-      const signature = await signText(a, `Pair this device to my Notchi pet.\nPet: ${pet}\nDevice: ${device}`);
-      await pairDevice(pet!, key, signature);
+      // must match the server's pairMessage exactly
+      const signed = await signOwnerMessage(a, `Pair this device to my pet.\nPet: ${pet}\nDevice: ${device}`);
+      await pairDevice(pet!, key, signed);
       setState("done");
     } catch (e) {
       setState("ready");
-      setMessage(e instanceof ApiError && e.status === 403 ? "This wallet isn't the pet's owner. Connect the wallet that registered the pet." : (e as Error).message.split("\n")[0]);
+      setMessage(e instanceof ApiError && e.status === 403 ? "This NEAR account isn't the pet's owner, or the key isn't a full-access key. Connect the account that registered the pet." : (e as Error).message.split("\n")[0]);
     }
   }
 
@@ -63,7 +64,7 @@ export default function Pair() {
             <div><dt>Pet</dt><dd>{pet}</dd></div>
             <div><dt>Device</dt><dd className="mono">{device}</dd></div>
           </dl>
-          <p className="muted">Pairing lets this Mac's Secure Enclave sign your pet's views and clicks, so nobody else can earn as your pet. You sign one message with the wallet that owns the pet; no transaction, no fee.</p>
+          <p className="muted">Pairing lets this Mac's Secure Enclave sign your pet's views and clicks, so nobody else can earn as your pet. You sign one message (NEP-413) with the NEAR account that owns the pet; no transaction, no fee.</p>
           {message && <p className="bad" role="alert">{message}</p>}
           <button onClick={approve} disabled={state === "signing"} aria-busy={state === "signing"}>{state === "signing" ? "Approve in your wallet…" : "Approve pairing"}</button>
         </div>

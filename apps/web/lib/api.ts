@@ -1,4 +1,4 @@
-import { SERVER_URL } from "./config";
+import { PRODUCT, SERVER_URL } from "./config";
 
 /**
  * All calls to apps/server live here. If a route or body shape on the server differs,
@@ -19,7 +19,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch {
-    throw new ApiError(0, `Can't reach the Notchi server at ${SERVER_URL}. Is it running?`);
+    throw new ApiError(0, `Can't reach the ${PRODUCT} server at ${SERVER_URL}. Is it running?`);
   }
   const text = await res.text();
   let body: unknown = undefined;
@@ -46,16 +46,15 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 export type WorldSig = { sig: string; nonce: string; created_at: number | string; expires_at: number | string };
 export const worldSign = (action: string) => call<WorldSig>(`/world/sign?action=${encodeURIComponent(action)}`);
 
-/** POST /pets/register -> server verifies the World proof, stores the nullifier, calls registerPet. 409 = already has a pet. */
+/** POST /pets/register -> server verifies the World proof, stores the nullifier, register_pet + set_verified. 409 = already has a pet. */
 export type RegisterBody = {
   name: string;
-  petKey: string;
-  ownerAddress: string;
-  payoutAddress: string;
+  owner: string; // NEAR account
+  payout: string; // NEAR account
   worldProof: unknown;
 };
 export const registerPet = (body: RegisterBody) =>
-  call<{ ok?: boolean; txHash?: string; name?: string }>(`/pets/register`, { method: "POST", body: JSON.stringify(body) });
+  call<{ ok?: boolean; txHash?: string; verifyTx?: string; name?: string }>(`/pets/register`, { method: "POST", body: JSON.stringify(body) });
 
 /** A brand's brief. Proof points are the only claims hooks may use (one per line). */
 export type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
@@ -63,7 +62,7 @@ export const FORMATS = ["humour", "sarcasm", "offer", "question", "bold-claim", 
 export type Hook = { format: (typeof FORMATS)[number] | "own"; text: string; requestId?: string | null };
 export type Dropped = { format: string; text: string; reason: string };
 
-/** POST /campaigns/hooks -> 2 hooks per format from 0G, each through the claim checks. */
+/** POST /campaigns/hooks -> 2 hooks per format from NEAR AI, each through the claim checks. */
 export const suggestHooks = (brief: Brief, url: string) =>
   call<{ hooks: Hook[]; dropped: Dropped[]; requestId: string }>(`/campaigns/hooks`, {
     method: "POST",
@@ -83,7 +82,7 @@ export const campaignStats = (id: string) => call<Stats>(`/campaigns/${encodeURI
 export const recordCampaign = (body: { campaignId: string; hooks: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief; email?: string }) =>
   call<unknown>(`/campaigns`, { method: "POST", body: JSON.stringify(body) });
 
-/** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is wei as a string. */
+/** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is yoctoNEAR as a string. */
 export type Settlement = {
   txHash: string | null;
   count: number;
@@ -99,36 +98,27 @@ export const settleImpressions = (campaignId: string) =>
 export type ActiveCampaign = { campaignId: string; line: string | null; hooks: string[]; url: string | null; order?: number[]; brand: string; ratePerImpression: string } | null;
 export const activeCampaign = () => call<ActiveCampaign>(`/campaigns/active`);
 
-/** GET /stats -> homepage numbers from the chain's own events. */
-export type PublicStats = { campaigns: number; settledViews: string; paidWei: string; pets: number; chainId: number; seeded: boolean };
+/** GET /stats -> homepage numbers from the vault's own totals (yoctoNEAR as strings). */
+export type PublicStats = { campaigns: number; settledViews: string; paidWei: string; computeChargedWei: string; pets: number; network: string; vault: string; seeded: boolean };
 export const publicStats = () => call<PublicStats>(`/stats`);
 
 /** POST /try -> 3 example hooks for the homepage; rate-limited, labelled as examples. */
 export const tryHook = (product: string, audience: string) =>
   call<{ hooks: Hook[]; requestId: string; example: true }>(`/try`, { method: "POST", body: JSON.stringify({ product, audience }) });
 
-/** POST /pets/:name/device -> pair a Mac's Secure Enclave key to the pet; the owner's wallet signs the pairing. */
-export const pairDevice = (pet: string, key: string, signature: string) =>
-  call<{ ok: true; pet: string; device: string }>(`/pets/${encodeURIComponent(pet)}/device`, { method: "POST", body: JSON.stringify({ key, signature }) });
+/** POST /pets/:name/device -> pair a Mac's Secure Enclave key to the pet; the owner's NEAR wallet signs it (NEP-413). */
+export const pairDevice = (pet: string, key: string, signed: { signature: string; publicKey: string; nonce: string }) =>
+  call<{ ok: true; pet: string; device: string }>(`/pets/${encodeURIComponent(pet)}/device`, { method: "POST", body: JSON.stringify({ key, ...signed }) });
 
-/** GET /pets/:name -> the pet's canonical name and mood. */
-/** GET /pets/:name. Money is wei as strings; null means the chain couldn't be read (never shown as 0). */
+/** GET /pets/:name. Money is yoctoNEAR as strings; null means the chain couldn't be read (never shown as 0). */
 export type PetPublic = {
   name: string; mood: string; moodReason: string | null; walletBalance: string | null; impressionsToday: number; seeded: boolean;
   paidViews: number | null; earnedWei: string | null; level: number | null; streak: number; week: { views: number; wei: string };
-  petKey: string; computeBalance: string | null;
-  /** null when self-feeding is off on the server */
-  feed: null | {
-    wallet: string; on: boolean; capWei: string; fedTodayWei: string;
-    meals: { amount: string; txHash: string; at: number }[];
-    approval: null | { id: string; amount: string; day: string; status: "pending" | "approved" | "declined" | "denied"; reason?: string };
-  };
+  petKey: string; owner: string; payout: string; computeBalance: string | null; explorer: string; vault: string;
+  /** the vault's compute budget for this pet; null when the chain couldn't be read */
+  compute: null | { budget: string; spent: string; chargedToday: string; dailyCap: string; shareBps: number; feeSmart: string; feeCheap: string };
+  lastThoughts: { action: string; requestId: string; at: number; model?: string; chargeTx?: string }[];
 };
-/** Owner actions on a self-feeding pet; each is signed with the owner's wallet (and World ID for approve). */
-export const feedAction = (name: string, action: "approve" | "decline" | "cap" | "withdraw", body: Record<string, unknown>) =>
-  call<{ ok: true; txHash?: string }>(`/pets/${encodeURIComponent(name)}/${action}`, { method: "POST", body: JSON.stringify(body) });
-/** Must match the server's ownerMessage. */
-export const ownerMessage = (action: string, pet: string, detail: string, time: number) => `${action}\nPet: ${pet}\n${detail}\nTime: ${time}`;
 export const getPet = (name: string) => call<PetPublic>(`/pets/${encodeURIComponent(name)}`);
 
 /** GET /campaigns/:id/arkiv -> what Arkiv holds for this campaign, read back from Arkiv. */
