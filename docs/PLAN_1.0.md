@@ -53,9 +53,10 @@ Decisions (2026-11-13):
 - Model-written diary (opt-in, request id kept), certificate and diary share cards
 - Settings, Advanced: pet account, server, running hook hash vs this build's
 - Website reads pet.json anchors; System/Light/Dark switch with a light theme
+- Watch app icon; the Raycast extension type-checks
 
 ## Still open
-- Watch app icon; App Intents metadata in the release; Raycast type check
+- App Intents metadata in the release (Shortcuts lists the actions only from an Xcode-built bundle; notchi:// and the CLI work now)
 - System Focus and browser screen sharing can't be detected; exact agent window for perching and Show me
 - Purse contracts not deployed; live loop and on-screen checks by a person; the full audit
 
