@@ -37,7 +37,6 @@ let tickHz = 30.0
 let defaults = UserDefaults.standard
 var homeAfter = TimeInterval(ProcessInfo.processInfo.environment["NOTCHI_HOME_AFTER"] ?? "") ?? (defaults.object(forKey: "homeAfter") as? Double ?? 75)
 var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
-var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 // Sponsored hooks are opt-in: off until the developer turns them on (asked once on first launch).
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? false
 var quietHours = defaults.object(forKey: "quietHours") as? Bool ?? false // opt-in: developers code at night; when on, no hooks 22:00-08:00
@@ -265,6 +264,7 @@ final class Door {
     func open() {
         gen += 1
         let g = gen
+        if state != .open { Feel.event("door.open") }
         log(.open)
         showLock(false)
         artLayer.contents = art[.closed]
@@ -281,6 +281,7 @@ final class Door {
     func close(lock: Bool) {
         gen += 1
         let g = gen
+        if state == .open { Feel.event("door.close") }
         log(lock ? .locked : .closed)
         artLayer.contents = art[.closed]
         step(0.08, g, { leaf.transform = CATransform3DIdentity; glow.opacity = 0; body.opacity = 1; body.transform = CATransform3DIdentity }) {
@@ -361,6 +362,7 @@ final class Pet {
     let network = NWPathMonitor()
     var currentProp: Prop?
     var pendingSignature = false
+    var squashFrame: Int?
     var onContextChange: (() -> Void)?
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
@@ -384,6 +386,7 @@ final class Pet {
         grab.onGrab = { [weak self] in self?.beginGrab(at: $0) }
         grab.onDrag = { [weak self] in self?.drag(to: $0) }
         grab.onRelease = { [weak self] in self?.release(at: $0) }
+        grab.onSquish = { [weak self] in self?.squish(stage: $0, pressure: $1) }
         panel.contentView?.addSubview(grab)
         // The plate opens the brand's link; it only takes clicks while the cursor is on it (see updateCursor).
         signClick.autoresizingMask = [.width, .height]
@@ -594,6 +597,7 @@ final class Pet {
         } else if inside && !busy && (state == .walk || state == .idle) {
             beforeFun = state
             set(.hover)
+            Feel.haptic(.purr, lineUp: plate != nil && signPanel.isVisible)
         }
         if state == .hover { dir = mouse.x < pos.x + size.width / 2 ? -1 : 1 }
     }
@@ -602,6 +606,8 @@ final class Pet {
         guard path == .floor, !busy, [.walk, .idle, .hover, .annoy].contains(state) else { return }
         annoyance += 1
         lastPoke = Date()
+        Feel.sound(Sounds.poke(click: annoyance))
+        Feel.haptic(annoyance >= 5 ? .stomp : .boop)
         if state != .annoy {
             if state != .hover { beforeFun = state }
             set(.annoy)
@@ -655,6 +661,7 @@ final class Pet {
     // Money landed in the wallet: play eat (on screen only) and show the amount.
     func eat(_ amount: String) {
         say(amount, for: 4)
+        Feel.event("meal")
         if path == .floor && state != .eat { set(.eat, then: next) }
     }
 
@@ -785,7 +792,7 @@ final class Pet {
 
     func askApproval() {
         waiting = true
-        if soundsOn { NSSound(named: "Ping")?.play() }
+        Feel.event("PermissionRequest")
         comeOut(then: .flag)
     }
 
@@ -838,11 +845,13 @@ final class Pet {
             working = false
             waiting = false
             lastActive = Date()
+            Feel.event("Stop")
             if path == .floor { set(.celebrate, then: .walk) }
         case "StopFailure":
             working = false
             waiting = false
             lastActive = Date()
+            Feel.event("StopFailure")
             if path == .floor { set(.fail, then: .idle) }
         case "SessionEnd":
             working = false
@@ -1265,7 +1274,11 @@ final class Backend: NSObject {
                 let id = r.requestId.map { "completion \($0)" } ?? "no AI call"
                 self.lastThink = r.action == "sleep" ? "sleep: \(r.reason ?? "") (\(id))" : "\(r.action) \"\(r.say ?? "")\" (\(id))"
                 // Exactly what the AI said, only when it said something. Never invent a line.
-                if let say = r.say?.trimmingCharacters(in: .whitespacesAndNewlines), !say.isEmpty { self.pet.say(say, for: 4) }
+                if let say = r.say?.trimmingCharacters(in: .whitespacesAndNewlines), !say.isEmpty {
+                    self.pet.say(say, for: 4)
+                    let mood = r.action == "celebrate" ? "happy" : r.action == "sad" ? "grumpy" : "say"
+                    Feel.voice(species: self.pet.skin.name, mood: mood, requestId: r.requestId)
+                }
             }
             self.refresh()
         }
@@ -1298,7 +1311,7 @@ final class Backend: NSObject {
         gear.font = .systemFont(ofSize: 12)
         gear.contentTintColor = .secondaryLabelColor
         let names = NSStackView(views: [label(info?.name ?? petName, 15, .semibold),
-                                        label(info?.mood.uppercased() ?? "\u{2014}", 11, .medium, .secondaryLabelColor, mono: true)])
+                                        label(info?.mood.uppercased() ?? "\u{2014}", 11, .medium, accentTextColor(pet.skin), mono: true)])
         names.orientation = .vertical
         names.alignment = .leading
         names.spacing = 2
@@ -1389,13 +1402,11 @@ final class Backend: NSObject {
         picker.action = #selector(pickSkin(_:))
         stack.addArrangedSubview(picker)
 
-        let sounds = NSButton(checkboxWithTitle: "Sounds", target: self, action: #selector(toggleSounds(_:)))
-        sounds.state = soundsOn ? .on : .off
         let sponsored = NSButton(checkboxWithTitle: "Show sponsored hooks (earn while you wait)", target: self, action: #selector(toggleSponsored(_:)))
         sponsored.state = sponsoredOn ? .on : .off
         let quiet = NSButton(checkboxWithTitle: "Quiet hours (no hooks 22:00\u{2013}08:00)", target: self, action: #selector(toggleQuiet(_:)))
         quiet.state = quietHours ? .on : .off
-        stack.addArrangedSubview(sounds)
+        for v in feelControls() { stack.addArrangedSubview(v) }
         stack.addArrangedSubview(sponsored)
         stack.addArrangedSubview(quiet)
         let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
@@ -1518,7 +1529,6 @@ final class Backend: NSObject {
         render()
     }
 
-    @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
 
     @objc func setReminder(_ sender: NSSegmentedControl) {
         reminderMinutes = [0.0, 2, 5, 10][max(0, sender.selectedSegment)]
@@ -1695,6 +1705,7 @@ do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt cl
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+applyTheme()
 guard let skin = loadSkin() else { exit(1) }
 let door = Door(art: skin.doors, scale: skin.scale, accent: skin.accent)
 let pet = Pet(skin: skin, door: door)

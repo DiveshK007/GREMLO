@@ -26,6 +26,7 @@ extension Pet {
         guard off != offline else { return }
         offline = off
         print(off ? "network: offline, sleeping safely" : "network: back")
+        if off { Feel.event("offline") }
         onContextChange?()
     }
 
@@ -63,12 +64,13 @@ extension Pet {
         if free, let micro = scheduler.next(now: now, quiet: quiet) {
             switch micro {
             case .sit: sit(for: power == .low ? 8 : 4)
-            case .yawn: if power == .low { sit(for: 8) } else { set(.yawn, then: state) }
+            case .yawn: if power == .low { sit(for: 8) } else { set(.yawn, then: state); Feel.event("yawn") }
             }
         }
         if free && !napping && IdleScheduler.shouldNap(idleFor: now.timeIntervalSince(lastAgentEvent), night: night) {
             napping = true
             set(night ? .night : .idle)
+            Feel.event("snore")
         }
     }
 
@@ -122,6 +124,7 @@ extension Pet {
         body = nil
         go(.held)
         set(.grabbed)
+        Feel.haptic(.snap)
         // the door stays shut while a pet is held; the plate comes down and views stop counting
         door.close(lock: false)
         print("grab: held (plate down, views paused)")
@@ -157,12 +160,15 @@ extension Pet {
             body = Physics.Body(x: pos.x, y: max(pos.y - floorY, 0), vx: x, vy: y)
             go(.airborne)
             set(.thrown)
+            Feel.event("throw")
         }
     }
 
     func airborneTick(dt: CGFloat) {
         guard var b = body else { go(.floor); return }
+        let bounces = b.bounces
         Physics.step(&b, dt: dt, minX: leftX, maxX: rightX)
+        if b.bounces > bounces && !b.resting && bounces > 0 { Feel.event("bounce") }
         body = b
         pos = CGPoint(x: b.x, y: floorY + b.y)
         if b.resting {
@@ -172,6 +178,8 @@ extension Pet {
             let after: PetState = Physics.sulks(throws: throws_, now: Date()) ? .annoy : .walk
             if after == .annoy { annoyance = 5; lastPoke = Date() }  // the sulk decays like any annoyance
             set(.land, then: after)
+            Feel.event(b.dizzy ? "dizzy" : "land")
+            if NSEvent.pressedMouseButtons & 1 != 0 { Feel.haptic(.thud) }  // only if a finger is still on the pad
             print("land: \(b.dizzy ? "dizzy" : "soft")\(after == .annoy ? ", sulking" : "")")
         }
     }
@@ -185,12 +193,20 @@ extension Pet {
         set(.edgepeek, then: .walk)
     }
 
+    /// Force press: stage 1 maps pressure onto the land row's squash frames, stage 2 plays celebrate.
+    func squish(stage: Int, pressure: Float) {
+        guard path == .floor, !busy else { return }
+        if stage >= 2 { if state != .celebrate { set(.celebrate, then: .walk) }; squashFrame = nil; return }
+        squashFrame = stage == 1 ? (pressure > 0.5 ? 1 : 0) : nil
+        if squashFrame != nil, state != .land { set(.land, then: .walk) }
+    }
+
     /// Frames for the rows the app picks itself: gaze by cursor, tools by prop, land dizzy or soft, naps asleep.
     func pickedFrames() -> [Int]? {
         switch state {
         case .gaze: return [gazeFrame]
         case .tools: return [currentProp?.rawValue ?? Prop.terminal.rawValue]
-        case .land: return dizzy ? [0, 1, 2, 3, 4, 5] : [0, 1, 4, 5]
+        case .land: if let f = squashFrame { return [f] }; return dizzy ? [0, 1, 2, 3, 4, 5] : [0, 1, 4, 5]
         case .idle where napping: return Sequence.frames(.idle, count: strip.frames.count, mood: "asleep")
         default: return nil
         }
@@ -203,9 +219,17 @@ final class GrabView: NSView {
     var onGrab: ((NSPoint) -> Void)?
     var onDrag: ((NSPoint) -> Void)?
     var onRelease: ((NSPoint) -> Void)?
+    var onSquish: ((Int, Float) -> Void)?
     private var pressed: Date?
     private var grabbing = false
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        pressureConfiguration = NSPressureConfiguration(pressureBehavior: .primaryDeepClick)
+    }
+    required init?(coder: NSCoder) { fatalError() }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// Force press (HAPTICS.md): stage 1 pressure squashes the pet, stage 2 celebrates. The trackpad clicks itself.
+    override func pressureChange(with event: NSEvent) { onSquish?(event.stage, event.pressure) }
     override func mouseDown(with event: NSEvent) { pressed = Date(); grabbing = false }
     override func mouseDragged(with event: NSEvent) {
         let m = NSEvent.mouseLocation
