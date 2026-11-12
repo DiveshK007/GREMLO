@@ -217,6 +217,17 @@ public enum Diary {
          "tools": d.tools, "length": elder ? "longer" : "short"]
     }
 
+    /// Word-wraps text into lines of at most `width` characters, for the share card.
+    public static func wrap(_ text: String, width: Int) -> [String] {
+        var lines: [String] = [], cur = ""
+        for w in text.split(separator: " ") {
+            if !cur.isEmpty && cur.count + 1 + w.count > width { lines.append(cur); cur = "" }
+            cur += (cur.isEmpty ? "" : " ") + w
+        }
+        if !cur.isEmpty { lines.append(cur) }
+        return lines
+    }
+
     /// The entry when model text isn't allowed (or the network is down): a template over the same counts.
     public static func template(_ d: DayCounts, name: String) -> String {
         let top = d.tools.max { $0.value < $1.value }

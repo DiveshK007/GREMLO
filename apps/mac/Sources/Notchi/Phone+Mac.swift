@@ -1,5 +1,6 @@
 import AppKit
 import CoreImage.CIFilterBuiltins
+import CryptoKit
 import NotchiCore
 
 // Phone and Watch (base §10, R4 §17): the Mac seals its state for the paired phone and takes the phone's answers.
@@ -95,5 +96,30 @@ extension Backend {
     @objc func copyPairing() {
         guard let p = phone.pairing else { return }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(p.code, forType: .string)
+    }
+}
+
+// MARK: - Settings, Advanced: the only place account ids and hashes show (R4 §18, R2 §16)
+
+extension Backend {
+    func advancedControls() -> [NSView] {
+        var v: [NSView] = [caption("Advanced")]
+        v.append(row("Pet account", petName))
+        v.append(row("Server", base))
+        let sha = { (u: URL?) -> String in
+            guard let u, let d = try? Data(contentsOf: u) else { return "\u{2014}" }
+            return SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined().prefix(16) + "\u{2026}"
+        }
+        let bundled = Bundle.main.url(forResource: "notchi-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "notchi-hook", withExtension: "sh")
+        let running = sha(ClaudeHooks.scriptURL), shipped = sha(bundled)
+        v.append(row("Running hook", running))
+        v.append(row("This build's hook", shipped))
+        if running != shipped && running != "\u{2014}" { v.append(label("The installed hook differs from this build's; it's replaced at the next launch.", 11, .regular, .systemOrange)) }
+        if info?.explorer != nil { v.append(NSButton(title: "Open the pet's account in the explorer", target: self, action: #selector(openAccount))) }
+        return v
+    }
+    @objc func openAccount() {
+        guard let e = info?.explorer, let u = URL(string: "\(e)/address/\(petName)") else { return }
+        NSWorkspace.shared.open(u)
     }
 }

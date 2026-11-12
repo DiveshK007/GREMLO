@@ -18,7 +18,7 @@ import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
-import { suggestHooks, think } from "../../../packages/brain/index.js";
+import { diary, suggestHooks, think } from "../../../packages/brain/index.js";
 // @ts-expect-error plain ESM JS package, no types
 import { checkBrief, checkHook } from "../../../packages/brain/claims.js";
 // @ts-expect-error plain ESM JS package, no types
@@ -403,6 +403,22 @@ async function petThink(key: string, body: any) {
   const fee = r.completionId ? (pet.mood === "thriving" ? fees.smart : fees.cheap) : 0n;
   if (fee) void charge(petKey, fee, r.completionId);
   return { ...r, fee: fee ? fee.toString() : null };
+}
+
+/** The opt-in diary entry (1.0 design §8): counts and tool names only, one cheap call, charged like a think. */
+const diaryDays = new Map<string, string>(); // pet -> UTC day of its last entry: one a day
+async function petDiary(key: string, body: any) {
+  const pet = await getPet(key);
+  const n = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 100_000 ? (v as number) : 0);
+  const tools = Object.fromEntries(Object.entries(body?.tools ?? {}).filter(([k]) => /^[A-Za-z0-9_.:-]{1,64}$/.test(k)).slice(0, 20).map(([k, v]) => [k, n(v)]));
+  const today = utcDay();
+  if (diaryDays.get(pet.petKey) === today) throw new HttpError(429, "one diary entry a day");
+  const r = await diary({ mood: pet.mood, species: str(body?.species, 24), voice: str(body?.voice, 60), runs: n(body?.runs), failures: n(body?.failures),
+    approvals: n(body?.approvals), tools, length: body?.length === "longer" ? "longer" : "short" });
+  if (!r.entry) return { entry: null, reason: pet.moodReason ?? r.reason, requestId: r.requestId ?? null };
+  diaryDays.set(pet.petKey, today);
+  void charge(pet.petKey, fees.cheap, r.completionId);
+  return { entry: r.entry, requestId: r.requestId, fee: fees.cheap.toString() };
 }
 
 /** charge_compute for one served completion; the tx hash lands on the thought. A failure is logged, never invented. */
@@ -811,6 +827,14 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname === "/gallery") return submitSpecies(req, await readRaw(req, 12_000_000));
   const g = pathname.match(/^\/gallery\/([a-f0-9]{12})\/(report|review)$/);
   if (m === "POST" && g) return g[2] === "report" ? reportGallery(g[1]) : reviewGallery(req, g[1], await readBody(req));
+  const diaryPath = pathname.match(/^\/pets\/([^/]+)\/diary$/);
+  if (m === "POST" && diaryPath) {
+    const raw = await readRaw(req);
+    const pet = findPet(decodeURIComponent(diaryPath[1]));
+    const signed = signer(req, pathname, raw); // a paid call, like think
+    if (pet) mustBeFrom(pet, signed, REQUIRE_SIGNED);
+    return petDiary(decodeURIComponent(diaryPath[1]), parse(raw));
+  }
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }

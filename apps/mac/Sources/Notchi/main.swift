@@ -1262,6 +1262,13 @@ final class Backend: NSObject {
         super.init()
         pet.onContextChange = { [weak self] in self?.shown = ""; self?.render() }
         growth.pet = pet
+        growth.askModel = { [weak self] payload, done in
+            guard let self, !self.pet.offline, !self.demoMode else { done(nil, nil); return }
+            self.request("/pets/\(self.petName)/diary", body: payload) { data, _ in
+                let o = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                done(o?["entry"] as? String, o?["requestId"] as? String)
+            }
+        }
         pet.egg = growth.isEgg
         pet.eggFrame = growth.egg.restFrame
         pet.wornItems = growth.worn
@@ -1563,6 +1570,7 @@ final class Backend: NSObject {
         for v in privacyControls() { stack.addArrangedSubview(v) }
         for v in socialControls() { stack.addArrangedSubview(v) }
         for v in phoneControls() { stack.addArrangedSubview(v) }
+        for v in advancedControls() { stack.addArrangedSubview(v) }
         stack.addArrangedSubview(caption("Command line"))
         stack.addArrangedSubview(NSButton(title: "Install the notchi command", target: self, action: #selector(installCommand)))
         stack.addArrangedSubview(sponsored)

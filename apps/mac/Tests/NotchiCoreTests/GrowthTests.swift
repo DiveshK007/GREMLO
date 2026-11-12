@@ -82,6 +82,7 @@ import Testing
 
     @Test func diaryAndCertificateCarryNoCodeOrPaths() {
         var d = DayCounts(); d.runs = 3; d.failures = 1; d.tools = ["Edit": 12, "Bash": 4]
+        #expect(Diary.wrap("one two three four", width: 9) == ["one two", "three", "four"])
         #expect(Diary.template(d, name: "Mochi") == "Mochi watched 3 runs today. Mostly Edit, 12 times. 1 stumble.")
         let payload = Diary.payload(d, species: "bean", voice: "plain", elder: false)
         #expect(Set(payload.keys) == ["species", "voice", "runs", "failures", "approvals", "tools", "length"])

@@ -126,3 +126,17 @@ test('think leaves the reasoning model room to answer', async () => {
   await think({ mood: 'stable' }, { fetch });
   assert.deepEqual(caps, [2048]);
 });
+
+test('diary: counts in, one cheap call, no call when hungry', async () => {
+  const { diary } = await import('./index.js');
+  const sent = [];
+  const fetch = async (u, init) => { sent.push(JSON.parse(init.body)); return turn(JSON.stringify({ entry: 'I watched 3 runs. Edit was busy today.' }), 'D1'); };
+  const r = await diary({ mood: 'stable', species: 'bean', voice: 'plain', runs: 3, failures: 0, approvals: 1, tools: { Edit: 12 }, length: 'short' }, { fetch });
+  assert.equal(r.entry, 'I watched 3 runs. Edit was busy today.');
+  assert.equal(r.requestId, 'D1');
+  assert.equal(sent[0].model, 'cheap-model');
+  assert.ok(!sent[0].messages[1].content.includes('mood'), 'the model gets counts, not the money state');
+  const none = await diary({ mood: 'hungry', runs: 3 }, { fetch });
+  assert.equal(none.entry, null);
+  assert.equal(sent.length, 1);
+});

@@ -93,6 +93,28 @@ export async function think(state, opts = {}) {
   }
 }
 
+const DIARY_SYSTEM = `You are a small desktop pet writing today's diary entry about watching your developer's coding agent.
+You get only counts: runs, failures, approvals and tool names with how often they ran. Write in the given voice,
+first person, plain words, no emoji, no hashtags, no code, no file names, no money. 2 sentences, or 4 if length is "longer".
+Reply with only a JSON object: {"entry": "<text>"}.`;
+
+/**
+ * The opt-in diary, in the pet's voice, from counts only. One cheap call; a hungry or asleep pet makes none
+ * (the Mac then writes the template). Returns {entry, requestId, completionId, model} or {entry: null, reason}.
+ */
+export async function diary(payload, opts = {}) {
+  if (payload?.mood !== 'thriving' && payload?.mood !== 'stable') return { entry: null, reason: `${payload?.mood ?? 'unknown'}: no paid calls` };
+  const { mood, ...counts } = payload;
+  try {
+    const { out, requestId, completionId } = await chat(DIARY_SYSTEM, JSON.stringify(counts), CHEAP, { ...opts, maxTokens: 1024 });
+    const entry = typeof out?.entry === 'string' ? out.entry.replace(/\p{Extended_Pictographic}/gu, '').trim().slice(0, counts.length === 'longer' ? 600 : 300) : '';
+    if (!entry) return { entry: null, reason: 'NEAR AI reply had no entry', requestId, completionId, model: CHEAP };
+    return { entry, requestId, completionId, model: CHEAP };
+  } catch (err) {
+    return { entry: null, reason: err.message, requestId: err.requestId ?? null };
+  }
+}
+
 const HOOKS_STRICT = `${HOOKS_SYSTEM}\nReply with JSON only: no prose, no code fences, nothing before or after the object.`;
 
 /**

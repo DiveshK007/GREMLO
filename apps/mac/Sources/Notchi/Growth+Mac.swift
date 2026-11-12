@@ -16,6 +16,9 @@ final class GrowthController {
     var onChange: (() -> Void)?
 
     static var diaryOn: Bool { defaults.bool(forKey: "diary") }  // opt-in, off by default
+    static var diaryModelOn: Bool { defaults.bool(forKey: "diary.model") }  // in the pet's words: one cheap paid call a day
+    /// Asks the server for a model-written entry: (entry, request id) or nil. Set by Backend.
+    var askModel: (([String: Any], @escaping (String?, String?) -> Void) -> Void)?
     static let diaryDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Notchi/diary")
 
     init(existingUser: Bool) {
@@ -168,10 +171,18 @@ final class GrowthController {
 
     private func writeDiary(for key: String) {
         guard Self.diaryOn, day.runs > 0 else { return }
-        // shortcut: the template only; a model-written entry needs a paid call with a request ID (and its own opt-in)
-        let text = Diary.template(day, name: petDisplayName) + "\n"
-        try? FileManager.default.createDirectory(at: Self.diaryDir, withIntermediateDirectories: true)
-        try? text.write(to: Self.diaryDir.appendingPathComponent("\(key).txt"), atomically: true, encoding: .utf8)
+        let counts = day, url = Self.diaryDir.appendingPathComponent("\(key).txt")
+        let save = { (text: String) in
+            try? FileManager.default.createDirectory(at: Self.diaryDir, withIntermediateDirectories: true)
+            try? (text + "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+        let template = Diary.template(counts, name: petDisplayName)
+        guard Self.diaryModelOn, let ask = askModel, let pet else { save(template); return }
+        let s = Roster.species(pet.skin.name)
+        ask(Diary.payload(counts, species: s?.kind ?? "pet", voice: s?.voice ?? "plain", elder: p.stage == .elder)) { entry, requestId in
+            // a model entry only with its request id; anything else falls back to the counts template
+            if let entry, let requestId { save("\(entry)\n(written by the pet, request \(requestId))") } else { save(template) }
+        }
     }
 
     var lastDiary: String? {
@@ -392,14 +403,21 @@ extension Backend {
             s.addArrangedSubview(caption("Certificate (private until you share it)"))
             let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
             for l in c.lines(dateFormat: { df.string(from: $0) }) { s.addArrangedSubview(label(l, 12, .regular)) }
-            s.addArrangedSubview(NSButton(title: "Copy certificate", target: self, action: #selector(copyCertificate)))
+            s.addArrangedSubview(NSStackView(views: [NSButton(title: "Copy certificate", target: self, action: #selector(copyCertificate)),
+                                                     NSButton(title: "Save certificate card\u{2026}", target: self, action: #selector(saveCertificateCard))]))
         }
 
         s.addArrangedSubview(caption("Diary"))
         let diary = NSButton(checkboxWithTitle: "Write a diary entry after the day's last session (counts only, stays on this Mac)", target: self, action: #selector(toggleDiary(_:)))
         diary.state = GrowthController.diaryOn ? .on : .off
         s.addArrangedSubview(diary)
-        if let d = growth.lastDiary { s.addArrangedSubview(label(d, 12, .regular)) }
+        let words = NSButton(checkboxWithTitle: "In the pet's own words (one cheap paid call a day, with a request ID)", target: self, action: #selector(toggleDiaryModel(_:)))
+        words.state = GrowthController.diaryModelOn ? .on : .off
+        s.addArrangedSubview(words)
+        if let d = growth.lastDiary {
+            s.addArrangedSubview(label(d, 12, .regular))
+            s.addArrangedSubview(NSButton(title: "Save diary card\u{2026}", target: self, action: #selector(saveDiaryCard)))
+        }
     }
 
     @objc func hatchNow() { growth.skip(); rebuildGrowth() }
@@ -422,6 +440,26 @@ extension Backend {
         NSPasteboard.general.setString(c.lines(dateFormat: { df.string(from: $0) }).joined(separator: "\n"), forType: .string)
     }
     @objc func toggleDiary(_ b: NSButton) { defaults.set(b.state == .on, forKey: "diary") }
+    @objc func toggleDiaryModel(_ b: NSButton) { defaults.set(b.state == .on, forKey: "diary.model") }
+
+    /// Share cards: private until saved; the pet, the lines, nothing else (no repo, path or prompt).
+    func saveCard(_ lines: [String], name: String) {
+        let frame = (pet.skin.strips[.celebrate] ?? pet.skin.strips[.walk])?.frames.first
+        guard let img = Postcard.render(lines: lines, pet: frame, accent: pet.skin.accent), let png = Images.png(img) else { return }
+        let p = NSSavePanel(); p.nameFieldStringValue = name
+        NSApp.activate(ignoringOtherApps: true)
+        if p.runModal() == .OK, let url = p.url { try? png.write(to: url) }
+    }
+    @objc func saveCertificateCard() {
+        guard let c = growth.certificate else { return }
+        let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
+        saveCard(c.lines(dateFormat: { df.string(from: $0) }), name: "certificate.png")
+    }
+    @objc func saveDiaryCard() {
+        guard let d = growth.lastDiary else { return }
+        let entry = d.components(separatedBy: "\n(written by")[0]  // the card carries the line and the pet, not the request id
+        saveCard([growth.petDisplayName + "'s diary"] + Diary.wrap(entry, width: 36).prefix(5), name: "diary.png")
+    }
 
     func applyWorn() { pet.wornItems = growth.worn }
 }
