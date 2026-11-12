@@ -110,9 +110,9 @@ func loadSkin(_ want: String? = nil) -> Skin? {
     return nil
 }
 
-func loadSkin(id: String) -> Skin? {
+func loadSkin(id: String, dir: URL? = nil) -> Skin? {
     let loaded: LoadedPack
-    do { loaded = try LoadedPack.load(dir: assetsDir.appendingPathComponent("pets/\(id)")) } catch {
+    do { loaded = try LoadedPack.load(dir: dir ?? assetsDir.appendingPathComponent("pets/\(id)")) } catch {
         print("pet \(id): \(error.localizedDescription)")
         return nil
     }
@@ -668,15 +668,20 @@ final class Pet {
         placeBubble()
     }
 
-    func setBubble(_ text: String) {
-        bubbleLabel.stringValue = text
+    /// `you`: a bubble from the CLI or a shortcut is outlined and tagged "you" (model bubbles are filled).
+    func setBubble(_ text: String, you: Bool = false) {
+        bubbleLabel.stringValue = you ? "you: \(text)" : text
+        bubbleLabel.backgroundColor = you ? NSColor(white: 0.97, alpha: 1) : .white
+        bubbleLabel.wantsLayer = true
+        bubbleLabel.layer?.borderWidth = you ? 1.5 : 0
+        bubbleLabel.layer?.borderColor = NSColor.black.cgColor
         bubbleLabel.preferredMaxLayoutWidth = 220
         bubbleLabel.frame.size = bubbleLabel.fittingSize
         bubblePanel.setContentSize(bubbleLabel.frame.size)
     }
 
-    func say(_ text: String, for seconds: TimeInterval) {
-        setBubble(text)
+    func say(_ text: String, for seconds: TimeInterval, you: Bool = false) {
+        setBubble(text, you: you)
         bubbleUntil = Date().addingTimeInterval(seconds)
         placeBubble()
     }
@@ -1170,6 +1175,8 @@ final class Backend: NSObject {
     let growth = GrowthController(existingUser: ClaudeHooks.isConnected)
     lazy var hunt: HuntController = HuntController(backend: self)
     lazy var privacy: PrivacyController = PrivacyController(backend: self)
+    lazy var commandSocket: CommandSocket = CommandSocket { [unowned self] in self.handle($0) }
+    var sayLimiter = SayLimiter()
     lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
     lazy var growthStack: NSStackView = {
         let s = NSStackView(); s.orientation = .vertical; s.alignment = .leading; s.spacing = 6
@@ -1510,6 +1517,8 @@ final class Backend: NSObject {
         for v in feelControls() { stack.addArrangedSubview(v) }
         for v in huntControls() { stack.addArrangedSubview(v) }
         for v in privacyControls() { stack.addArrangedSubview(v) }
+        stack.addArrangedSubview(caption("Command line"))
+        stack.addArrangedSubview(NSButton(title: "Install the notchi command", target: self, action: #selector(installCommand)))
         stack.addArrangedSubview(sponsored)
         stack.addArrangedSubview(quiet)
         let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
@@ -1837,6 +1846,9 @@ do {
 }
 _ = backend.live  // the notch panel
 _ = backend.privacy  // detectors, hot keys, stream mode
+_ = backend.commandSocket  // the notchi CLI, Shortcuts and Raycast
+NSAppleEventManager.shared().setEventHandler(backend, andSelector: #selector(Backend.handleURL(_:withReplyEvent:)),
+                                             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
 ClaudeHooks.refreshScriptIfStale()

@@ -182,7 +182,11 @@ public enum GitHooks {
 
     public static func install(repo: String, script: URL) throws {
         guard let g = GitWatch.gitDir(for: repo) else { throw NSError(domain: "Notchi", code: 1, userInfo: [NSLocalizedDescriptionKey: "not a git repository"]) }
-        let hooks = g.appendingPathComponent("hooks"), fm = FileManager.default
+        try installInto(hooks: g.appendingPathComponent("hooks"), script: script)
+    }
+
+    static func installInto(hooks: URL, script: URL) throws {
+        let fm = FileManager.default
         try fm.createDirectory(at: hooks, withIntermediateDirectories: true)
         let body = try String(contentsOf: script, encoding: .utf8)
         for n in names {
@@ -195,9 +199,42 @@ public enum GitHooks {
         }
     }
 
+    /// `--global`: hooks in core.hooksPath (set to ~/.notchi/git-hooks if unset), chaining what's already there.
+    public static func installGlobal(script: URL) throws {
+        let dir = globalDir()
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        if git(["config", "--global", "--get", "core.hooksPath"]).isEmpty { _ = git(["config", "--global", "core.hooksPath", dir]) }
+        try installInto(hooks: URL(fileURLWithPath: dir), script: script)
+    }
+
+    public static func removeGlobal() throws {
+        let dir = globalDir()
+        try removeFrom(hooks: URL(fileURLWithPath: dir))
+        if dir == ourGlobal { _ = git(["config", "--global", "--unset", "core.hooksPath"]) }
+    }
+
+    static var ourGlobal: String { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchi/git-hooks").path }
+    static func globalDir() -> String {
+        let set = git(["config", "--global", "--get", "core.hooksPath"])
+        return set.isEmpty ? ourGlobal : (set as NSString).expandingTildeInPath
+    }
+    @discardableResult static func git(_ args: [String]) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        p.arguments = ["git"] + args
+        let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+        guard (try? p.run()) != nil else { return "" }
+        p.waitUntilExit()
+        return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     public static func remove(repo: String) throws {
         guard let g = GitWatch.gitDir(for: repo) else { return }
-        let hooks = g.appendingPathComponent("hooks"), fm = FileManager.default
+        try removeFrom(hooks: g.appendingPathComponent("hooks"))
+    }
+
+    static func removeFrom(hooks: URL) throws {
+        let fm = FileManager.default
         for n in names {
             let h = hooks.appendingPathComponent(n)
             guard let s = try? String(contentsOf: h, encoding: .utf8), s.contains(marker) else { continue }

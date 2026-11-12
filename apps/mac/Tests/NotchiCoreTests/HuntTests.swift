@@ -127,6 +127,27 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: repo.path + "/.git/hooks/pre-push"))
     }
 
+    @Test func globalInstallChainsTheRepoHook() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("notchi-global-\(UUID().uuidString)")
+        let repo = root.appendingPathComponent("repo"), hooks = root.appendingPathComponent("hooks")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root); unsetenv("GIT_CONFIG_GLOBAL") }
+        let cfg = root.appendingPathComponent("gitconfig").path
+        try "[core]\n\thooksPath = \(hooks.path)\n".write(toFile: cfg, atomically: true, encoding: .utf8)
+        setenv("GIT_CONFIG_GLOBAL", cfg, 1)
+        try GitHooks.installGlobal(script: script)
+        #expect(FileManager.default.fileExists(atPath: hooks.appendingPathComponent("post-commit").path))
+        let sink = root.appendingPathComponent("sink").path, mine = root.appendingPathComponent("mine").path
+        try sh("git init -q -b main .", in: repo, env: ["GIT_CONFIG_GLOBAL": cfg])
+        try "#!/bin/sh\necho local >> \(mine)\n".write(toFile: repo.path + "/.git/hooks/post-commit", atomically: true, encoding: .utf8)
+        try sh("chmod +x .git/hooks/post-commit && echo a > a && git add a && git commit -qm one", in: repo, env: ["GIT_CONFIG_GLOBAL": cfg, "NOTCHI_GIT_SINK": sink])
+        #expect(try String(contentsOfFile: sink, encoding: .utf8).contains("\"commit\""))
+        #expect(try String(contentsOfFile: mine, encoding: .utf8) == "local\n", "the repo's own hook still runs")
+        try GitHooks.removeGlobal()
+        #expect(!FileManager.default.fileExists(atPath: hooks.appendingPathComponent("post-commit").path))
+        #expect(GitHooks.git(["config", "--global", "--get", "core.hooksPath"]) == hooks.path, "a hooksPath we didn't set stays")
+    }
+
     @Test func mergeHeadWatcher() throws {
         let repo = FileManager.default.temporaryDirectory.appendingPathComponent("notchi-merge-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: repo.appendingPathComponent("sub"), withIntermediateDirectories: true)

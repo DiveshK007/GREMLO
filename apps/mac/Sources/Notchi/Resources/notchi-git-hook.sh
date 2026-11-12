@@ -11,6 +11,12 @@ if [ -x "$0.notchi-prev" ]; then
   printf '%s' "$input" | "$0.notchi-prev" "$@"
   status=$?
 fi
+# installed globally (core.hooksPath): git skips the repo's own .git/hooks, so run that one too
+gitdir="$(git rev-parse --git-dir 2>/dev/null)"
+here="$(cd "$(dirname "$0")" && pwd -P)"
+if [ -n "$gitdir" ] && [ -x "$gitdir/hooks/$name" ] && [ "$here" != "$(cd "$gitdir/hooks" 2>/dev/null && pwd -P)" ]; then
+  printf '%s' "$input" | "$gitdir/hooks/$name" "$@" || status=$?
+fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)"
 repo="$(printf '%s' "$top" | shasum -a 256 | cut -c1-16)"
 send() {

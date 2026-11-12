@@ -18,10 +18,12 @@ APP="$OUT/Notchi.app"
 rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/assets"
 cp "$BIN/Notchi" "$APP/Contents/MacOS/Notchi"
-cp Sources/Notchi/Resources/notchi-hook.sh "$APP/Contents/Resources/"
+cp "$BIN/NotchiCLI" "$APP/Contents/MacOS/notchi-cli"
+cp Sources/Notchi/Resources/notchi-hook.sh Sources/Notchi/Resources/notchi-git-hook.sh "$APP/Contents/Resources/"
 # shared assets at the repo root: species packs and the Inter font for the plate
 cp -R ../../assets/pets "$APP/Contents/Resources/assets/pets"
 cp -R ../../assets/fonts "$APP/Contents/Resources/assets/fonts"
+for d in sounds props haptics; do cp -R "../../assets/$d" "$APP/Contents/Resources/assets/$d"; done
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +37,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Notchi</string><key>CFBundleURLSchemes</key><array><string>notchi</string></array></dict></array>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Five minutes before a meeting the pet checks its watch. Event titles never leave this Mac.</string>
 </dict></plist>
 PLIST
