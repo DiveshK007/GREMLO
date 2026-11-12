@@ -45,3 +45,17 @@ Decisions (2026-11-13):
 - [x] Drop zone quoting and image pasteboard; stream mode turns the plate off and freezes sightings
 - [x] Park payload is exactly `{id, name, species, stage, outfit}`; postcard text has no path, repo or currency
 - [x] Purse: a function-call key can't transfer (the factory gives the Mac's key only pay_inference); caps reject the call that crosses them
+
+## Closed after the first pass (2026-11-13)
+- Perching on agent windows (companions take agent windows front to back), pets walk to bugs, companions chase them
+- Camera in use counts as a call; animated pet in the room; sideways swipe through the approval queue
+- Opt-in GitHub through gh: merged PRs celebrate, review requests send your companion
+- Model-written diary (opt-in, request id kept), certificate and diary share cards
+- Settings, Advanced: pet account, server, running hook hash vs this build's
+- Website reads pet.json anchors; System/Light/Dark switch with a light theme
+
+## Still open
+- Watch app icon; App Intents metadata in the release; Raycast type check
+- System Focus and browser screen sharing can't be detected; exact agent window for perching and Show me
+- Purse contracts not deployed; live loop and on-screen checks by a person; the full audit
+
