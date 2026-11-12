@@ -95,3 +95,28 @@ import Testing
         #expect(over.problems == ["the log has 4 sightings, the bill accounts for 7"])
     }
 }
+
+@Suite struct PhoneLinkTests {
+    @Test func pairingSealsAndOnlyTheKeyOpens() throws {
+        let p = PhonePairing.new(relay: "https://relay.example")
+        let back = try #require(PhonePairing.from(code: p.code))
+        #expect(back == p && p.channel.count == 32 && p.key.count == 32)
+        #expect(PhonePairing.from(code: "notchi-pair:bm9wZQ==") == nil && PhonePairing.from(code: "hello") == nil)
+        let s = PhoneState(name: "Mochi", species: "notchi", mood: "thriving", running: true, startedAt: Date(timeIntervalSince1970: 100), tools: 3,
+                           waiting: [PhoneApproval(id: "a", tool: "Bash", summary: "npm test", risky: false)], quiet: false, doneAt: nil, at: Date(timeIntervalSince1970: 200))
+        let box = try p.seal(s)
+        #expect(!box.contains("npm test"), "the relay sees ciphertext only")
+        #expect(p.open(PhoneState.self, box) == s)
+        #expect(PhonePairing.new(relay: "x").open(PhoneState.self, box) == nil, "another pairing can't read it")
+    }
+
+    @Test func phoneAnswersOnlyOrdinaryWaitingRequests() {
+        let now = Date(timeIntervalSince1970: 1000)
+        let waiting = [PhoneApproval(id: "a", tool: "Bash", summary: "npm test", risky: false), PhoneApproval(id: "b", tool: "Bash", summary: "git push", risky: true)]
+        #expect(PhoneRules.accept(PhoneAnswer(id: "a", allow: true, at: now), waiting: waiting, now: now)?.id == "a")
+        #expect(PhoneRules.accept(PhoneAnswer(id: "b", allow: true, at: now), waiting: waiting, now: now) == nil, "risky: open on the Mac")
+        #expect(PhoneRules.accept(PhoneAnswer(id: "c", allow: true, at: now), waiting: waiting, now: now) == nil, "already answered elsewhere")
+        #expect(PhoneRules.accept(PhoneAnswer(id: "a", allow: true, at: now.addingTimeInterval(-300)), waiting: waiting, now: now) == nil, "stale")
+        #expect(PhoneRules.ring(startedAt: now.addingTimeInterval(-900), now: now) == 0.5)
+    }
+}

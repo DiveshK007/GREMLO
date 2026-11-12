@@ -81,3 +81,16 @@ test("gallery: PNG size check and three reports pause a species", () => {
   assert.equal(s.status, "listed");
   assert.equal(report(s).status, "paused");
 });
+
+import { addAnswer, getState, putState, takeAnswers, type Mailbox } from "./phone.ts";
+test("phone relay: sealed boxes only, answers drained once, bad input refused", () => {
+  const m: Record<string, Mailbox> = {}, ch = "ab".repeat(16);
+  assert.throws(() => putState(m, "nope", { box: "eA==" }, 0), /channel/);
+  assert.throws(() => addAnswer(m, ch, { box: "eA==" }, 0), /no Mac/);
+  putState(m, ch, { box: "c2VhbGVk" }, 1);
+  assert.deepEqual(getState(m, ch), { box: "c2VhbGVk" });
+  assert.throws(() => addAnswer(m, ch, { box: "not base64!" }, 2), /base64/);
+  addAnswer(m, ch, { box: "YQ==" }, 2);
+  assert.deepEqual(takeAnswers(m, ch, 3), { boxes: ["YQ=="] });
+  assert.deepEqual(takeAnswers(m, ch, 4), { boxes: [] });
+});

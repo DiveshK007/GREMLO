@@ -13,6 +13,7 @@ import { mkdirSync } from "node:fs";
 import { addMoment, anonPet, appendEntry, momentTags, momentView, pausedLines, type LogEntry, type MomentBucket } from "./trust.ts";
 import { newParkId, parkList, parkPet, relayInbox, relayJoin, relaySend, VISIT_TTL_MS, type Park, type Relay, type Visit } from "./social.ts";
 import { checkSubmission, report as reportSpecies, type Submission } from "./gallery.ts";
+import { addAnswer, getState, prune as prunePhones, putState, takeAnswers, type Mailbox } from "./phone.ts";
 import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
@@ -54,6 +55,7 @@ type Store = {
   relay: Relay; // team relay: members and visits (24 h)
   gallery: Submission[]; // community species: review -> listed (or paused by reports)
   galleryReviews: Record<string, string[]>; // submission id -> reviewers who played every row
+  phones: Record<string, Mailbox>; // pairing channel -> sealed state and answers (the server can't read them)
 };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
@@ -64,7 +66,7 @@ const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
   held: {}, voided: {}, moments: {}, momentViews: {}, reports: {}, logs: {}, park: {}, parkTokens: {}, visits: [],
-  relay: { members: {}, visits: [] }, gallery: [], galleryReviews: {},
+  relay: { members: {}, visits: [] }, gallery: [], galleryReviews: {}, phones: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -674,6 +676,7 @@ function reportLine(req: IncomingMessage, raw: string) {
   return { ok: true, paused: pausedLines(store.reports[id], store.hookViews[id]).includes(hook) };
 }
 
+const phoneHits = new Map<string, number[]>(); // per pairing channel; kept in memory, not saved
 const parkHits = new Map<string, number[]>();
 function joinPark(req: IncomingMessage, b: any) {
   if (!allow(parkHits, clientIp(req), Date.now(), 30, 3_600_000)) throw new HttpError(429, "slow down");
@@ -796,6 +799,14 @@ async function route(req: IncomingMessage) {
   if (m === "POST" && pathname === "/relay/join") return relayJoin(store.relay, await readBody(req), Date.now());
   if (m === "POST" && pathname === "/relay/visit") { const r = relaySend(store.relay, await readBody(req), Date.now()); save(); return r; }
   if (m === "GET" && pathname === "/relay/inbox") { const r = relayInbox(store.relay, searchParams, Date.now()); save(); return { visits: r }; }
+  const phone = pathname.match(/^\/phone\/([a-f0-9]{32})\/(state|answers)$/);
+  if (phone) {
+    const [, ch, what] = phone, now = Date.now();
+    prunePhones(store.phones, now);
+    if (!allow(phoneHits, ch, now, 3600, 3_600_000)) throw new HttpError(429, "slow down");
+    if (what === "state") return m === "PUT" ? putState(store.phones, ch, await readBody(req), now) : getState(store.phones, ch);
+    return m === "POST" ? addAnswer(store.phones, ch, await readBody(req), now) : takeAnswers(store.phones, ch, now);
+  }
   if (m === "GET" && pathname === "/gallery") return { species: store.gallery.filter((s) => s.status === "listed") };
   if (m === "POST" && pathname === "/gallery") return submitSpecies(req, await readRaw(req, 12_000_000));
   const g = pathname.match(/^\/gallery\/([a-f0-9]{12})\/(report|review)$/);
