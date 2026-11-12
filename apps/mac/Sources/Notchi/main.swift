@@ -948,6 +948,8 @@ final class ClickView: NSView {
 final class HookServer {
     let listener: NWListener
     let onEvent: ([String: Any]) -> Void
+    /// PermissionRequest: the connection stays open until `reply` is called with the user's answer (or nil).
+    var onPermission: (([String: Any], @escaping (Data?) -> Void) -> Void)?
 
     init(port: UInt16, onEvent: @escaping ([String: Any]) -> Void) throws {
         self.onEvent = onEvent
@@ -984,7 +986,8 @@ final class HookServer {
                     .map { max(0, $0) } ?? 0 // a negative length would trap in prefix()
                 let body = buf[end.upperBound...]
                 if body.count >= length || done || err != nil {
-                    self.finish(conn, body: Data(body.prefix(length)))
+                    let path = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+                    self.finish(conn, path: path, body: Data(body.prefix(length)))
                     return
                 }
             }
@@ -993,11 +996,28 @@ final class HookServer {
         }
     }
 
-    func finish(_ conn: NWConnection, body: Data) {
-        let reply = Data("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+    func respond(_ conn: NWConnection, _ body: Data?) {
+        let b = body ?? Data()
+        var reply = Data("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(b.count)\r\nConnection: close\r\n\r\n".utf8)
+        reply.append(b)
         conn.send(content: reply, completion: .contentProcessed { _ in conn.cancel() })
-        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              json["hook_event_name"] is String else { return }
+    }
+
+    func finish(_ conn: NWConnection, path: String, body: Data) {
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any], json["hook_event_name"] is String else {
+            respond(conn, nil); return
+        }
+        if path == "/claude/permission", let onPermission {
+            // held open until the user answers on a surface; the answer is the hook's output
+            var replied = false
+            onPermission(json) { [weak self] data in
+                guard !replied else { return }
+                replied = true
+                self?.respond(conn, data)
+            }
+        } else {
+            respond(conn, nil)  // every other event: answer at once, no decision
+        }
         onEvent(json)
     }
 }
@@ -1106,6 +1126,19 @@ final class Backend: NSObject {
     // Demo mode: lets you trigger every pet reaction from the menu bar for a demo. Local only: while it is on,
     // no AI think calls and no views are reported, so nothing is spent or paid. Demo content is labelled [demo].
     var demoMode = false
+    // Notch Live: approvals answered on a surface, the current run, the panel (NotchLive+Mac.swift)
+    let broker = ApprovalBroker()
+    let run = RunTracker()
+    lazy var live: NotchLiveController = { let l = NotchLiveController(broker: broker, run: run); l.backend = self; return l }()
+    var pausedUntil = Date.distantPast
+    var paused: Bool { Date() < pausedUntil }
+    /// Long press on the notch: pets home, lines off, counters frozen, for `minutes` (spec R3 §2).
+    func pause(minutes: Double) {
+        pausedUntil = Date().addingTimeInterval(minutes * 60)
+        pet.goHome(lock: false)
+        print("paused for \(Int(minutes)) min")
+        shown = ""; render()
+    }
     var demoHooks: [String]?
     var showingDemo = false
     let demoEvents: [(String, String)] = [
@@ -1178,7 +1211,7 @@ final class Backend: NSObject {
 
     func reportImpression() {
         rotateHooks()
-        if demoMode { return } // demo views are never reported or paid
+        if demoMode || paused { return } // demo views are never reported or paid; a pause freezes counters
         guard let c = campaign, !c.allHooks.isEmpty, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
         if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
         // Viewability (README): unlocked screen, sign visible (placeSign), someone used the Mac in the last 5 minutes.
@@ -1263,7 +1296,7 @@ final class Backend: NSObject {
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
     func think(_ hook: [String: Any]) {
-        guard !thinking, !demoMode, !pet.offline else { return } // no AI spend while demoing or offline
+        guard !thinking, !demoMode, !pet.offline, !paused else { return } // no AI spend while demoing, offline or paused
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
@@ -1295,7 +1328,9 @@ final class Backend: NSObject {
             pet.signLinks = showHooks && campaign?.url != nil
             pet.setSign(showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil, brand: campaign?.brand ?? "")
         }
-        if pet.offline && !demoMode {
+        if paused && !demoMode {
+            pet.setSign(nil)
+        } else if pet.offline && !demoMode {
             // offline: sleeps, no lines, no meals, and says why (spec R2 §6)
             pet.setSign(nil)
             pet.setMood("asleep", reason: offlineReason)
@@ -1713,6 +1748,8 @@ let backend = Backend(pet: pet)
 let server: HookServer
 do {
     server = try HookServer(port: 47474) { hook in
+        backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
+        backend.broker.sawEvent(session: hook["session_id"] as? String ?? "", tool: hook["tool_name"] as? String, event: hook["hook_event_name"] as? String ?? "")
         // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String,
                    tool: hook["tool_name"] as? String, command: (hook["tool_input"] as? [String: Any])?["command"] as? String)
@@ -1721,13 +1758,13 @@ do {
         backend.reminders.handle(hook)
         backend.render()
     }
+    server.onPermission = { payload, reply in backend.broker.receive(payload, reply: reply) }
 } catch {
     print("cannot listen on 47474: \(error)")
     exit(1)
 }
+_ = backend.live  // the notch panel
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
-#if DEBUG
-ClaudeHooks.selfCheck()
-#endif
+ClaudeHooks.refreshScriptIfStale()
 app.run()

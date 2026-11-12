@@ -1,44 +1,15 @@
 import Foundation
+import NotchiCore
 
 /// One-click "Connect Claude Code": installs Notchi's hook into ~/.claude/settings.json the same way
 /// scripts/install-hooks.sh does: append-only, never replacing other hooks, safe to run twice, backed up first.
 enum ClaudeHooks {
-    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
-                         "Notification", "Stop", "StopFailure", "SessionEnd"]
-    static let command = "bash ~/.notchi/notchi-hook.sh"
     static var settingsURL: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json") }
     static var scriptURL: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchi/notchi-hook.sh") }
-
-    static func isOurs(_ entry: Any) -> Bool {
-        guard let e = entry as? [String: Any], let hooks = e["hooks"] as? [[String: Any]] else { return false }
-        return hooks.contains { ($0["command"] as? String) == command }
-    }
-
-    /// Settings with Notchi's entry appended to each event that lacks it. Everything else is untouched.
-    static func merged(_ settings: [String: Any]) -> [String: Any] {
-        var s = settings
-        var hooks = s["hooks"] as? [String: Any] ?? [:]
-        for ev in events {
-            var list = hooks[ev] as? [Any] ?? []
-            if !list.contains(where: isOurs) { list.append(["hooks": [["type": "command", "command": command]]]) }
-            hooks[ev] = list
-        }
-        s["hooks"] = hooks
-        return s
-    }
-
-    /// Settings with only Notchi's entries removed; events left empty are dropped.
-    static func unmerged(_ settings: [String: Any]) -> [String: Any] {
-        var s = settings
-        guard var hooks = s["hooks"] as? [String: Any] else { return s }
-        for (ev, value) in hooks {
-            guard let list = value as? [Any] else { continue }
-            let kept = list.filter { !isOurs($0) }
-            if kept.isEmpty { hooks.removeValue(forKey: ev) } else { hooks[ev] = kept }
-        }
-        if hooks.isEmpty { s.removeValue(forKey: "hooks") } else { s["hooks"] = hooks }
-        return s
-    }
+    static var events: [String] { HookSettings.events }
+    static func isOurs(_ e: Any) -> Bool { HookSettings.isOurs(e) }
+    static func merged(_ s: [String: Any]) -> [String: Any] { HookSettings.merged(s) }
+    static func unmerged(_ s: [String: Any]) -> [String: Any] { HookSettings.unmerged(s) }
 
     static func read() throws -> [String: Any] {
         guard let data = try? Data(contentsOf: settingsURL) else { return [:] } // no file yet: start empty
@@ -80,20 +51,17 @@ enum ClaudeHooks {
         try write(merged(try read()))
     }
 
-    static func disconnect() throws {
-        try write(unmerged(try read()))
+    /// An app update can change the hook script; when connected, keep the installed copy identical to ours.
+    static func refreshScriptIfStale() {
+        guard isConnected, let bundled = Bundle.main.url(forResource: "notchi-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "notchi-hook", withExtension: "sh"),
+              let want = try? Data(contentsOf: bundled), (try? Data(contentsOf: scriptURL)) != want else { return }
+        try? want.write(to: scriptURL, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        try? write(merged(try read()))  // also brings the PermissionRequest timeout up to date
+        print("hook script updated in \(scriptURL.path)")
     }
 
-    /// Self-check of the merge rules, run once at launch in debug builds.
-    static func selfCheck() {
-        let other: [String: Any] = ["hooks": [["type": "command", "command": "echo mine"]]]
-        let start: [String: Any] = ["model": "opus", "hooks": ["Stop": [other]]]
-        let once = merged(start), twice = merged(once)
-        let stop = (once["hooks"] as? [String: Any])?["Stop"] as? [Any] ?? []
-        assert(stop.count == 2 && !isOurs(stop[0]) && isOurs(stop[1]), "merge keeps the user's hook and appends ours")
-        assert(NSDictionary(dictionary: once).isEqual(to: twice), "connecting twice changes nothing")
-        assert((once["model"] as? String) == "opus", "other settings untouched")
-        let back = unmerged(once)
-        assert(NSDictionary(dictionary: back).isEqual(to: start), "disconnect removes only Notchi's entries")
+    static func disconnect() throws {
+        try write(unmerged(try read()))
     }
 }

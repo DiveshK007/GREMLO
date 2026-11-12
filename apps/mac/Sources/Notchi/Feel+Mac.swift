@@ -88,7 +88,23 @@ extension Backend {
         sound.action = #selector(setSoundLevel(_:))
         let haptic = NSSegmentedControl(labels: ["On", "Subtle", "Off"], trackingMode: .selectOne, target: self, action: #selector(setHaptics(_:)))
         haptic.selectedSegment = HapticLevel.allCases.firstIndex(of: hapticLevel) ?? 0
-        return [caption("Theme"), theme, caption("Sound"), sound, caption("Haptics (Force Touch trackpad)"), haptic]
+        return [caption("Theme"), theme, caption("Sound"), sound, caption("Haptics (Force Touch trackpad)"), haptic,
+                caption("Cost alerts (estimate, never stops an agent)"), alertPicker("softAlertRunCents", "per run"), alertPicker("softAlertDayCents", "per day")]
+    }
+
+    static let alertSteps = [0, 100, 500, 1000, 2500, 5000]  // cents
+    func alertPicker(_ key: String, _ label: String) -> NSPopUpButton {
+        let p = NSPopUpButton(frame: .zero, pullsDown: false)
+        for c in Backend.alertSteps { p.addItem(withTitle: c == 0 ? "Off \(label)" : "$\(c / 100) \(label)") }
+        p.selectItem(at: Backend.alertSteps.firstIndex(of: defaults.integer(forKey: key)) ?? 0)
+        p.identifier = NSUserInterfaceItemIdentifier(key)
+        p.target = self
+        p.action = #selector(setAlert(_:))
+        return p
+    }
+    @objc func setAlert(_ p: NSPopUpButton) {
+        guard let key = p.identifier?.rawValue else { return }
+        defaults.set(Backend.alertSteps[max(0, p.indexOfSelectedItem)], forKey: key)
     }
 
     @objc func setTheme(_ s: NSSegmentedControl) {

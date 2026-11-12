@@ -19,7 +19,7 @@ Decisions (2026-11-13):
 | 1 | Foundations: Mac package split (NotchiCore library + app + tests); pack loader v3–v6; 8 species with accents; sign plate (nine-slice kit, AD tab, never mirrored); accessory layer; anchors; backflip arc and moonwalk slide; old skins removed | D§1–3, R2§1–2, R3§1, R4§1 | done |
 | 2 | Pets alive: idle scheduler, gaze, sit and perch, edge peek, physics (grab, throw, bounce, dizzy), social meetups, context (night, battery, offline), tool props | R2§3–6 | done (meetups and perching switch on with companions, M5) |
 | 3 | Theme (System/Light/Dark, paper-safe accents, contrast test), sound (four levels, silence gate, voice rate limit), haptics | R2§7–8, HAPTICS | done (the gate's detectors land in M7) |
-| 4 | Notch Live: 12 states, priority resolver, gestures, approval queue answering with guards, usage and cost readers, soft alerts, done and offline | D§5, R2§9, R3§2 | |
+| 4 | Notch Live: 12 states, priority resolver, gestures, approval queue answering with guards, usage and cost readers, soft alerts, done and offline | D§5, R2§9, R3§2 | done (room, egg, visitor and focus content and the drag-down/swipe gestures arrive with their milestones) |
 | 5 | One earner + companions per agent; hatching and eggs; growth stages from meals; Closet with the stars ledger; wardrobe; diary (opt-in); certificate | D§2,6–8, R3§3–4 | |
 | 6 | Hook plumbing (test-runner matcher, git hooks with install/remove), bug hunt and jar, stuck detector, git moods, drop zone, session scrubber, dreams, tricks, seasons, meeting heads-up | R4§2–10 | |
 | 7 | The room and guestbook, focus mode, privacy ledger (screen-share duck, meetings, Focus, ⌥⌘P, export/delete), stream mode, weekly postcard | D§9, R2§12, R4§11–15 | |
@@ -39,7 +39,7 @@ Decisions (2026-11-13):
 - [x] Social roll and cooldowns; tool-prop matcher table
 - [x] Contrast ≥ 4.5:1 for every accent on paper; sound silence gate
 - [x] Haptics: every Mac moment has a recipe; rate limits; nothing during a share or with a line up
-- [ ] Notch Live priority resolver table
+- [x] Notch Live priority resolver table; approval queue (risk rules, decision JSON, terminal answer releases); usage and cost estimate; hook-settings merge
 - [ ] Closet: no purchase path with money (a test that fails if one appears)
 - [ ] Runner matcher; bug lifecycle; stuck normaliser; git force-push fixture and MERGE_HEAD watcher
 - [ ] Drop zone quoting and image pasteboard; stream mode turns the plate off and freezes sightings
