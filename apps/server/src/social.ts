@@ -5,7 +5,8 @@ import { randomBytes } from "node:crypto";
 const SPECIES = ["notchi", "notchi-pip", "notchi-moss", "notchi-gloop", "notchi-byte", "notchi-puff", "notchi-wisp", "notchi-tako"];
 const STAGES = ["hatchling", "buddy", "elder"];
 const ITEMS = ["party", "beanie", "scarf", "star", "bow", "cap", "glasses", "headphones", "flower", "shades", "crown", "wizard"];
-const bad = (m: string) => Object.assign(new Error(m), { status: 400 });
+import { HttpError } from "./register.ts";
+const bad = (m: string) => new HttpError(400, m);
 
 export type ParkPet = { id: string; name: string; species: string; stage: string; outfit: string[] };
 /** The park stores exactly {id, name, species, stage, outfit}; anything else is dropped. */
@@ -59,7 +60,7 @@ export function relaySend(r: Relay, b: any, now: number) {
   const url = b?.url == null ? null : String(b.url);
   if (url !== null && !/^https:\/\/[a-z0-9.-]+\/[^\s]{0,300}$/i.test(url)) throw bad("url must be an https link");
   const recent = r.visits.filter((v) => v.team === t && v.to === to && now - v.at < 3_600_000).length;
-  if (recent >= RELAY_PER_HOUR) throw Object.assign(new Error("that teammate already had 3 visits this hour"), { status: 429 });
+  if (recent >= RELAY_PER_HOUR) throw new HttpError(429, "that teammate already had 3 visits this hour");
   r.visits.push({ team: t, from, to, species: b.species, pr, url, at: now, delivered: false });
   return { ok: true };
 }

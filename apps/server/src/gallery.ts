@@ -1,7 +1,8 @@
 // R2 §13: community species. Submissions are checked here, then two people review them before the gallery
 // lists them. Only reviewed species can be earners. Nothing is sold; creators get credit.
 
-const bad = (m: string) => Object.assign(new Error(m), { status: 400 });
+import { HttpError } from "./register.ts";
+const bad = (m: string) => new HttpError(400, m);
 
 /** Width and height from a PNG's IHDR chunk, or null if it isn't a PNG. */
 export function pngSize(b: Buffer): { w: number; h: number } | null {

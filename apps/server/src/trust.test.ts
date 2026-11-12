@@ -94,3 +94,14 @@ test("phone relay: sealed boxes only, answers drained once, bad input refused", 
   assert.deepEqual(takeAnswers(m, ch, 3), { boxes: ["YQ=="] });
   assert.deepEqual(takeAnswers(m, ch, 4), { boxes: [] });
 });
+
+import { nextEntry } from "./trust.ts";
+test("public log: entries written one at a time chain exactly like an in-memory log", () => {
+  const e = (n: number) => ({ campaign: "1", hour: 1, counts: [n, 0, 0, 0, 0], pet: "p", key: null, time: null, sig: null, body: `{"n":${n}}` });
+  const mem: LogEntry[] = [];
+  [1, 2, 3].forEach((n) => appendEntry(mem, e(n)));
+  let head: { i: number; hash: string } | null = null;
+  const file: LogEntry[] = [];
+  for (const n of [1, 2, 3]) { const x = nextEntry(head, e(n)); file.push(x); head = { i: x.i, hash: x.hash }; }
+  assert.deepEqual(file, mem);
+});

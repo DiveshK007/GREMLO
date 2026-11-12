@@ -38,7 +38,8 @@ import Testing
     @Test func riskyCommandsGetNoShortcut() {
         let risky = ["rm -rf build", "git push origin main", "git reset --hard HEAD~1", "npm publish", "docker push x",
                      "find . -name '*.o' -delete", "psql -c 'DROP TABLE users'", "near tokens a.testnet send-near b '1 NEAR'",
-                     "cast send 0xabc", "kubectl delete pod x", "terraform destroy"]
+                     "cast send 0xabc", "kubectl delete pod x", "terraform destroy", "/bin/rm -rf build", "git -C repo push --force",
+                     "cd x && rm -r y", "sudo make install", "git -c core.x=y push"]
         let ordinary = ["ls -la", "npm test", "git status", "git commit -m 'remove x'", "cat README.md", "echo rm", "grep -r push ."]
         for c in risky { #expect(Risk.isRisky(tool: "Bash", input: ["command": c]), "\(c)") }
         for c in ordinary { #expect(!Risk.isRisky(tool: "Bash", input: ["command": c]), "\(c)") }

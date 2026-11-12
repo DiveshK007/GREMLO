@@ -79,8 +79,8 @@ public enum NotchLive {
 public enum Risk {
     /// Commands that delete, push or spend: they get no keyboard shortcut and always need a click.
     static let patterns = [
-        #"(^|[\s;&|(])rm\s"#, #"(^|[\s;&|(])rmdir\s"#, #"\bunlink\s"#, #"\bshred\s"#, #"find\s.*-delete\b"#,
-        #"\bgit\s+(push|clean|reset\s+--hard|branch\s+-D|tag\s+-d)\b"#, #"\bgh\s+(release|repo\s+delete|pr\s+merge)\b"#,
+        #"(^|[\s;&|(/])rm\s"#, #"(^|[\s;&|(/])rmdir\s"#, #"\bsudo\s"#, #"\bunlink\s"#, #"\bshred\s"#, #"find\s.*-delete\b"#,
+        #"\bgit\s+((-C|-c|--git-dir|--work-tree)[\s=]\S+\s+)*(push|clean|reset\s+--hard|branch\s+-D|tag\s+-d|filter-branch|filter-repo)\b"#, #"\bgh\s+(release|repo\s+delete|pr\s+merge)\b"#,
         #"\b(npm|pnpm|yarn|cargo|gem|twine)\s+publish\b"#, #"\bdocker\s+(push|rm|rmi|system\s+prune)\b"#,
         #"\bkubectl\s+delete\b"#, #"\bterraform\s+(apply|destroy)\b"#, #"(?i)\b(drop|truncate)\s+(table|database)\b"#,
         #"(?i)\bdelete\s+from\b"#, #"\bnear\s+(tokens|contract\s+call-function\s+as-transaction|account\s+delete)\b"#,

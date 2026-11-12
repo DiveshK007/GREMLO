@@ -31,3 +31,4 @@ apps/mac/dist/
 contracts-near/target/
 *.tsbuildinfo
 apps/server/gallery/
+apps/server/logs/

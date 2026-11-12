@@ -1,7 +1,8 @@
 // Phone and Watch relay: a mailbox per pairing holding sealed boxes the server can't read (AES-GCM, key shared
 // by QR code between the Mac and the phone). The latest state from the Mac, and answers from the phone.
 
-const bad = (m: string) => Object.assign(new Error(m), { status: 400 });
+import { HttpError } from "./register.ts";
+const bad = (m: string) => new HttpError(400, m);
 export type Mailbox = { state: string | null; answers: string[]; seen: number };
 export const BOX_MAX = 16_000, ANSWERS_MAX = 20, MAILBOX_TTL_MS = 24 * 3_600_000;
 
@@ -20,7 +21,7 @@ export function putState(m: Record<string, Mailbox>, c: string, b: any, now: num
 export function getState(m: Record<string, Mailbox>, c: string) { return { box: m[channel(c)]?.state ?? null }; }
 export function addAnswer(m: Record<string, Mailbox>, c: string, b: any, now: number) {
   const mb = m[channel(c)];
-  if (!mb) throw Object.assign(new Error("no Mac on this pairing"), { status: 404 });
+  if (!mb) throw new HttpError(404, "no Mac on this pairing");
   mb.answers = [...mb.answers, box(b)].slice(-ANSWERS_MAX);
   return { ok: true };
 }

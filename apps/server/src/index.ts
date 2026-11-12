@@ -10,7 +10,8 @@ import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFr
 import { arkivCampaign } from "./arkiv.ts"; // Arkiv mirror: off on the NEAR build (its schema is EVM-only); the read route stays
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { addMoment, anonPet, appendEntry, momentTags, momentView, pausedLines, type LogEntry, type MomentBucket } from "./trust.ts";
+import { addMoment, anonPet, momentTags, momentView, nextEntry, pausedLines, type LogEntry, type MomentBucket } from "./trust.ts";
+import { appendFileSync } from "node:fs";
 import { newParkId, parkList, parkPet, relayInbox, relayJoin, relaySend, VISIT_TTL_MS, type Park, type Relay, type Visit } from "./social.ts";
 import { checkSubmission, report as reportSpecies, type Submission } from "./gallery.ts";
 import { addAnswer, getState, prune as prunePhones, putState, takeAnswers, type Mailbox } from "./phone.ts";
@@ -48,7 +49,9 @@ type Store = {
   moments: Record<string, string[]>; // campaign id -> moment tag per line (tests | deploy | long run | any)
   momentViews: Record<string, Record<string, MomentBucket>>; // campaign id -> moment -> sightings and distinct pets
   reports: Record<string, number[]>; // campaign id -> "Report" count per line
-  logs: Record<string, LogEntry[]>; // campaign id -> public log of signed sighting reports
+  logs?: Record<string, LogEntry[]>; // older stores kept the log inline; moved to LOG_DIR at startup
+  settledViews?: number; // running total of views this server settled (for /stats without an RPC per pet)
+  logHeads: Record<string, { i: number; hash: string }>; // campaign id -> last public-log entry (the log itself is in LOG_DIR)
   park: Park; // opt-in pet park: exactly {id, name, species, stage, outfit}
   parkTokens: Record<string, string>; // park id -> secret the owner's Mac uses to read its visits
   visits: Visit[]; // guestbook visits waiting for the host's Mac (24 h)
@@ -65,11 +68,27 @@ const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
-  held: {}, voided: {}, moments: {}, momentViews: {}, reports: {}, logs: {}, park: {}, parkTokens: {}, visits: [],
+  held: {}, voided: {}, moments: {}, momentViews: {}, reports: {}, logHeads: {}, park: {}, parkTokens: {}, visits: [],
   relay: { members: {}, visits: [] }, gallery: [], galleryReviews: {}, phones: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
+// each campaign's public log is an append-only file, so the store stays small and save() stays fast
+const LOG_DIR = process.env.LOG_DIR ?? new URL("../logs", import.meta.url).pathname;
+mkdirSync(LOG_DIR, { recursive: true });
+const logFile = (id: string) => `${LOG_DIR}/campaign-${id}.jsonl`;
+function appendLog(id: string, e: Omit<LogEntry, "i" | "prev" | "hash">) {
+  const entry = nextEntry(store.logHeads[id] ?? null, e);
+  appendFileSync(logFile(id), JSON.stringify(entry) + "\n");
+  store.logHeads[id] = { i: entry.i, hash: entry.hash };
+}
+for (const [id, list] of Object.entries(store.logs ?? {})) {
+  if (!existsSync(logFile(id))) { for (const e of list) appendFileSync(logFile(id), JSON.stringify(e) + "\n"); }
+  const last = list.at(-1);
+  if (last) store.logHeads[id] = { i: last.i, hash: last.hash };
+}
+delete store.logs;
+store.settledViews ??= store.payouts.reduce((a, p) => a + p.views, 0);
 // write-then-rename, so a crash mid-write can never leave a truncated store
 const save = () => {
   writeFileSync(`${STORE_FILE}.tmp`, JSON.stringify(store, null, 2));
@@ -187,7 +206,8 @@ async function pairDevice(name: string, body: any) {
   await checkOwnerSignature(body, pet.owner, pairMessage(pet.name, keyId(key)), vault, provider, usedPairNonces);
   const devices = (pet.devices ??= []);
   if (!devices.includes(key)) {
-    if (devices.length >= 5) throw bad("a pet can have at most 5 paired devices; unpair one first");
+    // at most 5: the owner just signed for this one, so the oldest pairing makes room (a reinstalled Mac gets a new key)
+    if (devices.length >= 5) console.log(`pair: ${pet.name} replaced its oldest device ${keyId(devices.shift()!)}`);
     devices.push(key);
     save();
   }
@@ -228,15 +248,17 @@ function addImpressions(req: IncomingMessage, raw: string) {
     hold((store.held[r.id] ??= []), r.petKey, Math.floor(Date.now() / 3_600_000), ipTag); // paid after holdback + rules
     if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
     addMoment((store.momentViews[r.id] ??= {}), r.moment, r.petKey);
-    (logged[r.id] ??= [0, 0, 0, 0, 0])[r.hook ?? 0]++;
+    // per campaign and pet; slot 4 holds sightings that named no line, so per-line totals stay exact
+    (logged[`${r.id}|${r.petKey}`] ??= [0, 0, 0, 0, 0])[r.hook ?? 4]++;
     const t = store.today[r.petKey];
     store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
     store.days[r.petKey] = markDay(store.days[r.petKey], utcDay());
   }
   // every counted sighting is backed by the pet's own signed report, chained in the campaign's public log
   const h = (k: string) => { const v = req.headers[k]; return typeof v === "string" ? v : null; };
-  for (const [id, counts] of Object.entries(logged)) {
-    appendEntry((store.logs[id] ??= []), { campaign: id, hour: Math.floor(Date.now() / 3_600_000), counts, pet: anonPet(rows[0].petKey),
+  for (const [k, counts] of Object.entries(logged)) {
+    const [id, petKey] = k.split("|");
+    appendLog(id, { campaign: id, hour: Math.floor(Date.now() / 3_600_000), counts, pet: anonPet(petKey),
       key: signed ? h("x-notchi-key") : null, time: signed ? h("x-notchi-time") : null, sig: signed ? h("x-notchi-sig") : null, body: raw });
   }
   save();
@@ -273,12 +295,14 @@ async function settle(id: string) {
         const txHash = await send("settle_impressions", { id: Number(id), pet_id: s.pet, count: s.count });
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
         markSettled(store.pending[id], s.pet, s.count, "paid");
+        store.settledViews = (store.settledViews ?? 0) + s.count;
         store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString(), tx: txHash }].slice(-5000);
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
         console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
       } catch (e: any) {
         markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
+        if (e?.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
         save();
         error = errMsg(e);
         break;
@@ -490,8 +514,16 @@ async function saveCampaign(body: any) {
   if (!c) throw new HttpError(404, "unknown campaign");
   const brand = c.brand, onchainHash = `0x${c.line_hash}`;
   const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
+  // first write wins: the line text is private until this save, so only the brand can make a matching hash; after
+  // that, nobody (who could now read the line) may swap the link, email or brief. A repeat of the same save is fine.
+  if (store.moments[id] !== undefined || store.urls[id] !== undefined || store.briefs[id] !== undefined) {
+    const same = (body.url === undefined || store.urls[id] === checkUrl(body.url)) && (body.email === undefined || store.emails[id] === body.email);
+    if (!same) throw new HttpError(409, "this campaign's details are already saved");
+    return { ok: true };
+  }
   // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
   if (body.brief !== undefined) store.briefs[id] = checkCampaign(body.brief, String(line).split("\n"));
+  if (String(line).split("\n").length > 4) throw bad("at most 4 lines");
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
   store.moments[id] = momentTags(body.moments, String(line).split("\n").length);
@@ -568,8 +600,7 @@ async function publicStats() {
     view<number>("campaign_count"),
     view<{ paid_to_pets: string; compute_budgets: string; compute_charged: string }>("get_totals"),
   ]);
-  const pets = await Promise.all(Object.keys(store.pets).map((name) => view<OnchainPet | null>("get_pet", { pet_id: name })));
-  const views = pets.reduce((a, p) => a + (p?.views ?? 0), 0);
+  const views = store.settledViews ?? 0; // settled by this server; no RPC per pet on every refresh
   // everything settled to pets: paid out, plus compute budgets, plus what compute already charged
   const paid = BigInt(totals.paid_to_pets) + BigInt(totals.compute_budgets) + BigInt(totals.compute_charged);
   const body = { campaigns: count, settledViews: String(views), paidWei: paid.toString(), computeChargedWei: totals.compute_charged, pets: Object.keys(store.pets).length, network, vault, seeded };
@@ -671,7 +702,8 @@ function publicLog(id: string) {
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
   const held = (store.held[id] ?? []).reduce((a, x) => a + x.n, 0);
   const voided = Object.values(store.voided[id] ?? {}).reduce((a, b) => a + b, 0);
-  return { campaign: id, entries: store.logs[id] ?? [], billed: { settled, pending, held, voided } };
+  const entries = existsSync(logFile(id)) ? readFileSync(logFile(id), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LogEntry) : [];
+  return { campaign: id, entries, billed: { settled, pending, held, voided } };
 }
 
 /** "Report" from the menu bar: a signed pet only, once per pet per line per day. Enough reports pause the line. */
@@ -746,9 +778,14 @@ function submitSpecies(req: IncomingMessage, raw: string) {
   console.log(`gallery: ${name} by ${creator} submitted for review (${id})`);
   return { id, status: "review", note: "Two reviewers play every row; target two working days. Machines check format, image safety, look-alikes and text first." };
 }
-function reportGallery(id: string) {
+const galleryReports = new Set<string>(); // species id + visitor: one report each
+function reportGallery(req: IncomingMessage, id: string) {
   const s = store.gallery.find((x) => x.id === id);
   if (!s) throw new HttpError(404, "unknown species");
+  const ip = clientIp(req), key = `${id}:${createHash("sha256").update(ip).digest("hex").slice(0, 12)}`;
+  if (!allow(galleryHits, `report:${ip}`, Date.now(), 10, 3_600_000)) throw new HttpError(429, "slow down");
+  if (galleryReports.has(key)) return { status: s.status };
+  galleryReports.add(key);
   reportSpecies(s);
   save();
   return { status: s.status };
@@ -826,7 +863,7 @@ async function route(req: IncomingMessage) {
   if (m === "GET" && pathname === "/gallery") return { species: store.gallery.filter((s) => s.status === "listed") };
   if (m === "POST" && pathname === "/gallery") return submitSpecies(req, await readRaw(req, 12_000_000));
   const g = pathname.match(/^\/gallery\/([a-f0-9]{12})\/(report|review)$/);
-  if (m === "POST" && g) return g[2] === "report" ? reportGallery(g[1]) : reviewGallery(req, g[1], await readBody(req));
+  if (m === "POST" && g) return g[2] === "report" ? reportGallery(req, g[1]) : reviewGallery(req, g[1], await readBody(req));
   const diaryPath = pathname.match(/^\/pets\/([^/]+)\/diary$/);
   if (m === "POST" && diaryPath) {
     const raw = await readRaw(req);

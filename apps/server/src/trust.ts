@@ -50,6 +50,12 @@ export const ZERO = "0".repeat(64);
 export const entryHash = (e: Omit<LogEntry, "hash">) =>
   sha([e.prev, e.i, e.campaign, e.hour, e.counts.join(","), e.pet, e.key ?? "", e.time ?? "", e.sig ?? "", sha(e.body)].join("|"));
 
+/** The next entry after `head` (the last entry's index and hash, or null for the first). */
+export function nextEntry(head: { i: number; hash: string } | null, e: Omit<LogEntry, "i" | "prev" | "hash">): LogEntry {
+  const base = { ...e, i: head ? head.i + 1 : 0, prev: head?.hash ?? ZERO };
+  return { ...base, hash: entryHash(base) };
+}
+
 export function appendEntry(log: LogEntry[], e: Omit<LogEntry, "i" | "prev" | "hash">) {
   const base = { ...e, i: log.length, prev: log.at(-1)?.hash ?? ZERO };
   const entry = { ...base, hash: entryHash(base) };

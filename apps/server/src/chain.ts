@@ -72,9 +72,11 @@ let queue: Promise<unknown> = Promise.resolve();
  * The tx is signed once; on a 429 or timeout the next RPC is asked for it by hash before the same bytes are resent.
  */
 export function send(methodName: string, args: Record<string, unknown>, deposit = 0n): Promise<string> {
+  let tried: string | undefined; // the hash of a tx that was handed to an RPC: it may land even if we never hear back
   const attempt = async () => {
     const signed = await operator.createSignedTransaction({ receiverId: vault, actions: [actions.functionCall(methodName, args, 100_000_000_000_000n, deposit)] });
     const hash = baseEncode(createHash("sha256").update(signed.transaction.encode()).digest());
+    tried = hash;
     // a send waits for execution, so it gets 30 s; a status check is a plain read and gets the usual 3 s
     return broadcastOnce<any>(fo.order(), {
       send: (url) => withTimeout(at(url).sendTransactionUntil(signed, "EXECUTED_OPTIMISTIC"), 30_000),
@@ -89,9 +91,12 @@ export function send(methodName: string, args: Record<string, unknown>, deposit 
       r = await attempt();
     } catch (e) {
       // a stale cached nonce (another signer used the key): start from the chain's nonce and try once more
-      if (!/InvalidNonce/i.test(errText(e))) throw new Error(`NEAR RPC ${failedAt(e)} ${methodName} failed: ${panicOf(errText(e))}`);
-      operator = newOperator();
-      r = await attempt().catch((e2) => { throw new Error(`NEAR RPC ${failedAt(e2)} ${methodName} failed: ${panicOf(errText(e2))}`); });
+      // a contract failure comes back as a result, not a throw; a throw after broadcast (timeout, 429) may still
+      // land, so it carries the hash and callers must not resend (the brand never pays twice)
+      const unsure = (err: unknown) => Object.assign(new Error(`NEAR RPC ${failedAt(err)} ${methodName} failed: ${panicOf(errText(err))}`), { unconfirmedTx: tried });
+      if (!/InvalidNonce/i.test(errText(e))) throw unsure(e);
+      operator = newOperator(); // a stale nonce is a definite rejection: nothing landed, so one fresh try is safe
+      r = await attempt().catch((e2) => { throw /InvalidNonce/i.test(errText(e2)) ? new Error(`NEAR RPC ${failedAt(e2)} ${methodName} failed: ${panicOf(errText(e2))}`) : unsure(e2); });
     }
     views.clear(); // the next read sees this write
     const hash: string = r?.transaction?.hash ?? r?.transaction_outcome?.id;

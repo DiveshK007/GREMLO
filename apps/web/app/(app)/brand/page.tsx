@@ -269,7 +269,7 @@ export default function FundCampaign() {
   if (funded) {
     return (
       <div className="narrow live">
-        <p className="mono live-tag">Campaign #{funded.campaignId.toString()} · live on NEAR testnet</p>
+        <p className="mono live-tag">Campaign #{funded.campaignId.toString()} · live</p>
         <h1>Your campaign is live.</h1>
         <p className="lead">Developers will see your hooks the next time their coding agent starts working. The pet rotates them and shifts toward whichever gets clicked.</p>
         <HookTicker hooks={funded.hooks} scale={1.6} label="Preview: what developers see" />
@@ -299,7 +299,7 @@ export default function FundCampaign() {
 
       {!account ? (
         <>
-          <button onClick={onConnect}>Connect NEAR wallet</button>
+          <button onClick={onConnect}>Connect wallet</button>
           {walletError && <p className="bad">{walletError}</p>}
         </>
       ) : (
@@ -340,7 +340,7 @@ export default function FundCampaign() {
           <div className="thinking" role="status">
             <PetSmall />
             <div>
-              <strong>Writing 16 hooks on NEAR AI Cloud…</strong>
+              <strong>Writing 16 hooks…</strong>
               <span className="muted">Then every hook is checked against your proof points. This can take up to two minutes. <Elapsed /></span>
             </div>
           </div>
