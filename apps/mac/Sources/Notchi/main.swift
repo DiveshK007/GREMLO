@@ -1255,7 +1255,9 @@ final class Backend: NSObject {
                 // No balance means no mood: sleep and say why instead of showing the last known one.
                 self.serverError = "pet \(self.petName): \(err)"
                 self.info = nil
-                self.pet.setMood("asleep", reason: "can't reach the \(productName) server")
+                // a 404 means the server answered but doesn't know this pet; only a network error is "can't reach"
+                self.pet.setMood("asleep", reason: err.hasPrefix("HTTP 404") ? "\(self.petName) isn't registered yet: get your pet on the web app"
+                    : err.hasPrefix("HTTP") ? "server error: \(err.prefix(60))" : "can't reach the \(productName) server")
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
                 // it eats when a settlement refills its onchain compute budget (real tx), or when its payout grows
