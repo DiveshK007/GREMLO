@@ -10,9 +10,11 @@
   "dependencies": {
     "@arkiv-network/sdk": "^1.0.1",
     "@worldcoin/idkit-core": "^4.6.0",
+    "near-api-js": "7.4.0",
     "viem": "^2.57.16"
   },
   "devDependencies": {
+    "@types/node": "20.16.11",
     "tsx": "^4.23.15"
   }
 }
