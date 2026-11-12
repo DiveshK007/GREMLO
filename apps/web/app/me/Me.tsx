@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getPet, type PetPublic } from "@/lib/api";
 import { PetSmall } from "@/components/PetArt";
-import { addressLink, formatNear, PRODUCT, txLink } from "@/lib/config";
+import { addressLink, formatNear, formatWhen, PRODUCT, txLink } from "@/lib/config";
 
 const KEY = "notchi.pet";
 const near = (yocto: string | null) => (yocto === null ? "unknown" : `${formatNear(BigInt(yocto))} NEAR`);
@@ -86,7 +86,7 @@ export default function Me() {
               <tbody>
                 {pet.lastThoughts.map((t) => (
                   <tr key={t.requestId + t.at}>
-                    <td>{new Date(t.at * 1000).toLocaleTimeString()}</td>
+                    <td>{formatWhen(t.at * 1000)}</td>
                     <td>{t.action}</td>
                     <td className="mono">{t.model ?? "–"}</td>
                     <td className="mono">{t.requestId}</td>

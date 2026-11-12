@@ -18,6 +18,13 @@ export const EXPLORER = NETWORK === "mainnet" ? "https://nearblocks.io" : "https
 export const txLink = (hash: string) => `${EXPLORER}/txns/${hash}`;
 export const addressLink = (account: string) => `${EXPLORER}/address/${account}`;
 
+/**
+ * One fixed date format in the viewer's timezone, e.g. "Thu 13 Nov, 22:07 GMT+5:30". Browser only: the server's
+ * clock and timezone differ from the viewer's, so calling this during server rendering breaks hydration.
+ */
+export const formatWhen = (ms: number, timeZone?: string) =>
+  new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short", timeZone }).format(ms);
+
 const YOCTO = 10n ** 24n;
 /** yoctoNEAR to a plain decimal string ("0.0005"), exact, trailing zeros dropped. */
 export function formatNear(yocto: bigint) {

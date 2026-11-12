@@ -6,7 +6,7 @@ import {
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign, topUpCampaign } from "@/lib/chain";
-import { addressLink, formatNear, parseNear, txLink, VAULT_ID } from "@/lib/config";
+import { addressLink, formatNear, formatWhen, parseNear, txLink, VAULT_ID } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
 import { HookTicker } from "@/components/HookTicker";
 
@@ -45,6 +45,11 @@ export default function FundCampaign() {
   const [budget, setBudget] = useState("0.1");
   const [rate, setRate] = useState("0.001");
   const [hours, setHours] = useState("24");
+  const [endsAt, setEndsAt] = useState(""); // formatted in the browser only (hydration)
+  useEffect(() => {
+    const h = Number(hours);
+    setEndsAt(h > 0 ? formatWhen(Date.now() + h * 3_600_000) : "");
+  }, [hours]);
   const [walletError, setWalletError] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -271,7 +276,7 @@ export default function FundCampaign() {
           <div><dt>Budget</dt><dd>{formatNear(funded.budgetWei)} NEAR</dd></div>
           <div><dt>Price per view</dt><dd>{formatNear(funded.rateWei)} NEAR</dd></div>
           <div><dt>Estimated views</dt><dd>{(funded.budgetWei / funded.rateWei).toString()} <span className="muted">(estimate)</span></dd></div>
-          <div><dt>Ends</dt><dd>{new Date(Number(funded.endTime) * 1000).toLocaleString()} <span className="muted">(views paid until 1 hour later, then the rest is refunded)</span></dd></div>
+          <div><dt>Ends</dt><dd>{formatWhen(Number(funded.endTime) * 1000)} <span className="muted">(views paid until 1 hour later, then the rest is refunded)</span></dd></div>
           <div><dt>Receipt</dt><dd><a className="mono" href={txLink(funded.txHash)} target="_blank" rel="noreferrer">{funded.txHash.slice(0, 10)}…{funded.txHash.slice(-6)}</a></dd></div>
         </dl>
         {funded.recordWarning && <p className="bad">{funded.recordWarning}</p>}
@@ -392,7 +397,7 @@ export default function FundCampaign() {
           <div>
             <label htmlFor="hours">Runs for (hours)</label>
             <input id="hours" value={hours} onChange={(e) => setHours(e.target.value)} aria-describedby="ends-at" />
-            <p className="hint" id="ends-at">{Number(hours) > 0 ? `Ends ${new Date(Date.now() + Number(hours) * 3_600_000).toLocaleString()}. Views can still be paid for 1 hour after that; then the unspent budget is refunded.` : "Enter the hours it should run."}</p>
+            <p className="hint" id="ends-at">{Number(hours) > 0 ? `Ends ${endsAt || "…"}. Views can still be paid for 1 hour after that; then the unspent budget is refunded.` : "Enter the hours it should run."}</p>
           </div>
         </div>
         <label htmlFor="email">Email for budget alerts and a weekly report (optional)</label>
@@ -475,9 +480,9 @@ export default function FundCampaign() {
               {lookup.closed
                 ? "Closed. Unspent budget was refunded."
                 : lookup.endTime > nowSec
-                  ? `Running until ${new Date(Number(lookup.endTime) * 1000).toLocaleString()}.`
+                  ? `Running until ${formatWhen(Number(lookup.endTime) * 1000)}.`
                   : lookup.endTime + 3600n > nowSec
-                    ? `Ended. Views can be settled until ${new Date(Number(lookup.endTime + 3600n) * 1000).toLocaleTimeString()}; then it can be closed and refunded.`
+                    ? `Ended. Views can be settled until ${formatWhen(Number(lookup.endTime + 3600n) * 1000)}; then it can be closed and refunded.`
                     : "Ended and the settlement window has passed. Close it to refund what's left."}
             </p>
             {stats && (
