@@ -39,38 +39,50 @@ export function markSettled(pending: Pending, pet: string, count: number, outcom
 }
 
 /**
- * Rotation order for a campaign's hooks (auto-optimise): Thompson sampling on click rate, so hooks that get
- * clicked are shown more, while every hook under `explore` views keeps at least `floor` of the slots so early
- * noise can't bury it. `rand` is injectable for tests.
+ * Brand A/B (R2 §15): even traffic until every line has 2,000 sightings, then Thompson sampling on "opened"
+ * per sighting, with a 5% floor per line. Returns `slots` hook indexes for the Mac to rotate through; the server
+ * recomputes it hourly. Clicks on the pet never reach `clicks` (only the plate's link does).
  */
-export function hookOrder(views: number[], clicks: number[], n: number, rand = Math.random, slots = 12, floor = 0.15, explore = 200) {
-  const sample = (a: number, b: number) => {
-    // Beta(a, b): normal approximation once there is enough data, otherwise ratio of gammas from exponentials
-    if (a + b > 60) {
-      const m = a / (a + b), sd = Math.sqrt((a * b) / ((a + b) ** 2 * (a + b + 1)));
-      const z = Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
-      return m + sd * z;
+export function hookOrder(views: number[], clicks: number[], n: number, rand = Math.random, slots = 20, floor = 0.05, explore = 2000) {
+  if (n <= 0) return [];
+  const all = [...Array(n).keys()];
+  if (all.some((i) => (views[i] ?? 0) < explore)) return [...Array(slots)].map((_, k) => k % n); // even until each line has enough
+  const gamma = (k: number): number => {
+    // Marsaglia-Tsang for k >= 1
+    const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      let x: number, v: number;
+      do {
+        x = Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
+        v = 1 + c * x;
+      } while (v <= 0);
+      v = v * v * v;
+      const u = rand() || 1e-12;
+      if (Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v)) return d * v;
     }
-    const g = (k: number) => { let s = 0; for (let i = 0; i < Math.round(k); i++) s -= Math.log(rand() || 1e-12); return s || 1e-12; };
-    const x = g(a), y = g(b);
-    return x / (x + y);
   };
-  // pooled prior worth 20 views at the campaign's average click rate: a new hook starts near average, not at 50%
-  const tv = views.reduce((x, y) => x + (y ?? 0), 0), tc = clicks.reduce((x, y) => x + (y ?? 0), 0);
-  const p = tv ? Math.min(tc / tv, 1) : 0.05, prior = 20;
-  const order: number[] = [];
-  for (let k = 0; k < slots; k++) {
-    const young = [...Array(n).keys()].filter((i) => (views[i] ?? 0) < explore);
-    if (young.length && rand() < Math.min(1, floor * young.length)) { order.push(young[Math.floor(rand() * young.length)]); continue; }
-    let best = 0, bestScore = -1;
-    for (let i = 0; i < n; i++) {
+  const beta = (a: number, b: number) => { const x = gamma(a), y = gamma(b); return x / (x + y); };
+  // share of wins over many draws, then the floor, then whole slots
+  const draws = 2000, wins = new Array(n).fill(0);
+  for (let k = 0; k < draws; k++) {
+    let best = 0, top = -1;
+    for (const i of all) {
       const v = views[i] ?? 0, c = Math.min(clicks[i] ?? 0, v);
-      const score = sample(1 + c + p * prior, 1 + v - c + (1 - p) * prior);
-      if (score > bestScore) { bestScore = score; best = i; }
+      const s = beta(1 + c, 1 + v - c);
+      if (s > top) { top = s; best = i; }
     }
-    order.push(best);
+    wins[best]++;
   }
-  return order;
+  const share = wins.map((w) => Math.max(w / draws, floor));
+  const total = share.reduce((a, b) => a + b, 0);
+  const count = share.map((x) => Math.max(1, Math.floor((x / total) * slots)));
+  while (count.reduce((a, b) => a + b, 0) < slots) count[share.indexOf(Math.max(...share))]++;
+  while (count.reduce((a, b) => a + b, 0) > slots) count[count.indexOf(Math.max(...count))]--;
+  // interleave so the rotation isn't one line for 10 minutes straight
+  const order: number[] = [];
+  const left = [...count];
+  while (order.length < slots) for (const i of all) if (left[i]-- > 0) order.push(i);
+  return order.slice(0, slots);
 }
 
 /** Sliding-window rate limit: true (and recorded) if `key` has fewer than `limit` hits in the last `windowMs`. */

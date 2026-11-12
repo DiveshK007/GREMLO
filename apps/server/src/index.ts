@@ -399,7 +399,7 @@ function checkCampaign(rawBrief: unknown, hooks: string[]) {
   const brief = parseBrief(rawBrief);
   const refused = checkBrief(brief);
   if (refused) throw bad(refused);
-  if (hooks.length < 1 || hooks.length > 5) throw bad("pick 1 to 5 hooks");
+  if (hooks.length < 1 || hooks.length > 4) throw bad("pick 1 to 4 lines");
   for (const hook of hooks) {
     const why = checkHook(hook, brief);
     if (why) throw bad(`"${hook}": ${why}`);

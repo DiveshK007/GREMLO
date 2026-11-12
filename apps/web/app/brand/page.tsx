@@ -20,8 +20,8 @@ function Elapsed() {
   return <>{s}s</>;
 }
 
-const MAX_HOOK = 80; // the ticker scrolls, so a hook can be longer than the old sign
-const MIN_PICK = 3, MAX_PICK = 5;
+const MIN_HOOK = 6, MAX_HOOK = 40; // the plate shows a line whole, never truncated or scrolled
+const MIN_PICK = 1, MAX_PICK = 4; // up to 4 lines per campaign for the A/B test
 const FORMAT_LABEL: Record<string, string> = {
   humour: "Humour", sarcasm: "Sarcasm", offer: "Irresistible offer", question: "Question", "bold-claim": "Bold claim",
   urgency: "Urgency", story: "Mini story", "dev-meme": "Dev meme", own: "Your own",
@@ -118,7 +118,7 @@ export default function FundCampaign() {
   function onAddOwn() {
     const t = own.trim();
     if (!t) return;
-    if (t.length > MAX_HOOK) return setHooksError(`Keep your hook to ${MAX_HOOK} characters.`);
+    if (t.length < MIN_HOOK || t.length > MAX_HOOK) return setHooksError(`A line is ${MIN_HOOK} to ${MAX_HOOK} characters.`);
     if (hooks.some((h) => h.text === t)) return setHooksError("That hook is already in the list.");
     setHooksError("");
     setHooks((h) => [...h, { format: "own", text: t }]);

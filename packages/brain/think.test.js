@@ -77,7 +77,7 @@ test('suggestHooks keeps hooks that pass the claim checks and reports the rest w
   const fetch = async (u, init) => {
     const body = JSON.parse(init.body); sent.push(body);
     return turn(hooksJson([
-      ['humour', 'Your logs called. They want to be found. Try it free'],
+      ['humour', 'Your logs called. Try it free'],
       ['bold-claim', 'Indexes 1M logs in 30 seconds'],
       ['bold-claim', 'Search logs 10x faster'],             // invented multiplier
       ['offer', 'First 1M logs free. Yes, free.'],

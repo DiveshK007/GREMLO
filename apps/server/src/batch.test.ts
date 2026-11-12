@@ -51,15 +51,16 @@ test("auto-optimise: clicked hooks get more slots, young hooks keep a floor", ()
   let seed = 7;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   // hook 1 converts at 10%, hooks 0 and 2 at 1%, all past the exploration phase
-  const order = hookOrder([1000, 1000, 1000], [10, 100, 10], 3, rand, 600);
+  // even until every line has 2,000 sightings
+  assert.deepEqual(hookOrder([5000, 1999, 5000], [500, 1, 10], 3, rand), [...Array(20)].map((_, k) => k % 3));
+  // then Thompson: the line that gets opened most takes most slots, every line keeps its 5% floor
+  const order = hookOrder([3000, 3000, 3000], [30, 300, 30], 3, rand);
   const share = (i: number) => order.filter((x) => x === i).length / order.length;
-  assert.ok(share(1) > 0.9, `best hook share ${share(1)}`);
-  // a new hook with no views still gets roughly the floor while it explores
-  const withNew = hookOrder([1000, 1000, 0], [10, 100, 0], 3, rand, 2000);
-  const newShare = withNew.filter((x) => x === 2).length / withNew.length;
-  assert.ok(newShare >= 0.12 && newShare < 0.5, `new hook share ${newShare}`);
-  // every slot is a valid hook index
+  assert.equal(order.length, 20);
+  assert.ok(share(1) >= 0.85, `best line share ${share(1)}`);
+  assert.ok(share(0) >= 0.05 && share(2) >= 0.05, "floor");
   assert.ok(hookOrder([], [], 4, rand).every((i) => i >= 0 && i < 4));
+  assert.deepEqual(hookOrder([], [], 0, rand), []);
 });
 
 test("rate limit: N per window per key, then it frees up", () => {
