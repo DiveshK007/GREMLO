@@ -10,7 +10,7 @@ export const WORLD_ENV = process.env.NEXT_PUBLIC_WORLD_ENV === "production" ? "p
 
 export const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" : "testnet";
 export const VAULT_ID = process.env.NEXT_PUBLIC_NEAR_CONTRACT_ID ?? "";
-export const RPC_URL = process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? (NETWORK === "mainnet" ? "https://rpc.mainnet.fastnear.com" : "https://test.rpc.fastnear.com");
+export const RPC_URL = process.env.NEXT_PUBLIC_NEAR_RPC_URL || (NETWORK === "mainnet" ? "https://rpc.mainnet.fastnear.com" : "https://test.rpc.fastnear.com");
 export const EXPLORER = NETWORK === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
 
 export const txLink = (hash: string) => `${EXPLORER}/txns/${hash}`;

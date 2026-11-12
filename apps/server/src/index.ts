@@ -3,7 +3,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { accountExists, balanceOf, explorer, network, provider, seeded, send, vault, view } from "./chain.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView, type Compute } from "./views.ts";
-import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
+import { bad, errText, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
@@ -97,7 +97,7 @@ async function payoutBalance(payout: string) {
     balanceCache.set(payout, { at: Date.now(), yocto: y });
     return y;
   } catch (e) {
-    console.error(`balance read failed: ${errMsg(e)}`);
+    console.error(`balance of ${payout}: ${errMsg(e)}`);
     return null;
   }
 }
@@ -122,7 +122,7 @@ const registerPet = makeRegister({
   save,
 });
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errMsg = errText;
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
@@ -646,6 +646,7 @@ const host = process.env.HOST ?? "127.0.0.1";
 if (host !== "127.0.0.1" && !REQUIRE_SIGNED) throw new Error("refusing to listen publicly without REQUIRE_SIGNED=1: unpaired pets could spend AI credits");
 createServer((req, res) => {
   if (cors(req, res)) return;
+  const where = `${req.method} ${new URL(req.url ?? "/", "http://x").pathname}`;
   route(req).then(
     (body: any) => {
       if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
@@ -653,7 +654,7 @@ createServer((req, res) => {
     },
     (e) => {
       const status = e instanceof HttpError ? e.status : 502; // anything else is the chain or RPC failing
-      if (status === 502) console.error(errMsg(e));
+      if (status === 502) console.error(`${where}: ${errMsg(e)}`);
       reply(res, status, { error: errMsg(e) });
     },
   );

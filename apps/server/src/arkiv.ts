@@ -35,7 +35,8 @@ export const receiptExpiry = (endTime: bigint) => new Date((Number(endTime) + 30
 export const EXPLORER = "https://rabdi.explorer.arkiv.network";
 
 const accessKey = process.env.ARKIV_ACCESS_KEY, key = process.env.ARKIV_KEY;
-export const arkivOn = !!(accessKey && key && isHex(key));
+// Off unless ARKIV=on as well: the NEAR build never talks to Arkiv by accident (its schema is EVM-only).
+export const arkivOn = process.env.ARKIV === "on" && !!(accessKey && key && isHex(key));
 const chain = rabdi({ accessKey: accessKey ?? "" });
 const read = createPublicClient({ chain, transport: http() });
 const write = arkivOn ? createWalletClient({ chain, transport: http(), account: privateKeyToAccount(key as `0x${string}`) }) : null;
@@ -67,7 +68,7 @@ export const publishReceipt = (r: { campaignId: string; pet: `0x${string}`; view
 
 /** What Arkiv holds for a campaign, read back from Arkiv itself (not from our store). */
 export async function arkivCampaign(id: string) {
-  if (!accessKey) return { on: false as const };
+  if (!arkivOn) return { on: false as const };
   const [cards, receipts] = await Promise.all([
     read.select({ $key: true, $expiresAt: true, hooks: true, url: true, rateWei: true, endTime: true, fundingTx: true }).from(CampaignCard).where(eq("campaignId", u64(BigInt(id)))).limit(1).fetch(),
     read.select({ $key: true, pet: true, views: true, amountWei: true, settleTx: true }).from(Receipt).where(eq("campaignId", u64(BigInt(id)))).limit(100).fetch(),

@@ -60,7 +60,11 @@ test('safe-stops on HTTP error, unknown action and network failure', async () =>
   assert.equal(odd.completionId, 'chatcmpl-odd'); // served and billed, so it is charged too
 
   const down = await think({ mood: 'stable' }, { fetch: async () => { throw new Error('ECONNREFUSED'); } });
-  assert.deepEqual(down, { action: 'sleep', reason: 'NEAR AI unreachable: ECONNREFUSED', requestId: null });
+  assert.deepEqual(down, { action: 'sleep', reason: 'NEAR AI unreachable (cloud-api.near.ai): ECONNREFUSED', requestId: null });
+
+  // undici's bare "fetch failed" carries the real reason in .cause; the log must show it
+  const dns = await think({ mood: 'stable' }, { fetch: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND cloud-api.near.ai'), { code: 'ENOTFOUND' }) }); } });
+  assert.equal(dns.reason, 'NEAR AI unreachable (cloud-api.near.ai): fetch failed: ENOTFOUND: getaddrinfo ENOTFOUND cloud-api.near.ai');
 });
 
 const BRIEF = { product: 'Clearlog, log search for TypeScript teams', audience: 'backend developers', offer: 'first 1M logs free', proof: 'Indexes 1M logs in 30 seconds', cta: 'Try it free' };

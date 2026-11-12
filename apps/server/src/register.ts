@@ -4,6 +4,16 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export const bad = (msg: string) => new HttpError(400, msg);
+
+/** An error's message plus its cause chain, so "fetch failed" says why (ENOTFOUND, ECONNREFUSED, a timeout...). */
+export function errText(e: unknown): string {
+  const parts: string[] = [];
+  for (let c: any = e, depth = 0; c && depth < 4; c = c.cause, depth++) {
+    const m = c instanceof Error || typeof c === "object" ? [c.code, c.message].filter(Boolean).join(" ") : String(c);
+    if (m && !parts.some((p) => p.includes(m))) parts.push(m);
+  }
+  return parts.join(": ") || String(e);
+}
 /** NEAR account id rules (nomicon): 2-64 chars, lowercase parts joined by "." with "-" or "_" inside a part. */
 export const isAccountId = (v: unknown): v is string =>
   typeof v === "string" && v.length >= 2 && v.length <= 64 && /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(v);
@@ -56,7 +66,7 @@ export async function verifyWorldProof(result: unknown, rpId: string, action = R
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result),
     signal: AbortSignal.timeout(10_000),
-  });
+  }).catch((e) => { throw new Error(`World verify ${new URL(WORLD_API).host}: ${errText(e)}`); });
   if (res.status >= 500) throw new Error(`World verify unavailable (${res.status})`);
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json.success !== true) return { ok: false, code: json.code ?? `http_${res.status}` };

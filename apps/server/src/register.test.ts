@@ -156,3 +156,11 @@ test("NEAR accounts: bad ids are a 400, and a missing owner or payout account is
   assert.equal(sent, false);
   assert.deepEqual(missing.store.nullifiers, []);
 });
+
+test("errText shows the cause chain, so a bare 'fetch failed' says why", async () => {
+  const { errText } = await import("./register.ts");
+  const e = Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), { code: "ECONNREFUSED" }) });
+  assert.equal(errText(e), "fetch failed: ECONNREFUSED connect ECONNREFUSED 127.0.0.1:443");
+  assert.equal(errText(new Error("plain")), "plain");
+  assert.equal(errText("text"), "text");
+});

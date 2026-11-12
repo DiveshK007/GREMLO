@@ -1,5 +1,8 @@
-import { formatEther } from "viem";
-import { HttpError } from "./register.ts";
+import { errText, HttpError } from "./register.ts";
+
+const YOCTO = 10n ** 24n;
+/** yoctoNEAR to an exact decimal string, trailing zeros dropped. */
+const near = (y: bigint) => `${y / YOCTO}${(y % YOCTO).toString().padStart(24, "0").replace(/0+$/, "").replace(/^(?=.)/, ".")}`;
 
 // Brand emails: budget alerts at 50/80/100% and a weekly report. Off unless RESEND_API_KEY and MAIL_FROM are set.
 // The address is private: stored on the server only, never served back, never on Arkiv.
@@ -42,7 +45,7 @@ export function weeklyReport(c: { id: string; hooks: string[]; views: number[]; 
   return [
     `Campaign #${c.id}, so far:`,
     `${views} views from ${c.humans} verified ${c.humans === 1 ? "human" : "humans"}, ${clicks} clicks.`,
-    `Spent ${formatEther(c.spent)} of ${formatEther(c.budget)} 0G (${usedPct(c.spent, c.budget)}%).`,
+    `Spent ${near(c.spent)} of ${near(c.budget)} NEAR (${usedPct(c.spent, c.budget)}%).`,
     best === null ? "No hook has 20 views yet, so there's no winner." : `Best hook: "${c.hooks[best] ?? `#${best + 1}`}" (${((c.clicks[best] / c.views[best]) * 100).toFixed(1)}% click rate).`,
     "",
     `Dashboard: ${c.link}`,
@@ -65,7 +68,7 @@ export async function sendMail(to: string, subject: string, text: string) {
     if (!r.ok) console.error(`mail: ${subject}: ${r.status} ${(await r.text()).slice(0, 200)}`);
     return r.ok;
   } catch (e) {
-    console.error(`mail: ${subject}: ${(e as Error).message}`);
+    console.error(`mail: api.resend.com ${subject}: ${errText(e)}`);
     return false;
   }
 }

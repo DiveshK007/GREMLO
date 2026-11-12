@@ -43,7 +43,7 @@ export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP };
  * there it is the X-Request-Id header, since a failed call has no completion id.
  */
 async function chat(system, user, model, opts) {
-  const base = opts.base ?? process.env.NEAR_AI_BASE_URL ?? 'https://cloud-api.near.ai/v1';
+  const base = opts.base ?? (process.env.NEAR_AI_BASE_URL || 'https://cloud-api.near.ai/v1'); // an empty value in .env means the default
   const key = opts.key ?? process.env.NEAR_AI_API_KEY ?? '';
   const doFetch = opts.fetch ?? fetch;
   let requestId = null;
@@ -61,7 +61,8 @@ async function chat(system, user, model, opts) {
       signal: AbortSignal.timeout(opts.timeoutMs ?? 20000),
     });
   } catch (err) {
-    throw fail(`NEAR AI unreachable: ${err.message}`);
+    const why = [err.message, err.cause?.code, err.cause?.message].filter(Boolean).join(': '); // "fetch failed" alone says nothing
+    throw fail(`NEAR AI unreachable (${new URL(base).host}): ${why}`);
   }
   const text = await res.text();
   let data = null;

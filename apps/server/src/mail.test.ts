@@ -34,8 +34,8 @@ test("weekly sums and report use only real numbers", () => {
     { at: 10, id: "2", pet: "0xa", views: 9, wei: "90" },
   ];
   assert.deepEqual(sumSince(p, 5, (x) => x.pet === "0xa"), { views: 9, wei: 90n });
-  const r = weeklyReport({ id: "1", hooks: ["a", "b"], views: [30, 0], clicks: [3, 0], spent: 5n * 10n ** 17n, budget: 10n ** 18n, humans: 1, link: "x" });
+  const r = weeklyReport({ id: "1", hooks: ["a", "b"], views: [30, 0], clicks: [3, 0], spent: 5n * 10n ** 23n, budget: 10n ** 24n, humans: 1, link: "x" });
   assert.match(r, /30 views from 1 verified human, 3 clicks/);
-  assert.match(r, /Spent 0\.5 of 1 0G \(50%\)/);
+  assert.match(r, /Spent 0\.5 of 1 NEAR \(50%\)/);
   assert.match(r, /Best hook: "a" \(10\.0% click rate\)/);
 });
