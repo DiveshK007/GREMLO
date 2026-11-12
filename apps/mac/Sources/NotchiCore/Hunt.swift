@@ -394,3 +394,27 @@ public enum Tolerant {
         return try? JSONDecoder().decode(type, from: d)
     }
 }
+
+// MARK: - Moments (R2 §15): which line fits what the agent is doing, computed here on the Mac
+
+public enum LineMoment {
+    static let deploy = #"\b(deploy|vercel( --prod)?|netlify deploy|fly deploy|kubectl apply|terraform apply|helm (install|upgrade)|wrangler (deploy|publish)|firebase deploy|serverless deploy|eas (build|submit)|cap deploy)\b"#
+
+    /// tests, deploy, long run (over 10 minutes) or any.
+    public static func current(command: String?, runSeconds: TimeInterval, extraRunners: [String] = []) -> String {
+        if let c = command {
+            if Tools.runner(c, extra: extraRunners) != nil { return "tests" }
+            if c.range(of: deploy, options: .regularExpression) != nil { return "deploy" }
+        }
+        return runSeconds > 600 ? "long run" : "any"
+    }
+
+    /// The line for this rotation slot: lines tagged for the moment first, then lines tagged "any", then any line.
+    public static func pick(order: [Int], tags: [String], moment: String, slot: Int) -> Int? {
+        guard !order.isEmpty else { return nil }
+        let tag = { (i: Int) in tags.indices.contains(i) ? tags[i] : "any" }
+        let exact = order.filter { tag($0) == moment }, anyTagged = order.filter { tag($0) == "any" }
+        let pool = !exact.isEmpty ? exact : !anyTagged.isEmpty ? anyTagged : order
+        return pool[slot % pool.count]
+    }
+}

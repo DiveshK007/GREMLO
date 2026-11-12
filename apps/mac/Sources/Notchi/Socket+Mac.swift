@@ -85,6 +85,8 @@ extension Backend {
             }
             let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
             return Reply(ok: true, text: steps.map { "\(f.string(from: $0.start))  \($0.kind.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)) \($0.tool)  \($0.summary)" }.joined(separator: "\n"))
+        case "visit":
+            return social.visit(r.args["to"] ?? "")
         case "preview":
             guard let dir = r.args["dir"] else { return Reply(ok: false, text: "preview <dir>") }
             let problems = PackCheck.problems(URL(fileURLWithPath: dir))

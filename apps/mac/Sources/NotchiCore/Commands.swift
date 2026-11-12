@@ -27,7 +27,7 @@ public enum Commands {
     public static let sayMax = 80, sayEvery = 10.0
 
     /// Commands the app answers. Nothing here moves money, touches the payout address or allows a risky command.
-    public static let known: Set<String> = ["status", "say", "pause", "resume", "focus", "pet", "celebrate", "hook", "log", "trick", "approve", "preview"]
+    public static let known: Set<String> = ["status", "say", "pause", "resume", "focus", "pet", "celebrate", "hook", "log", "trick", "approve", "preview", "visit"]
 
     public static let usage = """
     usage: notchi <command>
@@ -122,6 +122,8 @@ public enum Commands {
         case "pause": return try? parse(["pause"] + (v("min").map { [$0] } ?? []), cwd: "/")
         case "focus": return v("min").flatMap { try? parse(["focus", $0], cwd: "/") }
         case "resume", "celebrate", "status": return Request(host)
+        case "visit":  // from the park page: your pet visits theirs (park members only)
+            return v("to").flatMap { $0.range(of: #"^[a-f0-9]{16,32}$"#, options: .regularExpression) != nil ? Request("visit", ["to": $0]) : nil }
         default: return nil  // nothing over a URL can approve, install hooks or change the pet
         }
     }

@@ -319,6 +319,7 @@ final class Pet {
     lazy var signPanel = overlayPanel(CGSize(width: 60, height: 36), level: .statusBar)
     var signText = ""
     var signBrand = ""
+    var signSponsored = true
     var plate: (image: CGImage, layout: PlateLayout, backing: CGFloat)?
     let signClick = ClickView(frame: .zero)
     var signShownAt: Date?
@@ -709,22 +710,24 @@ final class Pet {
     }
 
     /// Puts `text` on the plate (nil takes it down). `brand` is for the disclosure: VoiceOver and the hover card.
-    func setSign(_ text: String?, brand: String = "") {
+    /// `sponsored: false` is a teammate's visit plate: no AD tab, never an ad.
+    func setSign(_ text: String?, brand: String = "", sponsored: Bool = true) {
         let text = text ?? ""
-        guard text != signText || brand != signBrand else { return }  // render() calls this every poll
+        guard text != signText || brand != signBrand || sponsored != signSponsored else { return }  // render() calls this every poll
         signText = text
         signBrand = brand
+        signSponsored = sponsored
         renderPlate()
-        let label = text.isEmpty ? "" : "Sponsored, \(brand.isEmpty ? "a brand" : brand): \(text)"
+        let label = text.isEmpty ? "" : sponsored ? "Sponsored, \(brand.isEmpty ? "a brand" : brand): \(text)" : "\(brand): \(text)"
         signPanel.contentView?.setAccessibilityLabel(label)
         signPanel.contentView?.setAccessibilityRole(.button)
-        signClick.toolTip = text.isEmpty ? nil : "Sponsored by \(brand.isEmpty ? "a brand" : brand).\nWhy this line: brands pay for real views while your agent works, and that pays for your pet's thinking."
+        signClick.toolTip = text.isEmpty || !sponsored ? nil : "Sponsored by \(brand.isEmpty ? "a brand" : brand).\nWhy this line: brands pay for real views while your agent works, and that pays for your pet's thinking."
     }
 
     func renderPlate() {
         guard !signText.isEmpty, let kit = skin.pack.notchi.signKit, let kitImage = skin.loaded.kit else { plate = nil; return }
         let backing = mainScreen.backingScaleFactor
-        guard let (image, layout) = PlateRenderer.render(line: signText, kitImage: kitImage, kit: kit, scale: skin.scale, backing: backing) else { plate = nil; return }
+        guard let (image, layout) = PlateRenderer.render(line: signText, kitImage: kitImage, kit: kit, scale: skin.scale, backing: backing, sponsored: signSponsored) else { plate = nil; return }
         plate = (image, layout, backing)
         let size = CGSize(width: CGFloat(image.width) / backing, height: CGFloat(image.height) / backing)
         signPanel.setContentSize(size)
@@ -1059,6 +1062,7 @@ final class HookServer {
 
 struct Campaign: Decodable {
     let campaignId: String; let line: String?; let hooks: [String]?; let url: String?; let order: [Int]?; let brand: String; let ratePerImpression: String
+    let paused: [Int]?; let moments: [String]? // lines paused by reports; a moment tag per line (R2 §15)
     var allHooks: [String] { hooks?.isEmpty == false ? hooks! : line.map { [$0] } ?? [] }
 }
 struct Thought: Decodable { let action: String; let requestId: String; let at: Int; let model: String?; let chargeTx: String? }
@@ -1145,10 +1149,18 @@ final class Backend: NSObject {
     var hookSince = Date()
     var signWasUp = false
     // follows the server's auto-optimised order when there is one, plain round robin otherwise
-    var currentHook: Int {
-        guard let c = campaign, !c.allHooks.isEmpty else { return 0 }
-        if let o = c.order, !o.isEmpty { return min(max(o[hookIndex % o.count], 0), c.allHooks.count - 1) }
-        return hookIndex % c.allHooks.count
+    /// The line for this slot of the A/B rotation, preferring lines tagged for what the agent is doing now.
+    var currentHook: Int { pickedHook ?? 0 }
+    var pickedHook: Int? {
+        guard let c = campaign, !c.allHooks.isEmpty else { return nil }
+        let base = c.order?.isEmpty == false ? c.order! : Array(0..<c.allHooks.count)
+        let order = base.filter { $0 >= 0 && $0 < c.allHooks.count && !(c.paused ?? []).contains($0) }
+        let live = run.started != nil && run.endedAt == nil
+        let moment = LineMoment.current(command: run.steps.last?.command, runSeconds: live ? run.elapsed : 0, extraRunners: HuntController.extraRunners)
+        return LineMoment.pick(order: order, tags: c.moments ?? [], moment: moment, slot: hookIndex)
+    }
+    var currentMoment: String {
+        LineMoment.current(command: run.steps.last?.command, runSeconds: run.started != nil && run.endedAt == nil ? run.elapsed : 0, extraRunners: HuntController.extraRunners)
     }
     // Polls overlap (timer + after each think); a late reply must not roll the balance back and re-show a meal.
     var petSent = 0, petApplied = 0
@@ -1175,6 +1187,9 @@ final class Backend: NSObject {
     let growth = GrowthController(existingUser: ClaudeHooks.isConnected)
     lazy var hunt: HuntController = HuntController(backend: self)
     lazy var privacy: PrivacyController = PrivacyController(backend: self)
+    lazy var social: SocialController = SocialController(backend: self)
+    var teamFields: (NSTextField, NSTextField)?
+    var visitFields: (NSTextField, NSTextField)?
     lazy var commandSocket: CommandSocket = CommandSocket { [unowned self] in self.handle($0) }
     var sayLimiter = SayLimiter()
     lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
@@ -1284,7 +1299,7 @@ final class Backend: NSObject {
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
         if locked || idle > 300 { return }
         lastImpression[c.campaignId] = Date()
-        let view: [String: Any] = ["petKey": petName, "campaignId": c.campaignId, "hook": currentHook,
+        let view: [String: Any] = ["petKey": petName, "campaignId": c.campaignId, "hook": currentHook, "moment": currentMoment,
                                    "shownMs": Int(Date().timeIntervalSince(since) * 1000), "unlocked": true, "visible": true, "idleS": Int(idle)]
         print("view: posting campaign \(c.campaignId) hook \(currentHook), sign up \(Int(Date().timeIntervalSince(since)))s")
         request("/impressions", body: ["impressions": [view]]) { data, err in
@@ -1393,7 +1408,8 @@ final class Backend: NSObject {
         } else {
             let hooks = campaign?.allHooks ?? []
             pet.signLinks = showHooks && campaign?.url != nil
-            let line = showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil
+            let blocked = campaign.map { SocialController.blockedBrands.contains($0.brand) } ?? false  // "Not for me"
+            let line = showHooks && !hooks.isEmpty && pickedHook != nil && !blocked ? hooks[currentHook] + tag : nil
             pet.setSign(privacy.lineAllowed(line) ? line : nil, brand: campaign?.brand ?? "")  // focus, stream, share, 12/hour
         }
         if (paused || pet.egg) && !demoMode {
@@ -1466,7 +1482,11 @@ final class Backend: NSObject {
             : (info?.impressionsToday ?? 0) >= dailyViewCap ? "Daily limit reached: no more hooks today"
             : campaign.map { "\"\($0.allHooks.isEmpty ? "\u{2014}" : $0.allHooks[currentHook])\"" } ?? "No active campaign"
         stack.addArrangedSubview(label(line, 15, .medium))
-        if sponsoredOn, let c = campaign { stack.addArrangedSubview(label("by \(c.brand)\(tag)", 12, .regular, .secondaryLabelColor)) }
+        if sponsoredOn, let c = campaign {
+            stack.addArrangedSubview(label("by \(c.brand)\(tag)", 12, .regular, .secondaryLabelColor))
+            stack.addArrangedSubview(NSStackView(views: [NSButton(title: "Not for me", target: self, action: #selector(notForMe)),
+                                                         NSButton(title: "Report", target: self, action: #selector(reportLine))]))
+        }
 
         stack.addArrangedSubview(caption("Last thoughts"))
         let thoughts = info?.lastThoughts.prefix(3) ?? []
@@ -1517,6 +1537,7 @@ final class Backend: NSObject {
         for v in feelControls() { stack.addArrangedSubview(v) }
         for v in huntControls() { stack.addArrangedSubview(v) }
         for v in privacyControls() { stack.addArrangedSubview(v) }
+        for v in socialControls() { stack.addArrangedSubview(v) }
         stack.addArrangedSubview(caption("Command line"))
         stack.addArrangedSubview(NSButton(title: "Install the notchi command", target: self, action: #selector(installCommand)))
         stack.addArrangedSubview(sponsored)
@@ -1847,6 +1868,7 @@ do {
 _ = backend.live  // the notch panel
 _ = backend.privacy  // detectors, hot keys, stream mode
 _ = backend.commandSocket  // the notchi CLI, Shortcuts and Raycast
+_ = backend.social  // team relay, park, guestbook visits
 NSAppleEventManager.shared().setEventHandler(backend, andSelector: #selector(Backend.handleURL(_:withReplyEvent:)),
                                              forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")

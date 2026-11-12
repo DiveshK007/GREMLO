@@ -31,6 +31,8 @@ import Testing
         #expect(Commands.fromURL(URL(string: "notchi://approve?answer=allow")!) == nil, "no approvals from a link")
         #expect(Commands.fromURL(URL(string: "notchi://hook?action=install")!) == nil)
         #expect(Commands.fromURL(URL(string: "https://say?text=x")!) == nil)
+        #expect(Commands.fromURL(URL(string: "notchi://visit?to=" + String(repeating: "a", count: 24))!) == Request("visit", ["to": String(repeating: "a", count: 24)]))
+        #expect(Commands.fromURL(URL(string: "notchi://visit?to=../x")!) == nil)
     }
 
     @Test func sayLimiter() {

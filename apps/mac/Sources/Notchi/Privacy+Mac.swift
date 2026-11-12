@@ -57,6 +57,8 @@ final class PrivacyController {
     func lineAllowed(_ text: String?) -> Bool {
         guard text != nil else { lineWasUp = false; return false }
         if focus != nil || Self.streamOn || backend.paused || pet.egg || silence.silent || duck != .none { lineWasUp = false; return false }
+        // never during fail, celebrate or an approval (R2 §15)
+        if [.fail, .celebrate, .flag].contains(pet.state) || pet.waiting || !backend.broker.queue.waiting.isEmpty { lineWasUp = false; return false }
         if !lineWasUp {
             // brand alternation needs a second campaign to alternate with; the server picks campaigns (shortcut)
             guard limiter.allows(brand: "", now: Date()) else { return false }

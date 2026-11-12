@@ -160,3 +160,17 @@ import Testing
         #expect(!GitWatch.conflicted(repo.path))
     }
 }
+
+@Suite struct MomentTests {
+    @Test func momentsAndPicking() {
+        #expect(LineMoment.current(command: "npm test", runSeconds: 30) == "tests")
+        #expect(LineMoment.current(command: "vercel --prod", runSeconds: 30) == "deploy")
+        #expect(LineMoment.current(command: "ls", runSeconds: 700) == "long run")
+        #expect(LineMoment.current(command: nil, runSeconds: 5) == "any")
+        let order = [0, 1, 2, 0, 1, 2], tags = ["tests", "any", "deploy"]
+        #expect((0..<4).compactMap { LineMoment.pick(order: order, tags: tags, moment: "tests", slot: $0) } == [0, 0, 0, 0])
+        #expect(LineMoment.pick(order: order, tags: tags, moment: "long run", slot: 0) == 1, "falls back to any-tagged lines")
+        #expect(LineMoment.pick(order: [0, 2], tags: tags, moment: "long run", slot: 1) == 2, "then any line")
+        #expect(LineMoment.pick(order: [], tags: tags, moment: "any", slot: 0) == nil)
+    }
+}

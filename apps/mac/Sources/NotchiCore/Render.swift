@@ -116,7 +116,8 @@ public enum PlateRenderer {
 
     /// The plate for `line`, at `backing` pixels per point. Ink text on the kit's paper face; an AD tab on the
     /// top-right corner. Returns the image and its layout in points.
-    public static func render(line: String, kitImage: CGImage, kit: SignKit, scale: CGFloat, backing: CGFloat = 2) -> (CGImage, PlateLayout)? {
+    /// `sponsored: false` (a teammate's visit, never an ad) leaves the AD tab off.
+    public static func render(line: String, kitImage: CGImage, kit: SignKit, scale: CGFloat, backing: CGFloat = 2, sponsored: Bool = true) -> (CGImage, PlateLayout)? {
         let probe = Plate.layout(textWidth: 0, kit: kit, scale: scale)
         let font = Fonts.inter(probe.fontSize)
         let layout = Plate.layout(textWidth: Fonts.width(line, font: font).rounded(.up), kit: kit, scale: scale)
@@ -126,10 +127,12 @@ public enum PlateRenderer {
         ctx.scaleBy(x: backing, y: backing)
         nineSlice(ctx, kitImage, kit: kit, into: CGRect(origin: .zero, size: layout.size), kitPx: layout.kitPx)
         // AD tab: ink with paper letters, sitting on the top-right corner
-        ctx.setFillColor(ink)
-        ctx.fill(layout.adTab)
-        draw("AD", ctx, font: Fonts.inter(layout.kitPx * 2.6, weight: 700), color: paper,
-             in: layout.adTab, centred: true)
+        if sponsored {
+            ctx.setFillColor(ink)
+            ctx.fill(layout.adTab)
+            draw("AD", ctx, font: Fonts.inter(layout.kitPx * 2.6, weight: 700), color: paper,
+                 in: layout.adTab, centred: true)
+        }
         draw(line, ctx, font: font, color: ink, in: layout.textRect, centred: false)
         return ctx.makeImage().map { ($0, layout) }
     }
