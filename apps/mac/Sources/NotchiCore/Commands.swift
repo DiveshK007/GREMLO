@@ -27,7 +27,7 @@ public enum Commands {
     public static let sayMax = 80, sayEvery = 10.0
 
     /// Commands the app answers. Nothing here moves money, touches the payout address or allows a risky command.
-    public static let known: Set<String> = ["status", "say", "pause", "resume", "focus", "pet", "celebrate", "hook", "log", "trick", "approve", "preview", "visit"]
+    public static let known: Set<String> = ["status", "say", "pause", "resume", "focus", "pet", "celebrate", "hook", "log", "trick", "approve", "preview", "visit", "approvals"]
 
     public static let usage = """
     usage: notchi <command>

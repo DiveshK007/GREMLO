@@ -1,0 +1,21 @@
+{
+  "name": "notchi",
+  "displayName": "Notchi",
+  "description": "Your Notchi pet in the editor: status bar, a panel where it walks, and approvals answered from the editor.",
+  "version": "1.0.0",
+  "publisher": "notchi",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "notchi.openPanel", "title": "Notchi: Open panel" },
+      { "command": "notchi.answerNext", "title": "Notchi: Answer next approval" }
+    ]
+  },
+  "scripts": { "compile": "tsc -p .", "package": "vsce package", "publish:ovsx": "ovsx publish" },
+  "devDependencies": { "@types/vscode": "^1.85.0", "@types/node": "^20.0.0", "typescript": "^5.4.0" }
+}

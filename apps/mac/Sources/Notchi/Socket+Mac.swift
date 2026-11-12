@@ -15,7 +15,7 @@ extension Backend {
             let earner = growth.isEgg ? "egg" : paused ? "paused" : privacy.focus != nil ? "focus" : pet.plate != nil ? "holding the line" : "not holding a line"
             let d: [String: String] = ["pet": growth.petDisplayName, "species": pet.skin.name, "stage": growth.isEgg ? "egg" : "\(g.stage)",
                                        "mood": pet.mood, "earner": earner, "agents": "\((pet.sessionLive ? 1 : 0) + companions.pets.count)",
-                                       "approvals": "\(broker.queue.waiting.count)", "stars": "\(g.stars)", "meals": "\(g.meals.count)"]
+                                       "approvals": "\(broker.queue.waiting.count)", "tools": "\(run.tools)", "running": run.started != nil && run.endedAt == nil ? "1" : "0", "elapsed": "\(Int(run.elapsed))", "stars": "\(g.stars)", "meals": "\(g.meals.count)"]
             let text = "\(d["pet"]!) the \(Roster.species(pet.skin.name)?.kind ?? "pet") \u{00B7} \(d["stage"]!) \u{00B7} \(d["mood"]!) \u{00B7} \(earner) \u{00B7} \(d["agents"]!) agent(s) \u{00B7} \(d["approvals"]!) waiting"
             return Reply(ok: true, text: text, data: d)
         case "say":
@@ -56,8 +56,16 @@ extension Backend {
             pet.setSkin(skin)
             shown = ""; render()
             return Reply(ok: true, text: "earner is now \(s)")
+        case "approvals":
+            // for the editor and phone: what's waiting, oldest first; the command text stays on this Mac's socket
+            let list = broker.queue.waiting.prefix(4)
+            var d: [String: String] = ["count": "\(broker.queue.waiting.count)"]
+            for (i, a) in list.enumerated() { d["\(i).id"] = a.id; d["\(i).tool"] = a.tool; d["\(i).summary"] = String(a.summary.prefix(120)); d["\(i).risky"] = a.risky ? "1" : "0" }
+            return Reply(ok: true, text: "\(broker.queue.waiting.count) waiting", data: d)
         case "approve":
-            guard let top = broker.queue.top else { return Reply(ok: false, text: "nothing waiting") }
+            let chosen = r.args["id"].flatMap { id in broker.queue.waiting.first { $0.id == id } }
+            if r.args["id"] != nil && chosen == nil { return Reply(ok: false, text: "already answered") }
+            guard let top = chosen ?? broker.queue.top else { return Reply(ok: false, text: "nothing waiting") }
             let deny = r.args["answer"] == "deny"
             // a command can deny anything, but can only allow an ordinary request; risky ones need a click
             guard deny || ApprovalQueue.shortcutAllowed(top) else { return Reply(ok: false, text: "that one deletes, pushes or spends: answer it with a click") }
