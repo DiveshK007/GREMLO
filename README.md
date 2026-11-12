@@ -6,6 +6,26 @@ Notchi is a tiny desktop pet that lives behind a door in your MacBook notch. Whe
 
 Built from scratch at ETHGlobal Mumbai 2026.
 
+## Notchi 1.0 (branch `notchi-1.0`)
+
+1.0 implements the design export in `docs/design/1.0/`. Milestones and what is still open: `docs/PLAN_1.0.md`.
+The sections below this one describe the earlier hackathon builds.
+
+| Part | Where | Build and test |
+|---|---|---|
+| Mac app: eight species, the plate, Notch Live, approvals from the notch, growth and the Closet, bug hunt, git moods, room, focus, privacy rules, stream mode, postcard, team and park | `apps/mac` | `swift build && swift test` (NotchiCore holds the rules; 86 tests) |
+| `notchi` CLI, `notchi://` links, Shortcuts | `apps/mac/Sources/NotchiCLI` | `swift run NotchiCLI --help` |
+| Server: campaigns, signed sightings with a public log, A/B, moments, reports, park, relay, gallery, phone mailbox | `apps/server` | `npm test` |
+| Web: the 1.0 site at `/`, get your pet, your pet, brand console, park, gallery, money | `apps/web` | `npm test`; build in a copy |
+| VS Code and Cursor extension | `apps/vscode` | `npm run compile` |
+| Raycast extension | `apps/raycast` | `npm run dev` |
+| iPhone, Live Activity, widgets, Watch and complication | `apps/ios` | `xcodegen generate`, then build for the simulator |
+| Vault (campaigns, compute budget) | `contracts-near` | `cargo test` |
+| Readable pet accounts: factory and purse (optional, not deployed) | `contracts-accounts` | `./build.sh && cargo test` |
+
+`notchi verify <campaign>` replays a campaign's public log: every counted sighting must be a signed report from a
+paired Mac, the hash chain must be unbroken, and the total must match the bill.
+
 > On one laptop, during this hackathon, we spent 1.6 hours waiting on Claude Code (1,589 agent events), measured by Notchi's own hook log.
 
 ## What it does
