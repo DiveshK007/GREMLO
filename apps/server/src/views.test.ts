@@ -1,53 +1,51 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campaignView, moodFor, petView } from "./views.ts";
+import { campaignView, CAPPED, computeMood, EMPTY, petView } from "./views.ts";
 
-const t = { thriving: 1000n, stable: 100n, hungry: 10n };
+const fees = { smart: 500n, cheap: 100n };
+const c = (budget: bigint, chargedToday = 0n, dailyCap = 2000n) => ({ budget, chargedToday, dailyCap });
 
 test("campaign shape the Mac app decodes", () => {
   const v = campaignView(
-    { id: 1n, brand: "0xB", lineHash: "0xh", rate: 1000n },
-    { lines: { "0xh": "Ship faster with Acme CI" }, brands: { "0xB": "Acme" } },
+    { id: 1n, brand: "brand.testnet", lineHash: "0xh", rate: 1000n },
+    { lines: { "0xh": "Ship faster with Acme CI" }, brands: { "brand.testnet": "Acme" } },
   );
   assert.deepEqual(v, { campaignId: "1", line: "Ship faster with Acme CI", hooks: ["Ship faster with Acme CI"], url: null, brand: "Acme", ratePerImpression: "1000" });
 });
 
 test("a hook set is split for rotation and carries the campaign URL", () => {
   const v = campaignView(
-    { id: 7n, brand: "0xB", lineHash: "0xh", rate: 1000n },
+    { id: 7n, brand: "brand.testnet", lineHash: "0xh", rate: 1000n },
     { lines: { "0xh": "Hook one\nHook two\nHook three" }, brands: {}, urls: { "7": "https://acme.dev/" } },
   );
   assert.deepEqual(v.hooks, ["Hook one", "Hook two", "Hook three"]);
   assert.equal(v.line, "Hook one");
   assert.equal(v.url, "https://acme.dev/");
-  assert.equal(v.brand, "0xB"); // no display name saved: the address, never a made-up name
+  assert.equal(v.brand, "brand.testnet"); // no display name saved: the account, never a made-up name
 });
 
-test("mood thresholds, inclusive at each boundary", () => {
-  assert.equal(moodFor(1000n, t), "thriving");
-  assert.equal(moodFor(999n, t), "stable");
-  assert.equal(moodFor(100n, t), "stable");
-  assert.equal(moodFor(99n, t), "hungry");
-  assert.equal(moodFor(10n, t), "hungry");
-  assert.equal(moodFor(9n, t), "asleep");
-  assert.equal(moodFor(0n, t), "asleep");
+test("mood and fee from the compute budget, inclusive at each fee", () => {
+  assert.deepEqual(computeMood(c(500n), fees), { mood: "thriving", reason: null, fee: 500n });
+  assert.deepEqual(computeMood(c(499n), fees), { mood: "stable", reason: null, fee: 100n });
+  assert.deepEqual(computeMood(c(100n), fees), { mood: "stable", reason: null, fee: 100n });
+  assert.deepEqual(computeMood(c(99n), fees), { mood: "hungry", reason: EMPTY, fee: null });
+  assert.deepEqual(computeMood(c(0n), fees), { mood: "hungry", reason: EMPTY, fee: null });
 });
 
-test("pet shape never invents a meal or a compute balance", () => {
-  const v = petView({ name: "mochi.notchi.eth", walletBalance: 1250000n, thresholds: t, impressionsToday: 42, seeded: true });
-  assert.deepEqual(Object.keys(v), [
-    "name", "mood", "moodReason", "walletBalance", "computeBalance", "impressionsToday", "lastThoughts", "lastMeal", "seeded",
-  ]);
-  assert.equal(v.mood, "thriving");
-  assert.equal(v.moodReason, null);
+test("the daily cap and in-flight charges count against the budget", () => {
+  assert.equal(computeMood(c(10_000n, 1_600n), fees).mood, "stable"); // 400 left today
+  assert.deepEqual(computeMood(c(10_000n, 1_950n), fees), { mood: "hungry", reason: CAPPED, fee: null });
+  assert.equal(computeMood(c(600n), fees, 200n).mood, "stable"); // a 200 charge still landing
+  assert.deepEqual(computeMood(null, fees), { mood: "asleep", reason: "can't read the chain", fee: null });
+});
+
+test("pet shape: earnings and compute budget come straight from the chain, never invented", () => {
+  const v = petView({ name: "mochi", walletBalance: 1250000n, compute: c(0n), fees, impressionsToday: 42, seeded: false });
+  assert.deepEqual(Object.keys(v), ["name", "mood", "moodReason", "walletBalance", "computeBalance", "impressionsToday", "lastThoughts", "seeded"]);
+  assert.equal(v.mood, "hungry");
+  assert.equal(v.moodReason, "sleeping: compute budget empty");
   assert.equal(v.walletBalance, "1250000");
-  assert.equal(v.computeBalance, null);
-  assert.equal(v.lastMeal, null);
-});
-
-test("unreadable balance means asleep with a reason", () => {
-  const v = petView({ name: "m", walletBalance: null, thresholds: t, impressionsToday: 0, seeded: true });
-  assert.equal(v.mood, "asleep");
-  assert.equal(v.moodReason, "can't read balance");
-  assert.equal(v.walletBalance, null);
+  assert.equal(v.computeBalance, "0");
+  const dark = petView({ name: "m", walletBalance: null, compute: null, fees, impressionsToday: 0, seeded: false });
+  assert.deepEqual([dark.mood, dark.walletBalance, dark.computeBalance], ["asleep", null, null]);
 });

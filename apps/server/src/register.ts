@@ -1,12 +1,15 @@
-import { getAddress, isAddress, keccak256 } from "viem";
+import { keccak256, stringToBytes } from "viem";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export const bad = (msg: string) => new HttpError(400, msg);
-export const addr = (v: unknown, field: string) => {
-  if (typeof v !== "string" || !isAddress(v)) throw bad(`${field} must be an address`);
-  return getAddress(v);
+/** NEAR account id rules (nomicon): 2-64 chars, lowercase parts joined by "." with "-" or "_" inside a part. */
+export const isAccountId = (v: unknown): v is string =>
+  typeof v === "string" && v.length >= 2 && v.length <= 64 && /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(v);
+export const accountId = (v: unknown, field: string) => {
+  if (!isAccountId(v)) throw bad(`${field} must be a NEAR account id, like mochi.testnet`);
+  return v;
 };
 
 /** World ID actions this server signs for. Anything else gets a 400. */
@@ -14,7 +17,7 @@ export const WORLD_ACTIONS = new Set(["register-pet", "approve-spend"]);
 const REGISTER_ACTION = "register-pet";
 
 export type Verdict = { ok: true; nullifier: string } | { ok: false; code: string };
-export type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string; devices?: string[] }; // devices: paired Secure Enclave keys (X9.63, base64url)
+export type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string; verifyTx?: string; devices?: string[] }; // petKey = name = the vault pet_id; owner/payout are NEAR accounts; devices: paired Secure Enclave keys (X9.63, base64url)
 
 /** Same number whether it arrives as decimal (IDKit) or 0x hex (Developer Portal). */
 const canonical = (n: unknown) => {
@@ -62,14 +65,14 @@ export async function verifyWorldProof(result: unknown, rpId: string, action = R
   return nullifier ? { ok: true, nullifier } : { ok: false, code: "no_nullifier" };
 }
 
-/** IDKit's hashSignal for an address signal: keccak of the 20 bytes, shifted into the field, 32-byte hex. */
-export const signalHash = (address: `0x${string}`) => `0x${(BigInt(keccak256(address)) >> 8n).toString(16).padStart(64, "0")}`;
+/** IDKit's hashSignal for a string signal: keccak of the UTF-8 bytes, shifted into the field, 32-byte hex. */
+export const signalHash = (signal: string) => `0x${(BigInt(keccak256(stringToBytes(signal))) >> 8n).toString(16).padStart(64, "0")}`;
 
 /**
- * The proof must be made for this owner (the web passes signal = owner address), so a proof seen once can't
- * register a pet for someone else's wallet. Every signal_hash in the result must match, and there must be one.
+ * The proof must be made for this owner (the web passes signal = the owner's NEAR account id), so a proof seen once
+ * can't register a pet for someone else's account. Every signal_hash in the result must match, and there must be one.
  */
-export function signalMatches(proof: any, owner: `0x${string}`) {
+export function signalMatches(proof: any, owner: string) {
   const hashes = [proof?.signal_hash, ...(Array.isArray(proof?.responses) ? proof.responses.map((r: any) => r?.signal_hash) : [])]
     .filter((h) => h !== undefined && h !== null);
   const want = signalHash(owner);
@@ -78,24 +81,29 @@ export function signalMatches(proof: any, owner: `0x${string}`) {
 
 export function makeRegister(deps: {
   verify: (result: unknown) => Promise<Verdict>;
-  registerOnChain: (pet: string, owner: string, payout: string) => Promise<string>;
+  registerOnChain: (pet: string, owner: string, payout: string) => Promise<{ registerTx: string; verifyTx: string }>;
+  accountExists: (id: string) => Promise<boolean>;
   store: { pets: Record<string, PetRecord>; nullifiers: string[] };
   save: () => void;
 }) {
   const claiming = new Set<string>(); // nullifiers with a registration in flight
 
   return async function registerPet(body: any) {
-    const petKey = addr(body.petKey, "petKey");
-    const owner = addr(body.ownerAddress, "ownerAddress");
-    const payout = addr(body.payoutAddress, "payoutAddress");
-    const name = body.name ?? petKey.toLowerCase();
-    if (typeof name !== "string" || !/^[a-z0-9.-]{1,64}$/.test(name)) throw bad("name must be a-z, 0-9, . or -");
+    const owner = accountId(body.owner, "owner");
+    const payout = accountId(body.payout ?? owner, "payout");
+    const name = body.name;
+    if (typeof name !== "string" || !/^[a-z0-9.-]{2,64}$/.test(name)) throw bad("name must be 2-64 characters of a-z, 0-9, . or -");
+    const petKey = name; // the vault's pet_id
     const proof = body.worldProof;
     // shape is the portal's call, not ours; we only need something to forward
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) throw bad("worldProof is required");
     const { pets, nullifiers } = deps.store;
-    if (!signalMatches(proof, owner as `0x${string}`)) throw new HttpError(403, "World proof rejected: it was made for a different wallet");
+    if (!signalMatches(proof, owner)) throw new HttpError(403, "World proof rejected: it was made for a different NEAR account");
 
+    // a transfer to a missing account fails and leaves the NEAR stuck in the vault, so refuse it up front
+    for (const [field, id] of [["owner", owner], ["payout", payout]] as const) {
+      if (!(await deps.accountExists(id))) throw bad(`${field} account ${id} does not exist on NEAR yet; create it first`);
+    }
     // World first: a returning human must hear "already has a pet", not a name clash with their own pet
     const verdict = await deps.verify(proof);
     if (!verdict.ok) throw new HttpError(403, `World proof rejected: ${verdict.code}`);
@@ -106,11 +114,11 @@ export function makeRegister(deps: {
     claiming.add(n);
     try {
       // the nullifier is kept only once the pet exists onchain, so a failed tx can be retried
-      const registerTx = await deps.registerOnChain(petKey, owner, payout);
-      pets[name] = { name, petKey, owner, payout, registerTx };
+      const { registerTx, verifyTx } = await deps.registerOnChain(petKey, owner, payout);
+      pets[name] = { name, petKey, owner, payout, registerTx, verifyTx };
       nullifiers.push(n);
       deps.save();
-      return { ok: true, txHash: registerTx, name }; // shape apps/web expects
+      return { ok: true, txHash: registerTx, verifyTx, name }; // shape apps/web expects
     } finally {
       claiming.delete(n);
     }

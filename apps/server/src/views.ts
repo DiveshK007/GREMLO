@@ -1,4 +1,4 @@
-// JSON shapes the Mac app decodes. Amounts are wei as decimal strings.
+// JSON shapes the Mac app decodes. Amounts are yoctoNEAR as decimal strings.
 
 export function campaignView(
   c: { id: bigint; brand: string; lineHash: string; rate: bigint },
@@ -16,34 +16,46 @@ export function campaignView(
   };
 }
 
-export type Thresholds = { thriving: bigint; stable: bigint; hungry: bigint };
+export type Fees = { smart: bigint; cheap: bigint };
+/** The pet's onchain compute state (vault get_pet), in yoctoNEAR. */
+export type Compute = { budget: bigint; chargedToday: bigint; dailyCap: bigint };
 
-export function moodFor(wei: bigint, t: Thresholds) {
-  return wei >= t.thriving ? "thriving" : wei >= t.stable ? "stable" : wei >= t.hungry ? "hungry" : "asleep";
+export const EMPTY = "sleeping: compute budget empty";
+export const CAPPED = "sleeping: daily compute cap reached";
+
+/**
+ * Mood and AI fee from the compute budget the vault holds for this pet. `inflight` is charges sent but not yet
+ * landed. Thriving pays for the smart model, stable for the cheap one; hungry makes no AI call.
+ */
+export function computeMood(c: Compute | null, fees: Fees, inflight = 0n) {
+  if (!c) return { mood: "asleep", reason: "can't read the chain", fee: null };
+  const budget = c.budget - inflight, today = c.dailyCap - c.chargedToday - inflight;
+  const room = budget < today ? budget : today;
+  if (room >= fees.smart) return { mood: "thriving", reason: null, fee: fees.smart };
+  if (room >= fees.cheap) return { mood: "stable", reason: null, fee: fees.cheap };
+  return { mood: "hungry", reason: budget < fees.cheap ? EMPTY : CAPPED, fee: null };
 }
 
-/** walletBalance null means the balance could not be read; the pet is then asleep and says why. */
+/** walletBalance is the payout account (earnings); computeBalance is the onchain compute budget. null = unreadable. */
 export function petView(p: {
   name: string;
   walletBalance: bigint | null;
-  thresholds: Thresholds;
+  compute: Compute | null;
+  fees: Fees;
+  inflight?: bigint;
   impressionsToday: number;
   seeded: boolean;
-  lastThoughts?: { action: string; requestId: string; at: number }[];
-  /** set when the pet feeds itself: its 0G credit drives the mood, and the last deposit is its meal */
-  computeBalance?: bigint | null;
-  lastMeal?: { amount: string; txHash: string; at: number } | null;
+  lastThoughts?: { action: string; requestId: string; at: number; model?: string; chargeTx?: string }[];
 }) {
-  const moodWei = p.computeBalance !== undefined ? p.computeBalance : p.walletBalance;
+  const m = computeMood(p.compute, p.fees, p.inflight);
   return {
     name: p.name,
-    mood: moodWei === null ? "asleep" : moodFor(moodWei, p.thresholds),
-    moodReason: moodWei === null ? "can't read balance" : p.computeBalance !== undefined && moodFor(moodWei, p.thresholds) === "asleep" ? "0G credit used up; it eats when it earns" : null,
+    mood: m.mood,
+    moodReason: m.reason,
     walletBalance: p.walletBalance?.toString() ?? null,
-    computeBalance: p.computeBalance?.toString() ?? null, // null unless the pet feeds itself
+    computeBalance: p.compute?.budget.toString() ?? null,
     impressionsToday: p.impressionsToday,
     lastThoughts: p.lastThoughts ?? [],
-    lastMeal: p.lastMeal ?? null,
     seeded: p.seeded,
   };
 }

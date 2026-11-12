@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
+import { verifyMessage } from "near-api-js/nep413";
 import { HttpError, type PetRecord } from "./register.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { PRODUCT } from "../../../packages/brain/product.js";
@@ -45,7 +46,27 @@ export function checkSigned(opts: { key: string; time: string; sig: string; mess
 
 /** The message a pet owner signs with their wallet to pair a device to their pet. */
 export const pairMessage = (petName: string, deviceKeyId: string) =>
-  `Pair this device to my Notchi pet.\nPet: ${petName}\nDevice: ${deviceKeyId}`;
+  `Pair this device to my pet.\nPet: ${petName}\nDevice: ${deviceKeyId}`;
+
+/**
+ * A NEP-413 signed message from `owner`: the exact message, our recipient, a 32-byte nonce never seen before, and a
+ * key that is a full-access key of the owner account (near-api-js checks that against the chain). Throws 400/401/403.
+ */
+export async function checkOwnerSignature(body: any, owner: string, message: string, recipient: string, provider: Parameters<typeof verifyMessage>[0]["provider"], used: Set<string>) {
+  const signature = Buffer.from(String(body?.signature ?? ""), "base64");
+  const nonce = Buffer.from(String(body?.nonce ?? ""), "base64");
+  const publicKey = String(body?.publicKey ?? "");
+  if (signature.length !== 64 || nonce.length !== 32 || !/^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(publicKey)) {
+    throw new HttpError(400, "signature (64 bytes, base64), nonce (32 bytes, base64) and an ed25519 publicKey are required");
+  }
+  if (used.has(nonce.toString("hex"))) throw new HttpError(401, "nonce already used");
+  try {
+    await verifyMessage({ signerAccountId: owner, signerPublicKey: publicKey, payload: { message, recipient, nonce }, signature, provider });
+  } catch (e) {
+    throw new HttpError(403, `signature is not from ${owner}: ${(e as Error)?.message ?? e}`);
+  }
+  used.add(nonce.toString("hex"));
+}
 
 /**
  * The request must come from `pet`'s own device. Unsigned is accepted only for unpaired pets, and only when

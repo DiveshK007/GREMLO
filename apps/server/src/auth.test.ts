@@ -52,3 +52,29 @@ test("a paired pet only accepts its own device; an unpaired pet still works unsi
   assert.throws(() => mustBeFrom(unpaired, null, true), (e: any) => e.status === 401 && /pair this Mac/.test(e.message));
   mustBeFrom(paired, { petKey: "0xA" }, true);
 });
+
+test("NEP-413 owner signature: real ed25519, the exact message and recipient, full-access key, no nonce reuse", async () => {
+  const { Account, KeyPair } = await import("near-api-js");
+  const { signMessage } = await import("near-api-js/nep413");
+  const { checkOwnerSignature } = await import("./auth.ts");
+  const key = KeyPair.fromRandom("ed25519"), other = KeyPair.fromRandom("ed25519");
+  const pk = key.getPublicKey().toString();
+  // the chain's answer for this key: full access for the owner's key, function-call only for anything else
+  const provider: any = { viewAccessKey: async ({ publicKey }: any) => ({ nonce: 0n, permission: String(publicKey) === pk ? "FullAccess" : { FunctionCall: { receiver_id: "x", method_names: [] } } }) };
+  const sign = async (kp: typeof key, message: string, recipient = "vault.notchi.testnet") => {
+    const nonce = crypto.getRandomValues(new Uint8Array(32));
+    const s = await signMessage({ signerAccount: new Account("owner.testnet", provider, kp.toString() as any), payload: { message, recipient, nonce } });
+    return { signature: Buffer.from(s.signature).toString("base64"), publicKey: s.publicKey.toString(), nonce: Buffer.from(nonce).toString("base64") };
+  };
+  const used = new Set<string>();
+  const msg = pairMessage("mochi", "abc123");
+  const good = await sign(key, msg);
+  await checkOwnerSignature(good, "owner.testnet", msg, "vault.notchi.testnet", provider, used);
+  await assert.rejects(checkOwnerSignature(good, "owner.testnet", msg, "vault.notchi.testnet", provider, used), (e: any) => e.status === 401); // replay
+  const code = async (body: object, m = msg) => checkOwnerSignature(body, "owner.testnet", m, "vault.notchi.testnet", provider, new Set()).then(() => 200, (e: any) => e.status);
+  assert.equal(await code(await sign(key, msg), pairMessage("mochi", "other-device")), 403); // signed a different message
+  assert.equal(await code(await sign(key, msg, "evil.testnet")), 403); // signed for another recipient
+  assert.equal(await code(await sign(other, msg)), 403); // not a full-access key of the owner
+  assert.equal(await code({ ...good, nonce: "AAAA" }), 400);
+  assert.equal(await code({}), 400);
+});
