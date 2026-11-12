@@ -39,7 +39,7 @@ var walkSpeed = defaults.object(forKey: "walkSpeed") as? Double ?? 1
 var soundsOn = defaults.object(forKey: "sounds") as? Bool ?? true
 // Sponsored hooks are opt-in: off until the developer turns them on (asked once on first launch).
 var sponsoredOn = defaults.object(forKey: "sponsored") as? Bool ?? false
-var quietHours = defaults.object(forKey: "quietHours") as? Bool ?? true // no hooks 22:00-08:00
+var quietHours = defaults.object(forKey: "quietHours") as? Bool ?? false // opt-in: developers code at night; when on, no hooks 22:00-08:00
 let dailyViewCap = 120 // the server enforces the same cap
 func inQuietHours(_ d: Date = Date()) -> Bool {
     let h = Calendar.current.component(.hour, from: d)
@@ -1567,7 +1567,7 @@ final class Backend: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let a = NSAlert()
         a.messageText = "Show sponsored hooks and earn while you wait?"
-        a.informativeText = "While your agent works, the pet can carry one short sponsored line. Brands pay per verified view and the money goes to your pet's wallet. Never during approvals, never at night with quiet hours on, at most 120 a day. You can change this any time in Settings."
+        a.informativeText = "While your agent works, the pet can carry one short sponsored line. Brands pay per verified view and the money goes to your pet's wallet. Never during approvals, at most 120 a day, and none at night if you turn on quiet hours in Settings. You can change this any time in Settings."
         a.addButton(withTitle: "Turn on")
         a.addButton(withTitle: "Not now")
         sponsoredOn = a.runModal() == .alertFirstButtonReturn
