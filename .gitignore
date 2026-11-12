@@ -23,7 +23,7 @@ node_modules/
 node_modules/
 
 # Local-only pet skins for demo recordings
-apps/mac/assets/demo-pets/
+assets/demo-pets/
 .gstack/
 apps/mac/dist/
 

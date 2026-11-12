@@ -19,7 +19,9 @@ rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/assets"
 cp "$BIN/Notchi" "$APP/Contents/MacOS/Notchi"
 cp Sources/Notchi/Resources/notchi-hook.sh "$APP/Contents/Resources/"
-cp -R assets/pets "$APP/Contents/Resources/assets/pets"
+# shared assets at the repo root: species packs and the Inter font for the plate
+cp -R ../../assets/pets "$APP/Contents/Resources/assets/pets"
+cp -R ../../assets/fonts "$APP/Contents/Resources/assets/fonts"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

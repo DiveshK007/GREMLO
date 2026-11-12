@@ -1,3 +1,4 @@
+import NotchiCore
 import AppKit
 import CryptoKit
 import Network
@@ -54,153 +55,83 @@ func spacesBehavior() -> NSWindow.CollectionBehavior {
     allDesktops ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary] : [.canJoinAllSpaces, .stationary]
 }
 
-enum PetState: String, CaseIterable { case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy }
-
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy]
-
-// Frame order within a state's strip of n frames.
-func sequence(_ s: PetState, _ n: Int) -> [Int] {
-    switch s {
-    case .idle where n >= 3: return [0, 0, 1, 1, 0, 0, 2, 0]
-    case .celebrate: return Array(0..<n) + Array(0..<n)
-    default: return Array(0..<n)
-    }
+enum PetState: String, CaseIterable {
+    case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy, backflip, moonwalk
+    /// The pack row this state draws. Holding the line is the hold row, with the plate overhead.
+    var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
+
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk]
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
 
-// Two pet folder formats, see assets/pets/README.md:
-// strips: <state>.png + pet.json with frames/fps/pixel/baseline (mochi)
-// sheet:  spritesheet.webp + pet.json (Codex pet format), rows from rows.json in the folder or assets/pets/notchi-rows.json
-struct SkinInfo: Decodable {
-    let fps: Double?
-    let frames: [String: Int]?
-    let pixel: Double?     // strip pixels per art pixel; one art pixel draws at 2 points
-    let baseline: Double?  // strip row the feet stand on
-    let spritesheetPath: String?
-}
-
-struct RowMap: Decodable {
-    struct Row: Decodable { let row: Int; let name: String; let frames: Int }
-    let cell: [Int]
-    let baseline: Double
-    let scale: Double
-    let rows_map: [Row]
-    let fps: [String: Double]?
+// A species pack (NotchiCore) prepared for drawing. See assets/pets/<id>/pet.json and docs/design/1.0.
+struct Strip {
+    let row: Row              // the row actually drawn (after fallbacks)
+    let frames: [CGImage]     // that row's frames
+    let subset: [Int]?        // fallback frames within the row, or nil for the spec's sequence
+    let rotated: Bool         // walk standing in for climb, rotated onto the wall
 }
 
 struct Skin {
-    let name: String
-    let fps: Double
-    let fpsByMood: [String: Double]
+    let name: String          // species id, the pack folder
+    let loaded: LoadedPack
+    let species: Species?
+    let accent: CGColor
     let size: CGSize
     let footPadding: CGFloat
-    let strips: [PetState: [CGImage]]
-    let doors: [DoorState: CGImage]  // empty unless all four door_<state>.png exist
+    let strips: [PetState: Strip]
+    let doors: [DoorState: CGImage]  // packs carry no door art yet; the default door is drawn
     let scale: CGFloat               // points per sheet pixel
+    var pack: Pack { loaded.pack }
+    var geometry: PetGeometry { PetGeometry(cellW: pack.cell.w, cellH: pack.cell.h, scale: scale) }
 }
 
-// The packaged .app carries its pets in Contents/Resources/assets; swift run reads them from the repo.
+// The packaged .app carries assets in Contents/Resources/assets; swift run reads the repo's top-level assets/.
 let assetsDir: URL = {
     if let r = Bundle.main.resourceURL?.appendingPathComponent("assets/pets"), FileManager.default.fileExists(atPath: r.path) { return r.deletingLastPathComponent() }
-    return URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().appendingPathComponent("assets")
+    return URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("assets")
 }()
-let defaultSkin = "notchi-ink"
 
-// Every folder with a pet.json in assets/demo-pets (gitignored) and assets/pets, demo first.
-func petFolders() -> [(name: String, dir: URL)] {
-    ["demo-pets", "pets"].flatMap { sub -> [(name: String, dir: URL)] in
-        let root = assetsDir.appendingPathComponent(sub)
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
-        return names.map { (name: $0, dir: root.appendingPathComponent($0)) }
-            .filter { FileManager.default.fileExists(atPath: $0.dir.appendingPathComponent("pet.json").path) }
-    }
+func hexColor(_ hex: String) -> CGColor {
+    guard let c = RGB(hex: hex) else { return CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1) }
+    return CGColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
 }
 
-func loadImage(_ url: URL) -> CGImage? {
-    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-    return CGImageSourceCreateImageAtIndex(src, 0, nil)
-}
-
-// Loads `want` (or NOTCHI_SKIN, or notchi-ink); falls back to the first pet that loads.
+// Loads `want` (or NOTCHI_SKIN, or the saved species, or Notchi); falls back to the first species that loads.
 func loadSkin(_ want: String? = nil) -> Skin? {
-    let folders = petFolders()
-    let pick = want ?? ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? defaults.string(forKey: "skin") ?? defaultSkin
-    let ordered = folders.filter { $0.name == pick } + folders.filter { $0.name != pick }
-    for f in ordered {
-        if let skin = loadSkin(name: f.name, dir: f.dir) { return skin }
-    }
-    print("no loadable pet in \(assetsDir.path)/demo-pets or /pets")
+    let pick = want ?? ProcessInfo.processInfo.environment["NOTCHI_SKIN"] ?? defaults.string(forKey: "skin") ?? Roster.defaultId
+    let order = [pick] + Roster.all.map(\.id).filter { $0 != pick }
+    for id in order { if let s = loadSkin(id: id) { return s } }
+    print("no loadable pet in \(assetsDir.path)/pets")
     return nil
 }
 
-func loadSkin(name: String, dir: URL) -> Skin? {
-    guard let data = try? Data(contentsOf: dir.appendingPathComponent("pet.json")),
-          let info = try? JSONDecoder().decode(SkinInfo.self, from: data) else {
-        print("\(dir.path)/pet.json missing or invalid")
+func loadSkin(id: String) -> Skin? {
+    let loaded: LoadedPack
+    do { loaded = try LoadedPack.load(dir: assetsDir.appendingPathComponent("pets/\(id)")) } catch {
+        print("pet \(id): \(error.localizedDescription)")
         return nil
     }
-    var strips: [PetState: [CGImage]] = [:]
-    var cell = CGSize.zero
-    var pixel = info.pixel ?? 7, baseline = info.baseline ?? 190, fps = info.fps ?? 8
-    var fpsByMood: [String: Double] = [:]
-    let sheetURL = dir.appendingPathComponent(info.spritesheetPath ?? "spritesheet.webp")
-    if let sheet = loadImage(sheetURL) {
-        let local = dir.appendingPathComponent("rows.json")
-        let mapURL = FileManager.default.fileExists(atPath: local.path) ? local : assetsDir.appendingPathComponent("pets/notchi-rows.json")
-        guard let mapData = try? Data(contentsOf: mapURL), let map = try? JSONDecoder().decode(RowMap.self, from: mapData),
-              map.cell.count == 2 else {
-            print("\(name): \(mapURL.path) missing or invalid")
-            return nil
-        }
-        cell = CGSize(width: map.cell[0], height: map.cell[1])
-        for row in map.rows_map {
-            guard let s = PetState(rawValue: row.name) else { continue }
-            let frames = (0..<row.frames).compactMap {
-                sheet.cropping(to: CGRect(x: $0 * map.cell[0], y: row.row * map.cell[1], width: map.cell[0], height: map.cell[1]))
-            }
-            if frames.count == row.frames && row.frames > 0 { strips[s] = frames }
-        }
-        pixel = map.scale
-        baseline = map.baseline
-        fpsByMood = map.fps ?? [:]
-        fps = fpsByMood["stable"] ?? fps
-    } else {
-        for s in PetState.allCases {
-            guard let n = info.frames?[s.rawValue], n > 0,
-                  let img = loadImage(dir.appendingPathComponent(s.rawValue + ".png")) else { continue }
-            let w = img.width / n
-            let frames = (0..<n).compactMap { img.cropping(to: CGRect(x: $0 * w, y: 0, width: w, height: img.height)) }
-            guard w > 0, frames.count == n else { print("\(s.rawValue).png: \(n) frames don't fit \(img.width)px"); continue }
-            strips[s] = frames
-            cell = CGSize(width: w, height: img.height)
-        }
+    var strips: [PetState: Strip] = [:]
+    for s in PetState.allCases {
+        guard let r = Fallback.resolve(s.row, in: loaded.pack), let frames = loaded.frames[r.row] else { continue }
+        strips[s] = Strip(row: r.row, frames: frames, subset: r.frames, rotated: r.rotated)
     }
-    guard strips[.walk] != nil else {
-        print("\(dir.path) has no walk frames")
-        return nil
-    }
-    for s in PetState.allCases where strips[s] == nil { print("\(name): no \(s.rawValue) frames, using walk") }
-    let scale = 2 / pixel
-    var doors: [DoorState: CGImage] = [:]
-    for d in DoorState.allCases {
-        if let img = loadImage(dir.appendingPathComponent("door_\(d.rawValue).png")) { doors[d] = img }
-    }
-    if !doors.isEmpty && doors.count < DoorState.allCases.count {
-        print("\(name): door art needs all of door_closed/glowing/open/locked.png, drawing the default door")
-        doors = [:]
-    }
-    print("pet skin \(dir.path)\(doors.isEmpty ? "" : " with door art")")
-    return Skin(name: name, fps: fps, fpsByMood: fpsByMood, size: CGSize(width: cell.width * scale, height: cell.height * scale),
-                footPadding: (cell.height - baseline) * scale, strips: strips, doors: doors, scale: scale)
+    guard strips[.walk] != nil else { print("pet \(id) has no walk frames"); return nil }
+    let scale: CGFloat = 2.0 / 7  // one sprite unit (7 sheet px) draws at 2 points
+    let (cw, ch) = loaded.pack.cell
+    print("pet \(id): pack v\(loaded.pack.version), \(loaded.frames.count) rows\(loaded.pack.canHoldLine ? "" : ", can't hold the line")")
+    return Skin(name: id, loaded: loaded, species: Roster.species(id), accent: hexColor(loaded.pack.notchi.accent),
+                size: CGSize(width: CGFloat(cw) * scale, height: CGFloat(ch) * scale),
+                footPadding: CGFloat(ch - 194) * scale, strips: strips, doors: [:], scale: scale)
 }
 
-// Design tokens: Ink, Paper, Signal.
+// Design tokens: Ink, Paper. The accent comes from the active pet.
 let inkColor = CGColor(red: 0x0B / 255.0, green: 0x0B / 255.0, blue: 0x0B / 255.0, alpha: 1)
 let paperColor = CGColor(red: 0xF4 / 255.0, green: 0xF2 / 255.0, blue: 0xED / 255.0, alpha: 1)
-let signalColor = CGColor(red: 1, green: 0x5A / 255.0, blue: 0x3C / 255.0, alpha: 1)
 
 // The screen with the menu bar (and the notch, if there is one).
 var mainScreen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
@@ -236,9 +167,11 @@ final class Door {
     let lockShackle = CAShapeLayer()
     let artLayer = CALayer()
     var state = DoorState.closed
+    /// The active pet lends the door its glow.
+    func setAccent(_ c: CGColor) { glow.fillColor = c; glow.shadowColor = c }
     var gen = 0  // bumps on every open/close so a stale animation step can't reopen the door
 
-    init(art: [DoorState: CGImage], scale: CGFloat) {
+    init(art: [DoorState: CGImage], scale: CGFloat, accent: CGColor) {
         self.art = art
         size = art[.closed].map { CGSize(width: CGFloat($0.width) * scale, height: CGFloat($0.height) * scale) } ?? CGSize(width: 14, height: 18)
         panel = overlayPanel(size, level: NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1))
@@ -253,8 +186,8 @@ final class Door {
         body.frame = bounds
         glow.frame = bounds
         glow.path = path
-        glow.fillColor = signalColor
-        glow.shadowColor = signalColor
+        glow.fillColor = accent
+        glow.shadowColor = accent
         glow.shadowRadius = 5
         glow.shadowOffset = .zero
         glow.shadowOpacity = 1
@@ -378,14 +311,13 @@ final class Pet {
     var sessionLive = false
     var lockWhenHome = false
     var holdUntil = Date.distantPast
-    // The sponsored line, from GET /campaigns/active. Shown above the pet while it holds the sign.
-    // Fixed-width ticker: static if the line fits, else it scrolls right to left in a seamless loop.
-    let signSize = CGSize(width: 160, height: 16)
-    lazy var signPanel = overlayPanel(signSize, level: .statusBar)
+    // The sponsored line, from GET /campaigns/active, on the plate the pet holds overhead (hold row).
+    // The plate never mirrors, never scrolls and never truncates (spec R2 §2).
+    lazy var signPanel = overlayPanel(CGSize(width: 60, height: 36), level: .statusBar)
     var signText = ""
-    let signClip = CALayer()
-    let signStrip = CALayer()
-    var scrollPaused = false
+    var signBrand = ""
+    var plate: (image: CGImage, layout: PlateLayout, backing: CGFloat)?
+    let signClick = ClickView(frame: .zero)
     var signShownAt: Date?
     var onSignClick: (() -> Void)?
     var signLinks = false // the current campaign has a link to open
@@ -400,7 +332,13 @@ final class Pet {
     var working = false
     // Claude Code is waiting on a permission prompt; the popover offers to bring the terminal forward.
     var waiting = false
-    var speed: Double { mood == "thriving" ? 1.4 : mood == "hungry" ? 0.6 : 1 }
+    var speed: Double { Rates.multiplier(mood: mood) }
+    // Accessories: one layer per slot, inside the sprite layer so they share its flips and squashes.
+    var accLayers: [Slot: CALayer] = [:]
+    var worn: [String] { defaults.stringArray(forKey: "wardrobe.\(skin.name)") ?? [] }
+    // Tricks: the backflip's jump arc lifts the whole window; the moonwalk slides against the facing.
+    var trickStart = Date.distantPast
+    var liftY: CGFloat = 0
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -421,23 +359,18 @@ final class Pet {
         click.autoresizingMask = [.width, .height]
         click.onClick = { [weak self] in self?.poke() }
         panel.contentView?.addSubview(click)
-        // The sign opens the brand's link; it only takes clicks while the cursor is on it (see updateCursor).
-        let signClick = ClickView(frame: CGRect(origin: .zero, size: signSize))
+        // The plate opens the brand's link; it only takes clicks while the cursor is on it (see updateCursor).
         signClick.autoresizingMask = [.width, .height]
         signClick.onClick = { [weak self] in self?.onSignClick?() }
         signPanel.contentView?.addSubview(signClick)
-        if let board = signPanel.contentView?.layer {
-            board.backgroundColor = paperColor
-            board.borderWidth = 1
-            board.borderColor = inkColor.copy(alpha: 0.16)
-            let marker = CALayer()
-            marker.backgroundColor = signalColor
-            marker.frame = CGRect(x: 5, y: (signSize.height - 6) / 2, width: 6, height: 6)
-            board.addSublayer(marker)
-            signClip.frame = CGRect(x: 15, y: 0, width: signSize.width - 19, height: signSize.height)
-            signClip.masksToBounds = true
-            signClip.addSublayer(signStrip)
-            board.addSublayer(signClip)
+        signPanel.contentView?.layer?.magnificationFilter = .nearest
+        for slot in Slot.allCases {
+            let l = CALayer()
+            l.magnificationFilter = .nearest
+            l.minificationFilter = .nearest
+            l.zPosition = CGFloat(slot.rawValue + 1)  // neck, then face, then head
+            sprite.addSublayer(l)
+            accLayers[slot] = l
         }
         bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
         bubbleLabel.textColor = .black
@@ -527,6 +460,10 @@ final class Pet {
         case .floor:
             if staysHome(mood: mood, agentWorking: working) { goHome(lock: false) }
             // The sign is the ad state and gets the most screen time, so it strolls at 0.4 instead of standing still.
+            if state == .moonwalk {
+                pos.x += Arcs.moonwalkVelocity(facing: dir, walkPointsPerSecond: 24 * walkSpeed) * dt
+                if pos.x < leftX || pos.x > rightX { pos.x = min(max(pos.x, leftX), rightX); set(.walk) }
+            }
             if state == .walk || state == .sign {
                 pos.x += dir * 24 * speed * walkSpeed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
@@ -559,12 +496,17 @@ final class Pet {
                 return
             }
         }
-        animClock += (working && state == .sign ? 12 : skin.fpsByMood[mood] ?? skin.fps * speed) * dt
+        animClock += (Rates.fps(strip.row, mood: mood) ?? 8) * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
         }
-        panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y))
+        // backflip: frames 1-4 are airborne; the app adds the 0.5 s arc (pet.json arcs)
+        liftY = state == .backflip && path == .floor
+            ? Arcs.backflipLift(t: Date().timeIntervalSince(trickStart) - 1 / (Rates.fps(.backflip, mood: "stable") ?? 12),
+                                bodyHeight: Arcs.bodyHeight(skin.pack) * skin.scale)
+            : 0
+        panel.setFrameOrigin(NSPoint(x: pos.x, y: pos.y + liftY))
         // Came out while you were on another Space: show it once you're back on the home one.
         if !panel.isVisible && onHomeSpace && Date() >= holdUntil { panel.orderFrontRegardless() }
         draw()
@@ -598,7 +540,6 @@ final class Pet {
         let mouse = NSEvent.mouseLocation
         let inside = path == .floor && onHomeSpace && panel.isVisible && opaque(at: mouse)
         let overSign = signPanel.isVisible && signPanel.frame.contains(mouse)
-        setScrollPaused(inside || overSign)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         // the sign is clickable only under the cursor, and never while the agent waits for approval
         let signTakesClick = overSign && !waiting && signLinks
@@ -632,7 +573,7 @@ final class Pet {
     func opaque(at p: NSPoint) -> Bool {
         let f = panel.frame
         guard f.contains(p) else { return false }
-        let img = strip[seq[min(frame, seq.count - 1)]]
+        let img = strip.frames[sheetFrame]
         var x = (p.x - f.minX) / f.width
         if flipped { x = 1 - x }
         let px = min(Int(x * CGFloat(img.width)), img.width - 1)
@@ -643,15 +584,13 @@ final class Pet {
         return (ctx.data?.load(as: UInt8.self) ?? 0) > 0
     }
 
-    var flipped: Bool { [.walk, .sign, .hover, .annoy].contains(state) && dir < 0 }
+    var flipped: Bool { [.walk, .sign, .hover, .annoy, .moonwalk].contains(state) && dir < 0 }
 
     // Frame order, with annoyance picking its part of the annoy row: 1-2 frown, 3-4 arms out, 5+ puffed and stomping.
-    var seq: [Int] {
-        guard state == .annoy else { return sequence(state, strip.count) }
-        let level = annoyance >= 5 ? [4, 5] : annoyance >= 3 ? [2, 3] : [0, 1]
-        let fit = level.filter { $0 < strip.count }
-        return fit.isEmpty ? [0] : fit
-    }
+    // Frame indices within the strip's row: a fallback subset, or the spec's sequence (idle by mood, annoy by clicks).
+    var seq: [Int] { strip.subset ?? Sequence.frames(strip.row, count: strip.frames.count, mood: mood, clicks: annoyance) }
+    /// The sheet frame on screen now, for anchors.
+    var sheetFrame: Int { seq[min(frame, seq.count - 1)] }
 
     func setMood(_ m: String, reason: String?) {
         if m != mood { print("mood \(mood) -> \(m)") }
@@ -695,72 +634,42 @@ final class Pet {
         if !bubblePanel.isVisible && onHomeSpace { bubblePanel.orderFrontRegardless() }
     }
 
-    func setSign(_ text: String?) {
+    /// Puts `text` on the plate (nil takes it down). `brand` is for the disclosure: VoiceOver and the hover card.
+    func setSign(_ text: String?, brand: String = "") {
         let text = text ?? ""
-        guard text != signText else { return }  // render() calls this every poll; don't restart the scroll
+        guard text != signText || brand != signBrand else { return }  // render() calls this every poll
         signText = text
-        signStrip.removeAllAnimations()
-        signStrip.sublayers?.forEach { $0.removeFromSuperlayer() }
-        signStrip.speed = 1
-        signStrip.timeOffset = 0
-        signStrip.beginTime = 0
-        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
-        let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let clipW = signClip.bounds.width, gap: CGFloat = 40
-        let scrolls = textSize.width > clipW
-        func textLayer(at x: CGFloat) -> CATextLayer {
-            let t = CATextLayer()
-            t.string = text
-            t.font = font
-            t.fontSize = 11
-            t.foregroundColor = inkColor
-            t.contentsScale = mainScreen.backingScaleFactor
-            t.frame = CGRect(x: x, y: (signSize.height - textSize.height) / 2, width: ceil(textSize.width) + 1, height: ceil(textSize.height))
-            return t
-        }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        signStrip.frame = CGRect(x: 0, y: 0, width: scrolls ? textSize.width * 2 + gap : clipW, height: signSize.height)
-        if scrolls {
-            signStrip.addSublayer(textLayer(at: 0))
-            signStrip.addSublayer(textLayer(at: textSize.width + gap))
-        } else {
-            signStrip.addSublayer(textLayer(at: (clipW - textSize.width) / 2))
-        }
-        CATransaction.commit()
-        guard scrolls else { return }
-        // One period moves exactly one copy plus the gap, so the loop seam is invisible. About 40pt/s.
-        let period = textSize.width + gap
-        let anim = CABasicAnimation(keyPath: "position.x")
-        anim.byValue = -period
-        anim.duration = period / 40
-        anim.repeatCount = .infinity
-        signStrip.add(anim, forKey: "ticker")
-        if scrollPaused { scrollPaused = false; setScrollPaused(true) }
+        signBrand = brand
+        renderPlate()
+        let label = text.isEmpty ? "" : "Sponsored, \(brand.isEmpty ? "a brand" : brand): \(text)"
+        signPanel.contentView?.setAccessibilityLabel(label)
+        signPanel.contentView?.setAccessibilityRole(.button)
+        signClick.toolTip = text.isEmpty ? nil : "Sponsored by \(brand.isEmpty ? "a brand" : brand).\nWhy this line: brands pay for real views while your agent works, and that pays for your pet's thinking."
     }
 
-    // Freezes the ticker in place (layer clock pause) so the line can be read, and resumes from the same spot.
-    func setScrollPaused(_ paused: Bool) {
-        guard paused != scrollPaused else { return }
-        scrollPaused = paused
-        if paused {
-            signStrip.timeOffset = signStrip.convertTime(CACurrentMediaTime(), from: nil)
-            signStrip.speed = 0
-        } else {
-            let pausedAt = signStrip.timeOffset
-            signStrip.speed = 1
-            signStrip.timeOffset = 0
-            signStrip.beginTime = 0
-            signStrip.beginTime = signStrip.convertTime(CACurrentMediaTime(), from: nil) - pausedAt
-        }
+    func renderPlate() {
+        guard !signText.isEmpty, let kit = skin.pack.notchi.signKit, let kitImage = skin.loaded.kit else { plate = nil; return }
+        let backing = mainScreen.backingScaleFactor
+        guard let (image, layout) = PlateRenderer.render(line: signText, kitImage: kitImage, kit: kit, scale: skin.scale, backing: backing) else { plate = nil; return }
+        plate = (image, layout, backing)
+        let size = CGSize(width: CGFloat(image.width) / backing, height: CGFloat(image.height) / backing)
+        signPanel.setContentSize(size)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        signPanel.contentView?.layer?.contents = image
+        signPanel.contentView?.layer?.contentsScale = backing
+        CATransaction.commit()
     }
 
     func placeSign() {
-        let show = path == .floor && state == .sign && !signText.isEmpty
-        if !show { signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return }
+        let show = path == .floor && state == .sign && plate != nil
+        guard show, let plate, let r = Plate.frame(plate.layout, pack: skin.pack, frame: sheetFrame, geometry: skin.geometry, flipped: flipped) else {
+            signShownAt = nil; if signPanel.isVisible { signPanel.orderOut(nil) }; return
+        }
+        // bottom-centre on the plate anchor; the plate doesn't bob, the pet bobs under it
         let w = signPanel.frame.width
-        let x = min(max(pos.x + size.width / 2 - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
-        signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + size.height - 6))
+        let x = min(max(pos.x + r.midX - w / 2, leftX), mainScreen.visibleFrame.maxX - w)
+        signPanel.setFrameOrigin(NSPoint(x: x, y: pos.y + r.minY))
         if !signPanel.isVisible && onHomeSpace { signPanel.orderFrontRegardless() }
         // An impression needs the sign really on screen: not on another Space, not behind a full-screen app.
         if signPanel.occlusionState.contains(.visible) {
@@ -778,7 +687,7 @@ final class Pet {
         }
     }
 
-    var strip: [CGImage] { skin.strips[state] ?? skin.strips[.walk]! }
+    var strip: Strip { skin.strips[state] ?? skin.strips[.walk]! }
 
     func draw() {
         var t = CGAffineTransform.identity
@@ -786,9 +695,8 @@ final class Pet {
         if state == .annoy && annoyance >= 5 && frame % 2 == 1 { t = t.translatedBy(x: 0, y: -2) }  // the stomp
         // Body only: the sign and bubbles are separate windows, so they stay upright.
         if path == .ceiling { t = t.scaledBy(x: 1, y: -1) }
-        // Climb frames face left; mirror them so the feet are on the right wall.
-        if state == .climb { t = t.scaledBy(x: -1, y: 1) }
-        if mood == "hungry" { t = t.scaledBy(x: 0.88, y: 1) }
+        // v6 climb frames are pre-rotated for the right wall; walk standing in for climb is turned onto it.
+        if strip.rotated { t = t.rotated(by: .pi / 2) }
         let phase = Double(frame) + animClock
         if mood == "thriving" && path == .floor && state == .walk {
             t = t.translatedBy(x: 0, y: abs(sin(phase * .pi / 2)) * 3)
@@ -813,9 +721,27 @@ final class Pet {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        sprite.contents = strip[seq[min(frame, seq.count - 1)]]
+        sprite.contents = strip.frames[sheetFrame]
         sprite.setAffineTransform(t)
+        // accessories in the sprite's own (unflipped) coordinates; the sprite's transform mirrors them with it
+        let wear = Dictionary(uniqueKeysWithValues: Accessories.drawOrder(worn).map { (Slot.of($0), $0) })
+        for (slot, layer) in accLayers {
+            guard let item = wear[slot], let sheet = skin.pack.notchi.accessories, let img = skin.loaded.accessory(item),
+                  let r = Accessories.frame(sheet: sheet, pack: skin.pack, row: strip.row, frame: sheetFrame, geometry: skin.geometry, flipped: false) else {
+                layer.contents = nil; continue
+            }
+            layer.contents = img
+            layer.frame = r
+        }
         CATransaction.commit()
+    }
+
+    /// A trick (spec R4 §8). Learning them comes later; for now the demo menu plays them.
+    func trick(_ s: PetState) {
+        guard path == .floor, [.backflip, .moonwalk].contains(s), skin.strips[s] != nil else { return }
+        trickStart = Date()
+        set(s, then: state == .sign ? .sign : .walk)
+        if s == .moonwalk { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in if self?.state == .moonwalk { self?.set(.walk) } } }
     }
 
     func askApproval() {
@@ -828,6 +754,8 @@ final class Pet {
     func setSkin(_ s: Skin) {
         let floorDelta = s.footPadding - skin.footPadding
         skin = s
+        door.setAccent(s.accent)
+        renderPlate()
         panel.setContentSize(s.size)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1036,13 +964,11 @@ struct PetInfo: Decodable {
     let explorer: String? // nearblocks for the server's network
 }
 
-/// Looks are earned, never bought: what a skin still needs, or nil when it's available. Unlisted skins are always open.
-func skinLock(_ name: String, _ i: PetInfo?) -> String? {
-    switch name {
-    case "notchi-bone": return (i?.level ?? 0) >= 2 ? nil : "level 2"
-    case "notchi-signal": return (i?.streak ?? 0) >= 3 ? nil : "a 3-day streak"
-    default: return nil
-    }
+/// Species are earned, never bought (spec D §2): starters are open; the rest show what unlocks them.
+/// shortcut: unlock tracking lands with hatching (milestone 5); until then only the starters can be picked, demo mode previews any.
+func speciesLock(_ id: String) -> String? {
+    guard let s = Roster.species(id) else { return "unknown" }
+    return s.starter ? nil : s.unlock
 }
 
 /// Time the agent worked while you waited today (prompt to stop), counted on this Mac from hook events, never uploaded.
@@ -1148,6 +1074,10 @@ final class Backend: NSObject {
         ("Mood: thriving", "mood.thriving"),
         ("Mood: hungry (compute budget empty)", "mood.hungry"),
         ("Mood: asleep (chain unreachable)", "mood.asleep"),
+        ("Trick: backflip", "trick.backflip"),
+        ("Trick: moonwalk", "trick.moonwalk"),
+        ("Try on the next accessory", "demo.tryon"),
+        ("Take accessories off", "demo.undress"),
     ]
     var demoPick = 0
     lazy var reminders: Reminders = Reminders(pet: self.pet)
@@ -1304,11 +1234,11 @@ final class Backend: NSObject {
         let tag = seeded ? " [seeded]" : ""
         if let demo = demoHooks, !demo.isEmpty {
             pet.signLinks = false
-            pet.setSign("Sponsored \u{00B7} " + demo[hookIndex % demo.count] + " [demo]")
+            pet.setSign(demo[hookIndex % demo.count] + " [demo]", brand: "Clearlog [demo]")
         } else {
             let hooks = campaign?.allHooks ?? []
             pet.signLinks = showHooks && campaign?.url != nil
-            pet.setSign(showHooks && !hooks.isEmpty ? "Sponsored \u{00B7} " + hooks[currentHook] + tag : nil)
+            pet.setSign(showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil, brand: campaign?.brand ?? "")
         }
         if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings || showingDemo { return }  // don't rebuild under a dragging slider
@@ -1400,16 +1330,15 @@ final class Backend: NSObject {
         stack.addArrangedSubview(back)
         stack.addArrangedSubview(label("Settings", 22, .semibold))
 
-        stack.addArrangedSubview(caption("Avatar"))
+        stack.addArrangedSubview(caption("Pet"))
         let picker = NSPopUpButton(frame: .zero, pullsDown: false)
         picker.autoenablesItems = false
-        let folders = petFolders()
-        for f in folders {
-            let lock = skinLock(f.name, info)
-            picker.addItem(withTitle: lock.map { "\(f.name) (unlocks at \($0))" } ?? f.name)
-            picker.lastItem?.isEnabled = lock == nil || f.name == pet.skin.name // a look you already wear stays
+        for sp in Roster.all {
+            let lock = speciesLock(sp.id)
+            picker.addItem(withTitle: lock.map { "\(sp.name) (unlocks with \($0))" } ?? "\(sp.name), the \(sp.kind)")
+            picker.lastItem?.isEnabled = lock == nil || demoMode || sp.id == pet.skin.name
         }
-        if let i = folders.firstIndex(where: { $0.name == pet.skin.name }) { picker.selectItem(at: i) }
+        if let i = Roster.all.firstIndex(where: { $0.id == pet.skin.name }) { picker.selectItem(at: i) }
         picker.target = self
         picker.action = #selector(pickSkin(_:))
         stack.addArrangedSubview(picker)
@@ -1514,6 +1443,14 @@ final class Backend: NSObject {
         case "demo.remind":
             reminders.message = "Claude Code is done and waiting for you [demo]"
             reminders.fire()
+        case "trick.backflip": pet.trick(.backflip)
+        case "trick.moonwalk": pet.trick(.moonwalk)
+        case "demo.tryon":
+            // try-on is free and unlimited; earning items comes with the Closet (milestone 5)
+            let names = pet.skin.pack.notchi.accessories?.names ?? []
+            let now = pet.worn.last.flatMap { names.firstIndex(of: $0) } ?? -1
+            if !names.isEmpty { defaults.set([names[(now + 1) % names.count]], forKey: "wardrobe.\(pet.skin.name)") }
+        case "demo.undress": defaults.removeObject(forKey: "wardrobe.\(pet.skin.name)")
         case let m where m.hasPrefix("mood."):
             let mood = String(m.dropFirst(5))
             pet.setMood(mood, reason: mood == "asleep" ? "demo: can't read the chain" : mood == "hungry" ? "demo: " + brokeReason : nil)
@@ -1526,12 +1463,13 @@ final class Backend: NSObject {
     @objc func closeSettings() { showingSettings = false; shown = ""; render() }
 
     @objc func pickSkin(_ sender: NSPopUpButton) {
-        let folders = petFolders()
-        guard folders.indices.contains(sender.indexOfSelectedItem) else { return }
-        let f = folders[sender.indexOfSelectedItem]
-        guard skinLock(f.name, info) == nil || f.name == pet.skin.name, let s = loadSkin(name: f.name, dir: f.dir) else { return }
-        defaults.set(f.name, forKey: "skin")
+        guard Roster.all.indices.contains(sender.indexOfSelectedItem) else { return }
+        let sp = Roster.all[sender.indexOfSelectedItem]
+        guard speciesLock(sp.id) == nil || demoMode || sp.id == pet.skin.name, let s = loadSkin(id: sp.id) else { return }
+        if !demoMode { defaults.set(sp.id, forKey: "skin") }  // a demo preview isn't saved
         pet.setSkin(s)
+        shown = ""
+        render()
     }
 
     @objc func toggleSounds(_ sender: NSButton) { soundsOn = sender.state == .on; defaults.set(soundsOn, forKey: "sounds") }
@@ -1644,7 +1582,7 @@ final class Backend: NSObject {
     func avatar() -> NSView {
         let v = NSView()
         v.wantsLayer = true
-        v.layer?.contents = (pet.skin.strips[.idle] ?? pet.skin.strips[.walk])?.first
+        v.layer?.contents = (pet.skin.strips[.idle] ?? pet.skin.strips[.walk])?.frames.first
         v.layer?.contentsGravity = .resizeAspect
         v.layer?.magnificationFilter = .nearest
         v.widthAnchor.constraint(equalToConstant: 44).isActive = true
@@ -1712,7 +1650,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 guard let skin = loadSkin() else { exit(1) }
-let door = Door(art: skin.doors, scale: skin.scale)
+let door = Door(art: skin.doors, scale: skin.scale, accent: skin.accent)
 let pet = Pet(skin: skin, door: door)
 let backend = Backend(pet: pet)
 let server: HookServer

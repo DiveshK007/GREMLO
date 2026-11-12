@@ -62,7 +62,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: swift build
+      - run: swift build && swift test
         working-directory: apps/mac
       - run: ./scripts/release-mac.sh # unsigned here; signing and notarization need your Apple secrets
 

@@ -49,6 +49,26 @@ func assertSnapshot(_ image: CGImage?, named name: String, sourceLocation: Sourc
         }
     }
 
+    /// What the earner looks like holding the line: the hold frame with the plate on its anchor, as the Mac draws it.
+    @Test func earnerHoldingTheLineForAllEightSpecies() throws {
+        for s in Roster.all {
+            let loaded = try LoadedPack.load(dir: petsDir.appendingPathComponent(s.id))
+            let scale: CGFloat = 2.0 / 7, backing: CGFloat = 2
+            let (plateImg, layout) = try #require(PlateRenderer.render(line: line, kitImage: loaded.kit!, kit: loaded.pack.notchi.signKit!, scale: scale, backing: backing))
+            let g = PetGeometry(cellW: loaded.pack.cell.w, cellH: loaded.pack.cell.h, scale: scale)
+            let r = try #require(Plate.frame(layout, pack: loaded.pack, frame: 0, geometry: g, flipped: false))
+            let petW = g.cellW * scale, petH = g.cellH * scale
+            let plateW = CGFloat(plateImg.width) / backing, plateH = CGFloat(plateImg.height) / backing
+            let W = max(petW, plateW) + 8, H = max(petH, r.minY + plateH) + 4
+            let ctx = try #require(Images.context(Int(W * backing), Int(H * backing)))
+            ctx.scaleBy(x: backing, y: backing)
+            let ox = (W - petW) / 2
+            ctx.draw(try #require(loaded.frames[.hold]?.first), in: CGRect(x: ox, y: 0, width: petW, height: petH))
+            ctx.draw(plateImg, in: CGRect(x: ox + r.midX - plateW / 2, y: r.minY, width: plateW, height: plateH))
+            try assertSnapshot(ctx.makeImage(), named: "earner-\(s.id)")
+        }
+    }
+
     @Test func everyRowOfEveryPackCropsWithAllItsFrames() throws {
         for s in Roster.all {
             let pack = try LoadedPack.load(dir: petsDir.appendingPathComponent(s.id))
