@@ -9,6 +9,6 @@ let package = Package(
         .target(name: "NotchiCore"),
         .executableTarget(name: "Notchi", dependencies: ["NotchiCore"], resources: [.copy("Resources/notchi-hook.sh"), .copy("Resources/notchi-git-hook.sh")]),
         .executableTarget(name: "NotchiCLI", dependencies: ["NotchiCore"]),
-        .testTarget(name: "NotchiCoreTests", dependencies: ["NotchiCore"], exclude: ["__Snapshots__"]),
+        .testTarget(name: "NotchiCoreTests", dependencies: ["NotchiCore"], exclude: ["__Snapshots__"], resources: [.copy("Fixtures")]),
     ]
 )

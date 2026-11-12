@@ -41,7 +41,8 @@ public enum Commands {
       approve next [deny]             answers the oldest ordinary approval (never a risky one)
       hook install|remove <claude|git> [--global]
       log [--today] [--json]          the day's events
-      validate <dir> | new <name> | preview <dir>   creator tools
+      validate <dir> | new <name> | preview <dir> | submit <dir> --creator <name>   creator tools
+      verify <campaign> [--server URL]   replays a campaign's public log against its bill
     """
 
     /// "30", "30m", "1h", "90s" (rounded up to a minute), "1h30m".

@@ -8,7 +8,11 @@ import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 import { arkivCampaign } from "./arkiv.ts"; // Arkiv mirror: off on the NEAR build (its schema is EVM-only); the read route stays
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { addMoment, anonPet, appendEntry, momentTags, momentView, pausedLines, type LogEntry, type MomentBucket } from "./trust.ts";
+import { newParkId, parkList, parkPet, relayInbox, relayJoin, relaySend, VISIT_TTL_MS, type Park, type Relay, type Visit } from "./social.ts";
+import { checkSubmission, report as reportSpecies, type Submission } from "./gallery.ts";
 import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
@@ -40,6 +44,16 @@ type Store = {
   reported: Record<string, number>; // campaign id -> ms of the last weekly report
   held: Record<string, Held[]>; // campaign id -> views waiting out the holdback, bucketed by pet, hour and network
   voided: Record<string, Record<string, number>>; // campaign id -> reason -> views voided by the fraud rules
+  moments: Record<string, string[]>; // campaign id -> moment tag per line (tests | deploy | long run | any)
+  momentViews: Record<string, Record<string, MomentBucket>>; // campaign id -> moment -> sightings and distinct pets
+  reports: Record<string, number[]>; // campaign id -> "Report" count per line
+  logs: Record<string, LogEntry[]>; // campaign id -> public log of signed sighting reports
+  park: Park; // opt-in pet park: exactly {id, name, species, stage, outfit}
+  parkTokens: Record<string, string>; // park id -> secret the owner's Mac uses to read its visits
+  visits: Visit[]; // guestbook visits waiting for the host's Mac (24 h)
+  relay: Relay; // team relay: members and visits (24 h)
+  gallery: Submission[]; // community species: review -> listed (or paused by reports)
+  galleryReviews: Record<string, string[]>; // submission id -> reviewers who played every row
 };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
@@ -49,7 +63,8 @@ const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
-  held: {}, voided: {},
+  held: {}, voided: {}, moments: {}, momentViews: {}, reports: {}, logs: {}, park: {}, parkTokens: {}, visits: [],
+  relay: { members: {}, visits: [] }, gallery: [], galleryReviews: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -126,11 +141,11 @@ const errMsg = errText;
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
-async function readRaw(req: IncomingMessage) {
+async function readRaw(req: IncomingMessage, max = 100_000) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 100_000) throw new HttpError(413, "body too large");
+    if (raw.length > max) throw new HttpError(413, "body too large");
   }
   return raw;
 }
@@ -198,9 +213,10 @@ function addImpressions(req: IncomingMessage, raw: string) {
       console.log(`view: ${pet.name} campaign ${id} refused: ${errMsg(e)}`);
       throw e;
     }
-    return { id, petKey: pet.petKey, hook };
+    return { id, petKey: pet.petKey, hook, moment: String(i.moment ?? "any") };
   });
   let accepted = 0;
+  const logged: Record<string, number[]> = {}; // campaign -> accepted per line, for the public log
   for (const r of rows) {
     const t0 = store.today[r.petKey];
     if (!underDailyCap(t0?.day === utcDay() ? t0.count : 0)) { console.log(`view: ${r.petKey} campaign ${r.id} skipped: daily cap reached`); continue; } // respect the developer: 120 views a day at most
@@ -209,9 +225,17 @@ function addImpressions(req: IncomingMessage, raw: string) {
     console.log(`view: ${r.petKey} campaign ${r.id} hook ${r.hook ?? "-"} counted; held ${HOLDBACK_HOURS}h, then the worker settles it`);
     hold((store.held[r.id] ??= []), r.petKey, Math.floor(Date.now() / 3_600_000), ipTag); // paid after holdback + rules
     if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
+    addMoment((store.momentViews[r.id] ??= {}), r.moment, r.petKey);
+    (logged[r.id] ??= [0, 0, 0, 0, 0])[r.hook ?? 0]++;
     const t = store.today[r.petKey];
     store.today[r.petKey] = { day: utcDay(), count: (t?.day === utcDay() ? t.count : 0) + 1 };
     store.days[r.petKey] = markDay(store.days[r.petKey], utcDay());
+  }
+  // every counted sighting is backed by the pet's own signed report, chained in the campaign's public log
+  const h = (k: string) => { const v = req.headers[k]; return typeof v === "string" ? v : null; };
+  for (const [id, counts] of Object.entries(logged)) {
+    appendEntry((store.logs[id] ??= []), { campaign: id, hour: Math.floor(Date.now() / 3_600_000), counts, pet: anonPet(rows[0].petKey),
+      key: signed ? h("x-notchi-key") : null, time: signed ? h("x-notchi-time") : null, sig: signed ? h("x-notchi-sig") : null, body: raw });
   }
   save();
   return { accepted, pending: store.pending };
@@ -274,6 +298,14 @@ async function campaigns() {
   return view<[number, OnchainCampaign][]>("get_campaigns", { from: Math.max(1, count - 99), limit: 100 });
 }
 
+/** The A/B rotation, rebalanced hourly (R2 §15). */
+const orders = new Map<string, number[]>();
+function hourlyOrder(id: string, n: number) {
+  const k = `${id}:${n}:${Math.floor(Date.now() / 3_600_000)}`;
+  if (!orders.has(k)) { orders.clear(); orders.set(k, hookOrder(store.hookViews[id] ?? [], store.clicks[id] ?? [], n)); }
+  return orders.get(k)!;
+}
+
 /** The campaign the pet shows: the newest live one with a known line that can still pay for an impression, or null. */
 async function activeCampaign() {
   const now = nowS();
@@ -282,7 +314,11 @@ async function activeCampaign() {
     if (c.closed || BigInt(c.end_time) <= now || BigInt(c.budget) - BigInt(c.spent) < rate) continue;
     const view = campaignView({ id: BigInt(id), brand: c.brand, lineHash: `0x${c.line_hash}`, rate }, store);
     // a line the server never got can't go on the sign; `order` is the auto-optimised rotation for the next slots
-    if (view.line) return { ...view, order: hookOrder(store.hookViews[view.campaignId] ?? [], store.clicks[view.campaignId] ?? [], view.hooks.length) };
+    if (view.line) {
+      const paused = pausedLines(store.reports[view.campaignId], store.hookViews[view.campaignId]);
+      return { ...view, order: hourlyOrder(view.campaignId, view.hooks.length).filter((i) => !paused.includes(i)), paused,
+               moments: store.moments[view.campaignId] ?? momentTags([], view.hooks.length) };
+    }
   }
   return null;
 }
@@ -440,6 +476,7 @@ async function saveCampaign(body: any) {
   if (body.brief !== undefined) store.briefs[id] = checkCampaign(body.brief, String(line).split("\n"));
   const h = checkLine(line, body.lineHash, onchainHash);
   store.lines[h] = line;
+  store.moments[id] = momentTags(body.moments, String(line).split("\n").length);
   if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
   // checked before payment (/campaigns/check); after the money moved a bad address is dropped, never an error
   const email = (() => { try { return checkEmail(body.email); } catch { return undefined; } })();
@@ -501,7 +538,8 @@ function campaignStats(id: string) {
   const views = store.hookViews[id] ?? [0, 0, 0, 0, 0], clicks = store.clicks[id] ?? [0, 0, 0, 0, 0];
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
   const heldViews = (store.held[id] ?? []).reduce((a, h) => a + h.n, 0);
-  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, heldViews, holdbackHours: HOLDBACK_HOURS, voided: store.voided[id] ?? {}, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id] };
+  return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, heldViews, holdbackHours: HOLDBACK_HOURS, voided: store.voided[id] ?? {}, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id],
+    moments: momentView(store.momentViews[id]), reports: store.reports[id] ?? [], paused: pausedLines(store.reports[id], views) };
 }
 
 let statsCache: { at: number; body: unknown } | null = null;
@@ -609,6 +647,108 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: st
 }
 if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 
+/** A campaign's public log and what was billed from it; `notchi verify <campaign>` checks one against the other. */
+function publicLog(id: string) {
+  const settled = store.payouts.filter((p) => p.id === id).reduce((a, p) => a + p.views, 0);
+  const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
+  const held = (store.held[id] ?? []).reduce((a, x) => a + x.n, 0);
+  const voided = Object.values(store.voided[id] ?? {}).reduce((a, b) => a + b, 0);
+  return { campaign: id, entries: store.logs[id] ?? [], billed: { settled, pending, held, voided } };
+}
+
+/** "Report" from the menu bar: a signed pet only, once per pet per line per day. Enough reports pause the line. */
+const reported = new Set<string>();
+function reportLine(req: IncomingMessage, raw: string) {
+  const b = parse(raw), signed = signer(req, "/lines/report", raw);
+  const pet = findPet(String(b?.petKey ?? ""));
+  if (!pet) throw bad("unknown pet");
+  mustBeFrom(pet, signed, REQUIRE_SIGNED);
+  const id = String(b?.campaignId ?? ""), hook = Number(b?.hook);
+  if (!/^[1-9][0-9]*$/.test(id) || !(Number.isInteger(hook) && hook >= 0 && hook < 4)) throw bad("campaignId and hook 0-3");
+  const k = `${utcDay()}:${pet.petKey}:${id}:${hook}`;
+  if (reported.has(k)) return { ok: true };
+  reported.add(k);
+  (store.reports[id] ??= [0, 0, 0, 0])[hook]++;
+  save();
+  console.log(`report: campaign ${id} line ${hook} (${store.reports[id][hook]} reports)`);
+  return { ok: true, paused: pausedLines(store.reports[id], store.hookViews[id]).includes(hook) };
+}
+
+const parkHits = new Map<string, number[]>();
+function joinPark(req: IncomingMessage, b: any) {
+  if (!allow(parkHits, clientIp(req), Date.now(), 30, 3_600_000)) throw new HttpError(429, "slow down");
+  const pet = parkPet({ ...b, id: b?.id || newParkId() });
+  const token = store.parkTokens[pet.id] ?? randomBytes(16).toString("hex");
+  if (store.parkTokens[pet.id] && b?.token !== token) throw new HttpError(403, "that park id belongs to another pet");
+  store.parkTokens[pet.id] = token;
+  store.park[pet.id] = { pet, seen: Date.now() };
+  save();
+  return { id: pet.id, token };
+}
+function leavePark(id: string, token: string | null) {
+  if (store.parkTokens[id] !== token) throw new HttpError(403, "wrong token");
+  delete store.park[id];
+  save();
+  return { ok: true };
+}
+const visitHits = new Map<string, number[]>();
+function sendVisit(req: IncomingMessage, b: any) {
+  if (!allow(visitHits, clientIp(req), Date.now(), 20, 3_600_000)) throw new HttpError(429, "slow down");
+  const to = String(b?.to ?? "");
+  if (!store.park[to]) throw new HttpError(404, "that pet isn't in the park");
+  const { id: _, ...from } = parkPet({ ...b?.from, id: newParkId() });
+  store.visits = [...store.visits.filter((v) => Date.now() - v.at < VISIT_TTL_MS), { to, from, at: Date.now() }].slice(-5000);
+  save();
+  return { ok: true };
+}
+function takeVisits(id: string | null, token: string | null) {
+  if (!id || store.parkTokens[id] !== token) throw new HttpError(403, "wrong token");
+  const mine = store.visits.filter((v) => v.to === id);
+  store.visits = store.visits.filter((v) => v.to !== id);
+  if (mine.length) save();
+  return { visits: mine.map((v) => ({ ...v.from, at: v.at })) };
+}
+
+const GALLERY_DIR = process.env.GALLERY_DIR ?? new URL("../gallery", import.meta.url).pathname;
+const galleryHits = new Map<string, number[]>();
+function submitSpecies(req: IncomingMessage, raw: string) {
+  if (!allow(galleryHits, clientIp(req), Date.now(), 5, 86_400_000)) throw new HttpError(429, "5 submissions a day");
+  const b = parse(raw);
+  const name = String(b?.name ?? "").trim(), creator = String(b?.creator ?? "").trim();
+  if (!/^[a-z0-9-]{2,24}$/.test(name)) throw bad("name is 2-24 of a-z, 0-9, -");
+  if (!creator || creator.length > 40) throw bad("creator is 1-40 characters (shown as credit)");
+  if (b?.ownArt !== true) throw bad("confirm you made the art (Codex imports stay local)");
+  const { rows } = checkSubmission(b?.files ?? {});
+  const id = randomBytes(6).toString("hex");
+  mkdirSync(`${GALLERY_DIR}/${id}`, { recursive: true });
+  for (const [f, data] of Object.entries(b.files as Record<string, string>)) writeFileSync(`${GALLERY_DIR}/${id}/${f}`, Buffer.from(data, "base64"));
+  store.gallery.push({ id, name, creator, status: "review", reports: 0, at: Date.now(), rows });
+  save();
+  console.log(`gallery: ${name} by ${creator} submitted for review (${id})`);
+  return { id, status: "review", note: "Two reviewers play every row; target two working days. Machines check format, image safety, look-alikes and text first." };
+}
+function reportGallery(id: string) {
+  const s = store.gallery.find((x) => x.id === id);
+  if (!s) throw new HttpError(404, "unknown species");
+  reportSpecies(s);
+  save();
+  return { status: s.status };
+}
+/** A reviewer (GALLERY_REVIEW_TOKEN) who played every row approves; two different reviewers list it. */
+function reviewGallery(req: IncomingMessage, id: string, b: any) {
+  const token = process.env.GALLERY_REVIEW_TOKEN ?? "", got = String(req.headers["x-review-token"] ?? "");
+  if (!token || got.length !== token.length || !timingSafeEqual(Buffer.from(got), Buffer.from(token))) throw new HttpError(403, "reviewers only");
+  const s = store.gallery.find((x) => x.id === id);
+  if (!s) throw new HttpError(404, "unknown species");
+  const who = String(b?.reviewer ?? "").trim();
+  if (!who || b?.playedEveryRow !== true) throw bad("reviewer and playedEveryRow: true");
+  const list = (store.galleryReviews[id] ??= []);
+  if (!list.includes(who)) list.push(who);
+  if (list.length >= 2 && s.status === "review") s.status = "listed";
+  save();
+  return { status: s.status, reviewers: list.length };
+}
+
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
@@ -644,6 +784,22 @@ async function route(req: IncomingMessage) {
     if (pet) mustBeFrom(pet, signed, REQUIRE_SIGNED);
     return petThink(decodeURIComponent(thinkPath[1]), parse(raw));
   }
+  const log = pathname.match(/^\/campaigns\/([1-9][0-9]*)\/log$/);
+  if (m === "GET" && log) return publicLog(log[1]);
+  if (m === "POST" && pathname === "/lines/report") return reportLine(req, await readRaw(req));
+  if (m === "GET" && pathname === "/park") return { pets: parkList(store.park, Date.now()) };
+  if (m === "POST" && pathname === "/park") return joinPark(req, await readBody(req));
+  const leave = pathname.match(/^\/park\/([a-f0-9]{16,32})$/);
+  if (m === "DELETE" && leave) return leavePark(leave[1], searchParams.get("token"));
+  if (m === "POST" && pathname === "/visits") return sendVisit(req, await readBody(req));
+  if (m === "GET" && pathname === "/visits") return takeVisits(searchParams.get("id"), searchParams.get("token"));
+  if (m === "POST" && pathname === "/relay/join") return relayJoin(store.relay, await readBody(req), Date.now());
+  if (m === "POST" && pathname === "/relay/visit") { const r = relaySend(store.relay, await readBody(req), Date.now()); save(); return r; }
+  if (m === "GET" && pathname === "/relay/inbox") { const r = relayInbox(store.relay, searchParams, Date.now()); save(); return { visits: r }; }
+  if (m === "GET" && pathname === "/gallery") return { species: store.gallery.filter((s) => s.status === "listed") };
+  if (m === "POST" && pathname === "/gallery") return submitSpecies(req, await readRaw(req, 12_000_000));
+  const g = pathname.match(/^\/gallery\/([a-f0-9]{12})\/(report|review)$/);
+  if (m === "POST" && g) return g[2] === "report" ? reportGallery(g[1]) : reviewGallery(req, g[1], await readBody(req));
   if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
   throw new HttpError(404, "not found");
 }
