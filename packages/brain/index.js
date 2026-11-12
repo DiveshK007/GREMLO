@@ -33,7 +33,8 @@ Reply with only a JSON object: {"hooks": [{"format": "<format>", "text": "<hook>
 // Defaults are NEAR-hosted models (owned_by "nearai" in /v1/models), served from attested TEEs.
 const SMART = process.env.NEAR_AI_MODEL_SMART || 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
 const CHEAP = process.env.NEAR_AI_MODEL_CHEAP || 'Qwen/Qwen3.8-27B';
-export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP, hungry: CHEAP };
+// hungry and asleep make no call: the pet can't pay for one (see the server's compute budget)
+export const MODEL_BY_MOOD = { thriving: SMART, stable: CHEAP };
 
 /**
  * One chat call. Returns {out, content, requestId, usage}: out is the parsed JSON object from the reply,
@@ -72,18 +73,20 @@ async function chat(system, user, model, opts) {
   const match = content.match(/\{[\s\S]*\}/);
   let out = null;
   try { out = match && JSON.parse(match[0]); } catch {}
-  return { out, content, requestId, usage: data?.usage ?? null };
+  return { out, content, requestId, completionId: requestId, usage: data?.usage ?? null };
 }
 
 export async function think(state, opts = {}) {
-  if (state?.mood === 'asleep') return sleep('asleep: no paid calls', null);
+  if (state?.mood === 'asleep' || state?.mood === 'hungry') return sleep(`${state.mood}: no paid calls`, null);
   const model = MODEL_BY_MOOD[state?.mood];
   if (!model) return sleep(`unknown mood: ${state?.mood}`, null);
   try {
-    const { out, content, requestId, usage } = await chat(SYSTEM, JSON.stringify(state), model, opts);
-    if (!out) return sleep(`NEAR AI reply had no JSON: ${content.slice(0, 200)}`, requestId);
-    if (!ACTIONS.includes(out.action)) return sleep(`NEAR AI picked unknown action: ${out.action}`, requestId);
-    return { action: out.action, say: String(out.say ?? '').slice(0, 80), requestId, usage };
+    const { out, content, requestId, completionId, usage } = await chat(SYSTEM, JSON.stringify(state), model, opts);
+    // a completion that came back unusable was still served (and billed), so it keeps its completion id
+    const paid = { requestId, completionId, model, usage };
+    if (!out) return { ...sleep(`NEAR AI reply had no JSON: ${content.slice(0, 200)}`, requestId), ...paid };
+    if (!ACTIONS.includes(out.action)) return { ...sleep(`NEAR AI picked unknown action: ${out.action}`, requestId), ...paid };
+    return { action: out.action, say: String(out.say ?? '').slice(0, 80), ...paid };
   } catch (err) {
     return sleep(err.message, err.requestId);
   }

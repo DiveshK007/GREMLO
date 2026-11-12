@@ -14,7 +14,7 @@ test('parses action, say, the completion id and usage', async () => {
   const out = await think({ mood: 'stable' }, { fetch: async () => new Response(JSON.stringify({
     id: 'chatcmpl-1', choices: [{ message: { content: '```json\n{"action":"wave","say":"need you"}\n```' } }], usage,
   }), { headers: { 'x-request-id': 'trace-1' } }) });
-  assert.deepEqual(out, { action: 'wave', say: 'need you', requestId: 'chatcmpl-1', usage });
+  assert.deepEqual(out, { action: 'wave', say: 'need you', requestId: 'chatcmpl-1', completionId: 'chatcmpl-1', model: 'cheap-model', usage });
 });
 
 test('calls NEAR AI Cloud with the bearer key; a failed call carries X-Request-Id', async () => {
@@ -24,6 +24,7 @@ test('calls NEAR AI Cloud with the bearer key; a failed call carries X-Request-I
   assert.equal(url, 'https://cloud-api.near.ai/v1/chat/completions');
   assert.equal(auth, 'Bearer k');
   assert.equal(out.requestId, 'trace-2');
+  assert.equal(out.completionId, undefined); // nothing was served, so nothing may be charged
   assert.match(out.reason, /NEAR AI HTTP 402/);
 });
 
@@ -40,12 +41,13 @@ test('picks the model by mood, no call when asleep', async () => {
   const spy = async (url, init) => { sent.push(JSON.parse(init.body).model); return ok(); };
   await think({ mood: 'thriving' }, { fetch: spy });
   await think({ mood: 'stable' }, { fetch: spy });
-  await think({ mood: 'hungry' }, { fetch: spy });
-  assert.deepEqual(sent, ['smart-model', 'cheap-model', 'cheap-model']);
+  assert.deepEqual(sent, ['smart-model', 'cheap-model']);
 
-  const asleep = await think({ mood: 'asleep' }, { fetch: spy });
-  assert.equal(asleep.action, 'sleep');
-  assert.equal(sent.length, 3);
+  for (const mood of ['hungry', 'asleep']) {
+    const r = await think({ mood }, { fetch: spy });
+    assert.deepEqual([r.action, r.requestId, r.completionId], ['sleep', null, undefined]);
+  }
+  assert.equal(sent.length, 2);
 });
 
 test('safe-stops on HTTP error, unknown action and network failure', async () => {
@@ -53,8 +55,9 @@ test('safe-stops on HTTP error, unknown action and network failure', async () =>
   assert.equal(broke.action, 'sleep');
   assert.match(broke.reason, /402.*insufficient balance/);
 
-  const odd = await think({ mood: 'stable' }, { fetch: reply(200, { choices: [{ message: { content: '{"action":"pay"}' } }] }) });
+  const odd = await think({ mood: 'stable' }, { fetch: reply(200, { id: 'chatcmpl-odd', choices: [{ message: { content: '{"action":"pay"}' } }] }) });
   assert.equal(odd.action, 'sleep');
+  assert.equal(odd.completionId, 'chatcmpl-odd'); // served and billed, so it is charged too
 
   const down = await think({ mood: 'stable' }, { fetch: async () => { throw new Error('ECONNREFUSED'); } });
   assert.deepEqual(down, { action: 'sleep', reason: 'NEAR AI unreachable: ECONNREFUSED', requestId: null });
