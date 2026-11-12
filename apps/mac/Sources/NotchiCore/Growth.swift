@@ -45,6 +45,9 @@ public struct PetProgress: Codable, Equatable, Sendable {
     public var celebrations = 0
     public var focusSessions = 0
     public var reviewsAnswered = 0
+    public var maxSessionTools = 0             // most tool calls in one session (juggle)
+    public var releaseTags = 0                 // release tags seen by the git hook (moonwalk)
+    public var bugJar = 0                      // bugs caught on passing runs; a count, never reset
     public var unlocked: [String] = []         // species ids, starter included
     public var owned: [String] = []            // Closet items
     public var worn: [String] = []

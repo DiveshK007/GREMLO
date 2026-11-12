@@ -269,6 +269,7 @@ final class NotchLiveController: NSObject {
         case .egg:
             if let n = backend?.growth.unlockNote, Date() < n.until { stack.addArrangedSubview(text(n.text, 11, .primary)) }
             else if let g = backend?.growth { stack.addArrangedSubview(row([eyes(), spacer(), text("egg \u{00B7} \(g.egg.calls)/50", 11, .secondary, mono: true)])) }
+        case .stuck, .meeting, .drop: break
         case .rest, .room, .visitor, .focus: break
         case .think: break  // the breathing accent edge says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))

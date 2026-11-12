@@ -6,7 +6,7 @@ import Foundation
 // MARK: - States and priority
 
 public enum LiveState: String, CaseIterable, Sendable {
-    case rest, think, peek, ticker, knock, queue, done, room, egg, sleep, visitor, focus, offline
+    case rest, think, peek, ticker, knock, queue, done, room, egg, sleep, visitor, focus, offline, stuck, meeting, drop
 }
 
 public enum NotchLive {
@@ -26,6 +26,9 @@ public enum NotchLive {
         case .visitor: return (420, 40)
         case .focus: return (290, 36)
         case .offline: return (360, 36)
+        case .stuck: return (620, 116)      // R4 §3: title, the error line, three buttons
+        case .meeting: return (290, 36)     // R4 §10: "standup in 5" and a countdown
+        case .drop: return (360, 56)        // R4 §5: one size up while something is dragged over
         }
     }
 
@@ -41,17 +44,23 @@ public enum NotchLive {
         public var sleeping = false         // 23:00-06:00 or a nap
         public var offline = false
         public var roomOpen = false         // dragged down
+        public var stuck = false            // the stuck detector fired this run (R4 §3)
+        public var meetingSoon = false      // a calendar event starts within 5 minutes (R4 §10)
+        public var dragging = false         // something is dragged over the notch (R4 §5)
         public init() {}
     }
 
-    /// knock > queue > offline > room > visitor > done > ticker > peek > egg > focus > think > sleep > rest.
+    /// drop > knock > queue > stuck > offline > room > visitor > meeting > done > ticker > peek > egg > focus > think > sleep > rest.
     /// Offline sits under approvals (they still work locally) and above everything that needs the network.
     public static func resolve(_ i: Inputs, now: Date) -> LiveState {
+        if i.dragging { return .drop }  // only while the user is mid-drag
         if i.waiting >= 2 { return .queue }
         if i.waiting == 1 { return .knock }
+        if i.stuck { return .stuck }
         if i.offline { return .offline }
         if i.roomOpen { return .room }
         if i.visitor { return .visitor }
+        if i.meetingSoon { return .meeting }
         if let d = i.doneUntil, now < d { return .done }
         if i.hoverOrPin { return .ticker }
         if i.toolRunning { return .peek }

@@ -3,7 +3,7 @@ import Foundation
 /// The Claude Code settings merge for "Connect Claude Code": append-only, never replacing other hooks, safe to run
 /// twice; PermissionRequest gets a longer timeout because it waits for the user's answer.
 public enum HookSettings {
-    public static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
+    public static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
                          "Notification", "Stop", "StopFailure", "SessionEnd"]
     public static let command = "bash ~/.notchi/notchi-hook.sh"
 

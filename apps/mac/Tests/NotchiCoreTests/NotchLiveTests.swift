@@ -21,6 +21,9 @@ import Testing
         #expect(with { $0.roomOpen = true; $0.offline = true } == .offline)
         #expect(with { $0.offline = true; $0.waiting = 1 } == .knock, "approvals still work offline")
         #expect(with { $0.waiting = 3 } == .queue)
+        #expect(with { $0.offline = true; $0.stuck = true } == .stuck && with { $0.stuck = true; $0.waiting = 1 } == .knock)
+        #expect(with { $0.meetingSoon = true; $0.doneUntil = now.addingTimeInterval(2) } == .meeting && with { $0.meetingSoon = true; $0.visitor = true } == .visitor)
+        #expect(with { $0.waiting = 2; $0.dragging = true } == .drop)
     }
 
     @Test func sizesFromTheSpec() {
