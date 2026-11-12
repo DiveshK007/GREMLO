@@ -43,9 +43,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 if [ -n "${SIGN_ID:-}" ]; then
+  # nested code first (the CLI), then the bundle
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/notchi-cli"
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 else
   echo "SIGN_ID not set: ad hoc signature, no notarization (runs on this Mac only)"
+  codesign --force --sign - "$APP/Contents/MacOS/notchi-cli"
   codesign --force --sign - "$APP"
 fi
 codesign --verify --strict "$APP"
