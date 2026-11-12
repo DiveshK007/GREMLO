@@ -1,18 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { BaseError, createWalletClient, formatEther, getAddress, http, isAddress, parseEther, verifyMessage } from "viem";
-import { abi, chain, deployBlock, pub, seeded, send, vault } from "./chain.ts";
+import { accountExists, balanceOf, explorer, network, provider, seeded, send, vault, view } from "./chain.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
-import { campaignView, petView } from "./views.ts";
-import { bad, HttpError, makeRegister, signalMatches, verifyWorldProof, type PetRecord } from "./register.ts";
+import { campaignView, petView, type Compute } from "./views.ts";
+import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
-import { canonical, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
-import { arkivCampaign, publishCampaign, publishReceipt } from "./arkiv.ts";
+import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
+import { arkivCampaign } from "./arkiv.ts"; // Arkiv mirror: off on the NEAR build (its schema is EVM-only); the read route stays
 import { createHash } from "node:crypto";
 import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
-import { DAILY_CAP_WEI, deposit, feedOn, petAccount, planFeed } from "./feed.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
 // @ts-expect-error plain ESM JS package, no types
 import { suggestHooks, think } from "../../../packages/brain/index.js";
@@ -40,18 +38,9 @@ type Store = {
   emails: Record<string, string>; // campaign id -> brand email for alerts (private, never served)
   alerted: Record<string, number>; // campaign id -> last budget alert level emailed
   reported: Record<string, number>; // campaign id -> ms of the last weekly report
-  petIndex: Record<string, number>; // pet key -> index of its server-held wallet (PET_WALLET_MNEMONIC); never reused
-  credit: Record<string, string>; // pet key -> 0G credit in wei: deposits minus Router-reported call costs
-  meals: Record<string, Meal[]>; // pet key -> its deposits into the 0G Router, newest last
-  fed: Record<string, { day: string; wei: string }>; // pet key -> deposited today (UTC), for the daily cap
-  caps: Record<string, string>; // pet key -> owner-set daily cap in wei (default FEED_DAILY_CAP)
-  approvals: Record<string, Approval>; // pet key -> the latest spend-above-cap request
-  approveNullifier: Record<string, string>; // pet key -> the World nullifier that approves its spends (first use pins it)
   held: Record<string, Held[]>; // campaign id -> views waiting out the holdback, bucketed by pet, hour and network
   voided: Record<string, Record<string, number>>; // campaign id -> reason -> views voided by the fraud rules
 };
-type Meal = { amount: string; txHash: string; at: number };
-type Approval = { id: string; amount: string; day: string; status: "pending" | "approved" | "declined" | "denied"; at: number; reason?: string };
 type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
 // shortcut: one JSON file, one process; fine for a single instance on a persistent volume (STORE_PATH).
@@ -60,7 +49,7 @@ const STORE_FILE = process.env.STORE_PATH ?? new URL("../data.json", import.meta
 const store: Store = {
   pets: {}, nullifiers: [], pending: {}, lines: {}, brands: {}, today: {}, thoughts: {}, lastImpression: {},
   urls: {}, briefs: {}, hookViews: {}, clicks: {}, lastClick: {}, days: {}, payouts: [], emails: {}, alerted: {}, reported: {},
-  petIndex: {}, credit: {}, meals: {}, fed: {}, caps: {}, approvals: {}, approveNullifier: {}, held: {}, voided: {},
+  held: {}, voided: {},
   ...(existsSync(STORE_FILE) ? JSON.parse(readFileSync(STORE_FILE, "utf8")) : {}),
 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -87,38 +76,53 @@ const settling = new Set<string>(); // campaigns with a settlement in flight
 const RP_ID = process.env.RP_ID;
 const RP_SIGNING_KEY = process.env.RP_SIGNING_KEY;
 if (!RP_ID || !RP_SIGNING_KEY) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
-if (process.env.WORLD_API_BASE && !seeded) throw new Error("WORLD_API_BASE (a stub World verifier) is allowed on a local Anvil chain only");
+if (process.env.WORLD_API_BASE && !seeded) throw new Error("WORLD_API_BASE (a stub World verifier) is allowed on a local sandbox only");
 
-const wei = (name: string) => {
+const yocto = (name: string) => {
   const v = process.env[name];
-  if (!v || !/^[0-9]+$/.test(v)) throw new Error(`missing or non-integer env ${name} (wei)`);
+  if (!v || !/^[0-9]+$/.test(v)) throw new Error(`missing or non-integer env ${name} (yoctoNEAR)`);
   return BigInt(v);
 };
-const thresholds = { thriving: wei("MOOD_THRIVING_WEI"), stable: wei("MOOD_STABLE_WEI"), hungry: wei("MOOD_HUNGRY_WEI") };
+// A fixed per-tier rate charged onchain for each AI call; not the real USD bill from NEAR AI.
+const fees = { smart: yocto("COMPUTE_FEE_SMART_YOCTO"), cheap: yocto("COMPUTE_FEE_CHEAP_YOCTO") };
+const PET_STORAGE_DEPOSIT = 10_000_000_000_000_000_000_000n; // 0.01 NEAR; the vault refunds what storage doesn't use
 
 // Every hook event reads the pet; 30s keeps a tool burst from hammering the RPC. Only successes are cached.
-const balanceCache = new Map<string, { at: number; wei: bigint }>();
-async function payoutBalance(payout: `0x${string}`) {
+const balanceCache = new Map<string, { at: number; yocto: bigint }>();
+async function payoutBalance(payout: string) {
   const hit = balanceCache.get(payout);
-  if (hit && Date.now() - hit.at < 30_000) return hit.wei;
+  if (hit && Date.now() - hit.at < 30_000) return hit.yocto;
   try {
-    const w = await pub.getBalance({ address: payout });
-    balanceCache.set(payout, { at: Date.now(), wei: w });
-    return w;
+    const y = await balanceOf(payout);
+    balanceCache.set(payout, { at: Date.now(), yocto: y });
+    return y;
   } catch (e) {
     console.error(`balance read failed: ${errMsg(e)}`);
     return null;
   }
 }
 
+/** The vault's view of a pet (get_pet); amounts are yoctoNEAR decimal strings. */
+type OnchainPet = { owner: string; payout: string; verified: boolean; views: number; earned: string; compute_share_bps: number; daily_cap: string; compute_budget: string; compute_spent: string; charge_day: number; charged_today: string };
+type OnchainCampaign = { brand: string; budget: string; spent: string; rate: string; end_time: number; closed: boolean; line_hash: string };
+const nowS = () => BigInt(Math.floor(Date.now() / 1000));
+
 const registerPet = makeRegister({
   verify: (result) => verifyWorldProof(result, RP_ID),
-  registerOnChain: (pet, owner, payout) => send("registerPet", [pet, owner, payout]),
+  // idempotent, so a retry after a failed set_verified finishes the job instead of hitting "already registered"
+  registerOnChain: async (pet, owner, payout) => {
+    const existing = await view<OnchainPet | null>("get_pet", { pet_id: pet });
+    if (existing && existing.owner !== owner) throw new HttpError(409, "pet already registered");
+    const registerTx = existing ? "" : await send("register_pet", { pet_id: pet, owner, payout }, PET_STORAGE_DEPOSIT);
+    const verifyTx = existing?.verified ? "" : await send("set_verified", { pet_id: pet, verified: true });
+    return { registerTx, verifyTx };
+  },
+  accountExists,
   store,
   save,
 });
 
-const errMsg = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message : String(e));
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const findPet = (key: string) =>
   store.pets[key] ?? Object.values(store.pets).find((p) => p.petKey.toLowerCase() === key.toLowerCase());
 
@@ -153,16 +157,17 @@ function signer(req: IncomingMessage, path: string, raw: string) {
 }
 
 
-/** Pair a device to a pet: the pet's owner signs the pairing message with their wallet. */
+const usedPairNonces = new Set<string>();
+/**
+ * Pair a device to a pet: the pet's owner signs the pairing message with their NEAR wallet (NEP-413), using a
+ * full-access key of the owner account. recipient is the vault id; the 32-byte nonce is never accepted twice.
+ */
 async function pairDevice(name: string, body: any) {
   const pet = findPet(name);
   if (!pet) throw new HttpError(404, "unknown pet");
   const key = String(body?.key ?? "");
   deviceKey(key); // 400 if not a P-256 public key
-  const signature = String(body?.signature ?? "");
-  if (!/^0x[0-9a-fA-F]+$/.test(signature)) throw bad("signature is required");
-  const ok = await verifyMessage({ address: getAddress(pet.owner), message: pairMessage(pet.name, keyId(key)), signature: signature as `0x${string}` }).catch(() => false);
-  if (!ok) throw new HttpError(403, "signature is not from this pet's owner");
+  await checkOwnerSignature(body, pet.owner, pairMessage(pet.name, keyId(key)), vault, provider, usedPairNonces);
   const devices = (pet.devices ??= []);
   if (!devices.includes(key)) {
     if (devices.length >= 5) throw bad("a pet can have at most 5 paired devices; unpair one first");
@@ -211,30 +216,34 @@ async function settle(id: string) {
   if (settling.has(id)) throw new HttpError(409, "settlement already running for this campaign");
   settling.add(id);
   try {
-    const [, , , rate, endTime, closed] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
-    if (rate === 0n) throw new HttpError(404, "unknown campaign");
-    if (closed) throw new HttpError(409, `campaign #${id} is closed; nothing more can be paid from it`);
-    // the contract pays only until 1 hour after the end; say so instead of sending a tx that reverts
-    const { timestamp } = await pub.getBlock();
+    const c = await view<OnchainCampaign | null>("get_campaign", { id: Number(id) });
+    if (!c) throw new HttpError(404, "unknown campaign");
+    if (c.closed) throw new HttpError(409, `campaign #${id} is closed; nothing more can be paid from it`);
+    const rate = BigInt(c.rate), endTime = BigInt(c.end_time), timestamp = nowS();
+    // the contract pays only until 1 hour after the end; say so instead of sending a tx that fails
     if (timestamp > endTime + 3600n) {
       const queued = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0) + (store.held[id] ?? []).reduce((a, h) => a + h.n, 0);
       throw new HttpError(409, `campaign #${id}'s settlement window closed at ${new Date(Number(endTime + 3600n) * 1000).toLocaleTimeString()}; ${queued} queued impression${queued === 1 ? "" : "s"} can't be paid. Close it to refund the rest.`);
     }
     release(id, timestamp >= endTime);
-    const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [BigInt(id)] });
+    const remaining = BigInt(await view<string>("remaining", { id: Number(id) }));
     const plan = planSettlement(store.pending[id] ?? {}, rate, remaining);
 
     const settled = [];
     let error: string | undefined;
     for (const s of plan.settle) {
       try {
-        const txHash = await send("settleImpressions", [BigInt(id), s.pet, BigInt(s.count)]);
+        // a transfer to a missing account fails and strands the NEAR in the vault, so check the payout first
+        const pet = await view<OnchainPet | null>("get_pet", { pet_id: s.pet });
+        if (pet && !(await accountExists(pet.payout))) {
+          throw new Error(`pet ${s.pet}'s payout account ${pet.payout} does not exist; its owner must set one that does (set_payout)`);
+        }
+        const txHash = await send("settle_impressions", { id: Number(id), pet_id: s.pet, count: s.count });
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
         markSettled(store.pending[id], s.pet, s.count, "paid");
-        store.payouts = [...store.payouts, { at: Date.now(), id, pet: getAddress(s.pet), views: s.count, wei: s.amount.toString() }].slice(-5000);
+        store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString() }].slice(-5000);
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
-        void publishReceipt({ campaignId: id, pet: getAddress(s.pet), views: s.count, amountWei: s.amount, settleTx: txHash, chainId: chain.id, endTime });
       } catch (e: any) {
         markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
         save();
@@ -251,207 +260,118 @@ async function settle(id: string) {
   }
 }
 
+/** The newest 100 campaigns from the vault, oldest first. */
+async function campaigns() {
+  const count = await view<number>("campaign_count");
+  // shortcut: only the newest 100 are read; page through get_campaigns once a deployment has more
+  return view<[number, OnchainCampaign][]>("get_campaigns", { from: Math.max(1, count - 99), limit: 100 });
+}
+
 /** The campaign the pet shows: the newest live one with a known line that can still pay for an impression, or null. */
 async function activeCampaign() {
-  const [created, block] = await Promise.all([
-    pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
-    pub.getBlock(),
-  ]);
-  for (const ev of [...created].reverse()) { // newest first: a campaign funded mid-demo shows on the next poll
-    const id = ev.args.id!;
-    const [brand, budget, spent, rate, endTime, closed, lineHash] = await pub.readContract({
-      address: vault, abi, functionName: "campaigns", args: [id],
-    });
-    if (closed || endTime <= block.timestamp || budget - spent < rate) continue;
-    const view = campaignView({ id, brand, lineHash, rate }, store);
+  const now = nowS();
+  for (const [id, c] of [...(await campaigns())].reverse()) { // newest first: a campaign funded mid-demo shows on the next poll
+    const rate = BigInt(c.rate);
+    if (c.closed || BigInt(c.end_time) <= now || BigInt(c.budget) - BigInt(c.spent) < rate) continue;
+    const view = campaignView({ id: BigInt(id), brand: c.brand, lineHash: `0x${c.line_hash}`, rate }, store);
     // a line the server never got can't go on the sign; `order` is the auto-optimised rotation for the next slots
     if (view.line) return { ...view, order: hookOrder(store.hookViews[view.campaignId] ?? [], store.clicks[view.campaignId] ?? [], view.hooks.length) };
   }
   return null;
 }
 
+const inflight = new Map<string, bigint>(); // pet -> compute charges sent but not landed yet
+
+/** A registered pet as the Mac and web read it: mood from its onchain compute budget, earnings from the vault. */
 async function getPet(key: string) {
   const rec = findPet(key);
-  if (!rec && !isAddress(key)) throw new HttpError(404, "unknown pet");
-  const petKey = getAddress(rec?.petKey ?? key);
-  let payout = rec?.payout;
+  if (!rec) throw new HttpError(404, "unknown pet");
+  const petKey = rec.petKey;
+  let pet: OnchainPet | null = null;
   try {
-    const [owner, p] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
-    if (owner === "0x0000000000000000000000000000000000000000") throw new HttpError(404, "pet not registered onchain");
-    payout = p;
+    pet = await view<OnchainPet | null>("get_pet", { pet_id: petKey });
+    if (!pet) throw new HttpError(404, "pet not registered onchain");
   } catch (e) {
-    if (e instanceof HttpError || !rec) throw e; // RPC down: a pet we registered still answers, asleep
+    if (e instanceof HttpError) throw e;
+    console.error(`get_pet ${petKey}: ${errMsg(e)}`); // RPC down: the pet still answers, asleep, and says why
   }
+  // shortcut: "today" uses this server's UTC clock, which can disagree with the chain's for a few seconds at midnight
+  const today = Math.floor(Date.now() / 86_400_000);
+  const compute: Compute | null = pet && {
+    budget: BigInt(pet.compute_budget),
+    chargedToday: pet.charge_day === today ? BigInt(pet.charged_today) : 0n,
+    dailyCap: BigInt(pet.daily_cap),
+  };
   const t = store.today[petKey];
-  // earnings straight from the chain's settlements; null (not 0) when the chain can't be read
-  const earned = await settledEvents().then(
-    (ev) => ev.filter((e) => e.args.pet && getAddress(e.args.pet) === petKey)
-      .reduce((a, e) => ({ views: a.views + Number(e.args.count ?? 0n), wei: a.wei + (e.args.amount ?? 0n) }), { views: 0, wei: 0n }),
-    () => null,
-  );
-  const wallet = rec ? petWallet(petKey) : null;
-  const feeding = !!wallet && getAddress(payout!) === wallet;
   return {
     ...petView({
-    name: rec?.name ?? petKey.toLowerCase(),
-    walletBalance: await payoutBalance(getAddress(payout!)), // payout is where the pet's earnings land
-    thresholds,
-    impressionsToday: t?.day === utcDay() ? t.count : 0,
-    seeded,
-    lastThoughts: store.thoughts[petKey],
-    ...(feeding ? { computeBalance: BigInt(store.credit[petKey] ?? "0"), lastMeal: store.meals[petKey]?.at(-1) ?? null } : {}),
+      name: rec.name,
+      walletBalance: pet ? await payoutBalance(pet.payout) : null, // the payout account, where earnings land
+      compute,
+      fees,
+      inflight: inflight.get(petKey) ?? 0n,
+      impressionsToday: t?.day === utcDay() ? t.count : 0,
+      seeded,
+      lastThoughts: store.thoughts[petKey],
     }),
     petKey,
-    feed: wallet && {
-      wallet, // the pet's own wallet; point the payout here to let it pay for its brain
-      on: feeding,
-      capWei: capOf(petKey).toString(),
-      fedTodayWei: fedToday(petKey).toString(),
-      meals: (store.meals[petKey] ?? []).slice(-5),
-      approval: store.approvals[petKey] ?? null,
+    owner: pet?.owner ?? rec.owner,
+    payout: pet?.payout ?? rec.payout,
+    compute: pet && {
+      budget: pet.compute_budget,
+      spent: pet.compute_spent,
+      chargedToday: compute!.chargedToday.toString(),
+      dailyCap: pet.daily_cap,
+      shareBps: pet.compute_share_bps,
+      feeSmart: fees.smart.toString(),
+      feeCheap: fees.cheap.toString(),
     },
-    paidViews: earned?.views ?? null,
-    earnedWei: earned?.wei.toString() ?? null,
-    level: earned ? level(earned.views) : null,
+    paidViews: pet ? pet.views : null,
+    earnedWei: pet ? pet.earned : null, // yoctoNEAR paid to the payout account (name kept for the Mac and web)
+    level: pet ? level(pet.views) : null,
     streak: streak(store.days[petKey], utcDay()),
     week: (({ views, wei }) => ({ views, wei: wei.toString() }))(sumSince(store.payouts, Date.now() - WEEK_MS, (p) => p.pet === petKey)),
+    explorer,
+    vault,
   };
-}
-
-/** The pet's server-held wallet address, assigning it a fresh index on first use. Null when feeding is off. */
-function petWallet(petKey: string) {
-  if (!feedOn) return null;
-  if (store.petIndex[petKey] === undefined) {
-    store.petIndex[petKey] = Math.max(-1, ...Object.values(store.petIndex)) + 1;
-    save();
-  }
-  return getAddress(petAccount(store.petIndex[petKey]).address);
-}
-const capOf = (petKey: string) => BigInt(store.caps[petKey] ?? DAILY_CAP_WEI);
-const fedToday = (petKey: string) => (store.fed[petKey]?.day === utcDay() ? BigInt(store.fed[petKey].wei) : 0n);
-const approvedToday = (petKey: string) => {
-  const a = store.approvals[petKey];
-  return a?.status === "approved" && a.day === utcDay() ? BigInt(a.amount) : 0n;
-};
-
-/** One feeding pass: every pet whose payout is its own wallet deposits what the plan allows. */
-async function feedPass() {
-  if (!feedOn) return;
-  for (const pet of Object.values(store.pets)) {
-    const petKey = getAddress(pet.petKey), idx = store.petIndex[petKey];
-    if (idx === undefined) continue;
-    try {
-      const wallet = getAddress(petAccount(idx).address);
-      const [, payout] = await pub.readContract({ address: vault, abi, functionName: "pets", args: [petKey] });
-      if (getAddress(payout) !== wallet) continue; // owner hasn't let it feed itself
-      const credit = BigInt(store.credit[petKey] ?? "0");
-      const plan = planFeed({ balance: await pub.getBalance({ address: wallet }), fedToday: fedToday(petKey), cap: capOf(petKey), approved: approvedToday(petKey), credit });
-      if (plan.deposit > 0n) {
-        const txHash = await deposit(idx, plan.deposit);
-        store.credit[petKey] = (credit + plan.deposit).toString();
-        store.fed[petKey] = { day: utcDay(), wei: (fedToday(petKey) + plan.deposit).toString() };
-        store.meals[petKey] = [...(store.meals[petKey] ?? []), { amount: plan.deposit.toString(), txHash, at: Date.now() }].slice(-50);
-        save();
-        console.log(`feed: ${pet.name} deposited ${plan.deposit} wei into the 0G Router, tx ${txHash}`);
-      }
-      const a = store.approvals[petKey];
-      // one open question a day: a pending or declined request waits; a denied proof or a used approval may ask again
-      if (plan.ask > 0n && !(a?.day === utcDay() && (a.status === "pending" || a.status === "declined"))) {
-        store.approvals[petKey] = { id: crypto.randomUUID(), amount: plan.ask.toString(), day: utcDay(), status: "pending", at: Date.now() };
-        save();
-        console.log(`feed: ${pet.name} hit its daily cap and asks its owner to approve ${plan.ask} wei`);
-      }
-    } catch (e) {
-      console.error(`feed: ${pet.name}: ${errMsg(e)}`); // safe-stop: nothing recorded, retried next pass
-    }
-  }
-}
-
-const usedOwnerSigs = new Map<string, number>();
-/** An owner action signed with the wallet that owns the pet, within 5 minutes and never reused. */
-async function ownerSigned(pet: PetRecord, action: string, detail: string, body: any) {
-  const time = Number(body?.time), signature = String(body?.signature ?? "");
-  if (!Number.isFinite(time) || Math.abs(Date.now() - time) > 300_000) throw bad("signature time is missing or too old; try again");
-  if (!/^0x[0-9a-fA-F]+$/.test(signature)) throw bad("signature is required");
-  for (const [sig, at] of usedOwnerSigs) if (Date.now() - at > 600_000) usedOwnerSigs.delete(sig);
-  if (usedOwnerSigs.has(signature)) throw new HttpError(401, "signature already used");
-  const message = ownerMessage(action, pet.name, detail, time);
-  const ok = await verifyMessage({ address: getAddress(pet.owner), message, signature: signature as `0x${string}` }).catch(() => false);
-  if (!ok) throw new HttpError(403, "signature is not from this pet's owner");
-  usedOwnerSigs.set(signature, Date.now());
-}
-const ownerMessage = (action: string, pet: string, detail: string, time: number) => `${action}\nPet: ${pet}\n${detail}\nTime: ${time}`;
-
-/** Owner actions on the pet's food: approve above the cap (wallet + World ID), decline, set the cap, withdraw. */
-async function feedAction(name: string, action: string, body: any) {
-  const pet = findPet(name);
-  if (!pet || !feedOn) throw new HttpError(404, feedOn ? "unknown pet" : "self-feeding is off on this server");
-  const petKey = getAddress(pet.petKey);
-  if (action === "cap") {
-    const cap = (() => { try { return parseEther(String(body?.cap ?? "")); } catch { return -1n; } })();
-    if (cap < 0n || cap > parseEther("10")) throw bad("cap must be 0 to 10 0G a day");
-    await ownerSigned(pet, "Set my Notchi pet's daily food cap", `Cap: ${formatEther(cap)} 0G`, body);
-    store.caps[petKey] = cap.toString();
-    save();
-    return { ok: true, capWei: cap.toString() };
-  }
-  if (action === "withdraw") {
-    const idx = store.petIndex[petKey];
-    if (idx === undefined) throw bad("this pet has no wallet yet");
-    await ownerSigned(pet, "Send my Notchi pet's wallet to me", `To: ${getAddress(pet.owner)}`, body);
-    return { ok: true, txHash: await sweep(idx, getAddress(pet.owner)) };
-  }
-  const a = store.approvals[petKey];
-  if (!a || a.id !== String(body?.id ?? "") || a.status !== "pending") throw new HttpError(409, "no pending request with that id");
-  const detail = `Request: ${a.id}\nAmount: ${formatEther(BigInt(a.amount))} 0G`;
-  if (action === "decline") {
-    await ownerSigned(pet, "Decline my Notchi pet's spend", detail, body);
-    a.status = "declined";
-    save();
-    return { ok: true, approval: a };
-  }
-  if (action !== "approve") throw new HttpError(404, "not found");
-  await ownerSigned(pet, "Approve my Notchi pet's spend", detail, body);
-  // the wallet proves the owner, World proves a human is present; a failed proof is shown, never retried silently
-  const proof = body?.worldProof;
-  const deny = (reason: string) => { a.status = "denied"; a.reason = reason; save(); throw new HttpError(403, `Not approved: ${reason}`); };
-  if (!proof || typeof proof !== "object" || !signalMatches(proof, getAddress(pet.owner))) deny("the World ID proof was not made for the owner wallet");
-  const v = await verifyWorldProof(proof, RP_ID!, "approve-spend");
-  if (!v.ok) deny(`World ID said no (${v.code})`);
-  const n = (v as { nullifier: string }).nullifier;
-  if (store.approveNullifier[petKey] && store.approveNullifier[petKey] !== n) deny("a different human approved this pet before");
-  store.approveNullifier[petKey] = n;
-  a.status = "approved";
-  save();
-  void feedPass(); // feed now rather than in 10 minutes
-  return { ok: true, approval: a };
-}
-
-/** Everything above gas from the pet wallet back to the owner. */
-async function sweep(idx: number, to: `0x${string}`) {
-  const account = petAccount(idx);
-  const [balance, gasPrice] = await Promise.all([pub.getBalance({ address: account.address }), pub.getGasPrice()]);
-  const fee = 21_000n * gasPrice * 2n;
-  if (balance <= fee) throw bad("the pet wallet is empty");
-  const hash = await createWalletClient({ chain, transport: http(), account }).sendTransaction({ to, value: balance - fee, gas: 21_000n, gasPrice });
-  const r = await pub.waitForTransactionReceipt({ hash });
-  if (r.status !== "success") throw new Error(`withdraw ${hash} failed`);
-  return hash;
 }
 
 const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
-/** One pet decision from a Claude Code hook. A sleep is a valid answer, so it is 200 too. */
+/**
+ * One pet decision from a Claude Code hook. The pet pays for it: the onchain compute budget picks the model
+ * (enough for the smart rate: smart; for the cheap rate: cheap; less: no AI call, the pet sleeps hungry), and every
+ * served completion is charged with charge_compute and its completion id. A sleep is a valid answer, so it is 200 too.
+ */
 async function petThink(key: string, body: any) {
   const event = str(body.event);
   if (!event) throw bad("event is required");
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
+  const petKey = pet.petKey;
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
-  const petKey = getAddress(findPet(key)?.petKey ?? key);
+  if (!r.requestId && pet.moodReason) r.reason = pet.moodReason; // no call was made; say why in the pet's words
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
   store.days[petKey] = markDay(store.days[petKey], utcDay());
   save();
-  return r;
+  const fee = r.completionId ? (pet.mood === "thriving" ? fees.smart : fees.cheap) : 0n;
+  if (fee) void charge(petKey, fee, r.completionId);
+  return { ...r, fee: fee ? fee.toString() : null };
+}
+
+/** charge_compute for one served completion; the tx hash lands on the thought. A failure is logged, never invented. */
+async function charge(petKey: string, fee: bigint, completionId: string) {
+  inflight.set(petKey, (inflight.get(petKey) ?? 0n) + fee);
+  try {
+    const tx = await send("charge_compute", { pet_id: petKey, amount: fee.toString(), near_ai_completion_id: completionId });
+    const t = store.thoughts[petKey]?.find((x) => x.requestId === completionId);
+    if (t) t.chargeTx = tx;
+    save();
+    console.log(`charge: ${petKey} paid ${fee} yoctoNEAR for completion ${completionId}, tx ${tx}`);
+  } catch (e) {
+    console.error(`charge: ${petKey} completion ${completionId} was not charged: ${errMsg(e)}`);
+  } finally {
+    inflight.set(petKey, (inflight.get(petKey) ?? fee) - fee);
+  }
 }
 
 /** A brand brief from the web form. Field limits are the trust boundary; the claim checks run on top. */
@@ -498,12 +418,14 @@ async function campaignHooks(req: IncomingMessage, body: any) {
 async function saveCampaign(body: any) {
   const id = String(body.campaignId ?? "");
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
-  if (typeof body.txHash === "string" && /^0x[0-9a-fA-F]{64}$/.test(body.txHash)) {
-    // the web app posts right after sending; wait for it so the campaign exists when we read it
-    await pub.waitForTransactionReceipt({ hash: body.txHash, timeout: 60_000 });
+  // the web app posts right after its tx; give RPC nodes a few seconds to see the new campaign
+  let c: OnchainCampaign | null = null;
+  for (let i = 0; i < 5 && !c; i++) {
+    c = await view<OnchainCampaign | null>("get_campaign", { id: Number(id) });
+    if (!c) await new Promise((r) => setTimeout(r, 2000));
   }
-  const [brand, , , rate, endTime, , onchainHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [BigInt(id)] });
-  if (rate === 0n) throw new HttpError(404, "unknown campaign");
+  if (!c) throw new HttpError(404, "unknown campaign");
+  const brand = c.brand, onchainHash = `0x${c.line_hash}`;
   const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
   // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
   if (body.brief !== undefined) store.briefs[id] = checkCampaign(body.brief, String(line).split("\n"));
@@ -513,8 +435,6 @@ async function saveCampaign(body: any) {
   // checked before payment (/campaigns/check); after the money moved a bad address is dropped, never an error
   const email = (() => { try { return checkEmail(body.email); } catch { return undefined; } })();
   if (email) store.emails[id] = email;
-  // public, self-expiring card on Arkiv; never blocks the brand (failures are logged)
-  void publishCampaign({ id, brand, hooks: line.split("\n"), url: store.urls[id] ?? "", rateWei: rate, endTime, chainId: chain.id, fundingTx: String(body.txHash ?? "") });
   const name = str(body.brand, 40);
   if (name) store.brands[brand] = name;
   save();
@@ -574,28 +494,19 @@ function campaignStats(id: string) {
   return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, heldViews, holdbackHours: HOLDBACK_HOURS, voided: store.voided[id] ?? {}, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id] };
 }
 
-/** Homepage numbers, read from the chain's own events (never seeded). Cached for a minute. */
-let settledCache: { at: number; events: Promise<{ args: { pet?: `0x${string}`; count?: bigint; amount?: bigint } }[]> } | null = null;
-/** Every ImpressionsSettled event, read from the chain at most once a minute (shared by /stats and pet earnings). */
-function settledEvents() {
-  if (!settledCache || Date.now() - settledCache.at > 60_000) {
-    const events = pub.getContractEvents({ address: vault, abi, eventName: "ImpressionsSettled", fromBlock: deployBlock });
-    settledCache = { at: Date.now(), events };
-    events.catch(() => (settledCache = null)); // a failed read is retried on the next request
-  }
-  return settledCache.events;
-}
-
 let statsCache: { at: number; body: unknown } | null = null;
+/** Homepage numbers, read from the vault's own totals (never seeded). Cached for a minute. */
 async function publicStats() {
   if (statsCache && Date.now() - statsCache.at < 60_000) return statsCache.body;
-  const [created, settled] = await Promise.all([
-    pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
-    settledEvents(),
+  const [count, totals] = await Promise.all([
+    view<number>("campaign_count"),
+    view<{ paid_to_pets: string; compute_budgets: string; compute_charged: string }>("get_totals"),
   ]);
-  const views = settled.reduce((a, e) => a + (e.args.count ?? 0n), 0n);
-  const paid = settled.reduce((a, e) => a + (e.args.amount ?? 0n), 0n);
-  const body = { campaigns: created.length, settledViews: views.toString(), paidWei: paid.toString(), pets: Object.keys(store.pets).length, chainId: chain.id, seeded };
+  const pets = await Promise.all(Object.keys(store.pets).map((name) => view<OnchainPet | null>("get_pet", { pet_id: name })));
+  const views = pets.reduce((a, p) => a + (p?.views ?? 0), 0);
+  // everything settled to pets: paid out, plus compute budgets, plus what compute already charged
+  const paid = BigInt(totals.paid_to_pets) + BigInt(totals.compute_budgets) + BigInt(totals.compute_charged);
+  const body = { campaigns: count, settledViews: String(views), paidWei: paid.toString(), computeChargedWei: totals.compute_charged, pets: Object.keys(store.pets).length, network, vault, seeded };
   statsCache = { at: Date.now(), body };
   return body;
 }
@@ -638,25 +549,20 @@ async function workerPass() {
   if (working) return;
   working = true;
   try {
-    const [created, block] = await Promise.all([
-      pub.getContractEvents({ address: vault, abi, eventName: "CampaignCreated", fromBlock: deployBlock }),
-      pub.getBlock(),
-    ]);
-    for (const ev of created) {
-      const id = ev.args.id!;
+    const now = nowS();
+    for (const [id, c] of await campaigns()) {
       try {
-        const [, budget, spent, , endTime, closed, lineHash] = await pub.readContract({ address: vault, abi, functionName: "campaigns", args: [id] });
-        const remaining = await pub.readContract({ address: vault, abi, functionName: "remaining", args: [id] });
-        release(id.toString(), block.timestamp >= endTime);
-        const pending = Object.values(store.pending[id.toString()] ?? {}).reduce((a, b) => a + b, 0);
-        const job = workFor({ closed, endTime, remaining }, pending, block.timestamp);
+        const endTime = BigInt(c.end_time), remaining = c.closed ? 0n : BigInt(c.budget) - BigInt(c.spent);
+        release(String(id), now >= endTime);
+        const pending = Object.values(store.pending[String(id)] ?? {}).reduce((a, b) => a + b, 0);
+        const job = workFor({ closed: c.closed, endTime, remaining }, pending, now);
         if (job === "settle") {
-          const r = await settle(id.toString());
+          const r = await settle(String(id));
           console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, stopped: ${r.error}` : ""}`);
         } else if (job === "refund") {
-          console.log(`worker: closed campaign ${id}, refund tx ${await send("close", [id])}`);
+          console.log(`worker: closed campaign ${id}, refund tx ${await send("close", { id })}`);
         }
-        if (!closed) await brandMail(id.toString(), budget, spent, lineHash);
+        if (!c.closed) await brandMail(String(id), BigInt(c.budget), BigInt(c.spent), `0x${c.line_hash}`);
       } catch (e) {
         console.error(`worker: campaign ${id}: ${errMsg(e)}`);
       }
@@ -668,7 +574,7 @@ async function workerPass() {
   }
 }
 /** Budget alerts and the weekly report for one live campaign, when the brand left an email and mail is on. */
-async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0x${string}`) {
+async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: string) {
   const to = store.emails[id];
   if (!to || !mailOn) return;
   const link = `${WEB_ORIGIN}/brand?c=${id}`;
@@ -688,7 +594,6 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: `0
     save();
   }
 }
-if (process.env.WORKER !== "off" && feedOn) setInterval(feedPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 
 async function route(req: IncomingMessage) {
@@ -698,8 +603,6 @@ async function route(req: IncomingMessage) {
   if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
-  const feedRoute = pathname.match(/^\/pets\/([^/]+)\/(approve|decline|cap|withdraw)$/);
-  if (m === "POST" && feedRoute) return feedAction(decodeURIComponent(feedRoute[1]), feedRoute[2], await readBody(req));
   const pair = pathname.match(/^\/pets\/([^/]+)\/device$/);
   if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
   if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
@@ -754,4 +657,4 @@ createServer((req, res) => {
       reply(res, status, { error: errMsg(e) });
     },
   );
-}).listen(port, host, () => console.log(`server on ${host}:${port}, vault ${vault}, chain ${chain.id}`));
+}).listen(port, host, () => console.log(`server on ${host}:${port}, vault ${vault} on NEAR ${network}`));
