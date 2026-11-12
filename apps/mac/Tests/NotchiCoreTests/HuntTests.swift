@@ -187,3 +187,14 @@ import Testing
         #expect(spots == [CGRect(x: 100, y: 402, width: 800, height: 500)], "only the ordinary agent window; top edge at 982 - 80")
     }
 }
+
+@Suite struct GitHubWatchTests {
+    @Test func onlyNewReviewRequestsSendAVisit() {
+        let json = #"[{"url":"https://github.com/a/b/pull/482","reviewRequests":[{"login":"Bo"},{"name":"core-team"}]},{"url":"https://github.com/a/b/pull/7","reviewRequests":[]}]"#
+        let prs = GitHubWatch.parse(Data(json.utf8))
+        #expect(prs == [GitHubWatch.PR(url: "https://github.com/a/b/pull/482", reviewers: ["Bo"]), GitHubWatch.PR(url: "https://github.com/a/b/pull/7", reviewers: [])])
+        let first = GitHubWatch.newRequests(prs, seen: [])
+        #expect(first.new.map { "\($0.url) \($0.reviewer)" } == ["https://github.com/a/b/pull/482 bo"])
+        #expect(GitHubWatch.newRequests(prs, seen: first.seen).new.isEmpty, "once per PR and reviewer")
+    }
+}

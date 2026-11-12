@@ -451,11 +451,15 @@ extension Backend {
         runners.placeholderString = "more test commands, e.g. make check, ./run-tests"
         runners.target = self
         runners.action = #selector(setRunners(_:))
+        let gh = NSButton(checkboxWithTitle: GitHubController.gh == nil ? "GitHub: install the gh CLI to celebrate merges" : "GitHub (your gh CLI): celebrate merged PRs, send my companion when I ask for a review", target: self, action: #selector(toggleGitHub(_:)))
+        gh.state = GitHubController.on ? .on : .off
+        gh.isEnabled = GitHubController.gh != nil
         let add = NSButton(title: "Add git hooks to a repo\u{2026}", target: self, action: #selector(installGitHooks))
         let remove = NSButton(title: "Remove git hooks from a repo\u{2026}", target: self, action: #selector(removeGitHooks))
-        return [caption("Extras"), seasons, meetings, caption("Test commands (bug hunt)"), runners, caption("Git moods (no messages, diffs or file names are sent)"), add, remove]
+        return [caption("Extras"), seasons, meetings, caption("Test commands (bug hunt)"), runners, caption("Git moods (no messages, diffs or file names are sent)"), add, remove, gh]
     }
 
+    @objc func toggleGitHub(_ b: NSButton) { defaults.set(b.state == .on, forKey: "github"); if b.state == .on { defaults.set(Date(), forKey: "github.since"); github.tick() } }
     @objc func toggleSeasons(_ b: NSButton) { defaults.set(b.state == .on, forKey: "seasons"); hunt.applySeason() }
     @objc func toggleMeetings(_ b: NSButton) { hunt.enableMeetings(b.state == .on) }
     @objc func setRunners(_ f: NSTextField) {
@@ -479,5 +483,52 @@ extension Backend {
         guard let repo = pickRepo() else { return }
         do { try GitHooks.remove(repo: repo); print("git hooks removed from a repo") }
         catch { pet.say("Couldn't remove git hooks: \(error.localizedDescription)", for: 5) }
+    }
+}
+
+// MARK: - GitHub through the user's gh CLI (opt-in): merged PRs celebrate, review requests send your companion
+
+final class GitHubController {
+    unowned let backend: Backend
+    static var on: Bool { defaults.bool(forKey: "github") }
+    static let gh = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"].first { FileManager.default.isExecutableFile(atPath: $0) }
+    private var seen = Set(defaults.stringArray(forKey: "github.seen") ?? [])
+
+    init(backend: Backend) {
+        self.backend = backend
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in self?.tick() }
+    }
+
+    private func run(_ args: [String], done: @escaping (Data?) -> Void) {
+        guard let gh = Self.gh else { done(nil); return }
+        DispatchQueue.global(qos: .utility).async {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: gh); p.arguments = args
+            let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+            guard (try? p.run()) != nil else { DispatchQueue.main.async { done(nil) }; return }
+            let d = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+            DispatchQueue.main.async { done(p.terminationStatus == 0 ? d : nil) }
+        }
+    }
+
+    func tick() {
+        guard Self.on else { return }
+        let since = defaults.object(forKey: "github.since") as? Date ?? Date().addingTimeInterval(-300)
+        let iso = ISO8601DateFormatter().string(from: since)
+        // merged PRs of mine since the last check: celebrate with fireworks from the notch
+        run(["search", "prs", "--author=@me", "--merged", "--merged-at=>\(iso)", "--json", "url"]) { [weak self] d in
+            guard let self, let d, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] else { return }
+            defaults.set(Date(), forKey: "github.since")
+            if !list.isEmpty { self.backend.hunt.git(.merged) }
+        }
+        // review requests on my open PRs: my companion visits each newly asked teammate (team handles = GitHub logins)
+        let q = "query{viewer{pullRequests(states:OPEN,first:30,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{url reviewRequests(first:10){nodes{requestedReviewer{... on User{login}}}}}}}}"
+        let shape = "[.data.viewer.pullRequests.nodes[] | {url, reviewRequests: [.reviewRequests.nodes[].requestedReviewer | select(.login != null) | {login}]}]"
+        run(["api", "graphql", "-f", "query=\(q)", "--jq", shape]) { [weak self] d in
+            guard let self, let d else { return }
+            let r = GitHubWatch.newRequests(GitHubWatch.parse(d), seen: self.seen)
+            self.seen = r.seen
+            defaults.set(Array(r.seen.suffix(500)), forKey: "github.seen")
+            for v in r.new where !SocialController.team.isEmpty { self.backend.social.sendVisit(to: v.reviewer, pr: v.url) }
+        }
     }
 }

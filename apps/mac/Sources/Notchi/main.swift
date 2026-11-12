@@ -1211,6 +1211,7 @@ final class Backend: NSObject {
     lazy var privacy: PrivacyController = PrivacyController(backend: self)
     lazy var social: SocialController = SocialController(backend: self)
     lazy var phone: PhoneController = PhoneController(backend: self)
+    lazy var github: GitHubController = GitHubController(backend: self)
     var teamFields: (NSTextField, NSTextField)?
     var visitFields: (NSTextField, NSTextField)?
     lazy var commandSocket: CommandSocket = CommandSocket { [unowned self] in self.handle($0) }
@@ -1894,6 +1895,7 @@ _ = backend.privacy  // detectors, hot keys, stream mode
 _ = backend.commandSocket  // the notchi CLI, Shortcuts and Raycast
 _ = backend.social  // team relay, park, guestbook visits
 _ = backend.phone  // the paired phone and Watch
+_ = backend.github  // opt-in: merged PRs and review visits through gh
 NSAppleEventManager.shared().setEventHandler(backend, andSelector: #selector(Backend.handleURL(_:withReplyEvent:)),
                                              forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")

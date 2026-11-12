@@ -436,3 +436,27 @@ public enum Perch {
             .filter { screen.contains(CGPoint(x: $0.midX, y: $0.maxY - 1)) && !($0.width >= screen.width && $0.height >= screen.height - 40) }
     }
 }
+
+// MARK: - GitHub (opt-in, through the user's own gh CLI): merged PRs celebrate, review requests send a companion
+
+public enum GitHubWatch {
+    public struct PR: Equatable, Sendable { public let url: String; public let reviewers: [String]
+        public init(url: String, reviewers: [String]) { self.url = url; self.reviewers = reviewers } }
+
+    /// Review requests not seen before, as (PR url, reviewer login), and the updated seen set.
+    public static func newRequests(_ prs: [PR], seen: Set<String>) -> (new: [(url: String, reviewer: String)], seen: Set<String>) {
+        var s = seen, out: [(String, String)] = []
+        for p in prs { for r in p.reviewers { let k = "\(p.url)#\(r.lowercased())"; if !s.contains(k) { s.insert(k); out.append((p.url, r.lowercased())) } } }
+        return (out, s)
+    }
+
+    /// Reads `gh pr list --json url,reviewRequests` output (users only; team requests have no login).
+    public static func parse(_ json: Data) -> [PR] {
+        let list = (try? JSONSerialization.jsonObject(with: json)) as? [[String: Any]] ?? []
+        return list.compactMap { o in
+            guard let url = o["url"] as? String else { return nil }
+            let rs = (o["reviewRequests"] as? [[String: Any]] ?? []).compactMap { $0["login"] as? String }
+            return PR(url: url, reviewers: rs)
+        }
+    }
+}
