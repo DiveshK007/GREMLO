@@ -462,7 +462,7 @@ final class Pet {
 
     // Leave the house (or drop off the wall) and land on the floor, then show `s`.
     func comeOut(then s: PetState) {
-        if mood == "asleep" { return }
+        if staysHome(mood: mood, agentWorking: working) { return }
         lastActive = Date()
         afterLanding = s
         switch path {
@@ -525,7 +525,7 @@ final class Pet {
                 if lockWhenHome { goHome(lock: true) }  // SessionEnd arrived mid-fall
             }
         case .floor:
-            if mood == "asleep" { goHome(lock: false) }
+            if staysHome(mood: mood, agentWorking: working) { goHome(lock: false) }
             // The sign is the ad state and gets the most screen time, so it strolls at 0.4 instead of standing still.
             if state == .walk || state == .sign {
                 pos.x += dir * 24 * speed * walkSpeed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
@@ -764,7 +764,7 @@ final class Pet {
         if !signPanel.isVisible && onHomeSpace { signPanel.orderFrontRegardless() }
         // An impression needs the sign really on screen: not on another Space, not behind a full-screen app.
         if signPanel.occlusionState.contains(.visible) {
-            if signShownAt == nil { signShownAt = Date() }
+            if signShownAt == nil { signShownAt = Date(); print("view: sign on screen (\(signText.prefix(40)))") }
         } else {
             signShownAt = nil
         }
@@ -851,6 +851,7 @@ final class Pet {
         case "UserPromptSubmit":
             sessionLive = true
             waiting = false
+            working = true // the agent's work starts at the prompt; the sign goes up now, not at the first tool call
             if path == .floor { lastActive = Date(); set(.greet, then: .sign) } else { comeOut(then: .sign) }
         case "PreToolUse", "PostToolUse":
             lastActive = Date()
@@ -1069,6 +1070,11 @@ struct WaitClock {
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
 let popoverWidth: CGFloat = 320
+
+/// Whether the pet keeps out of sight. Ads never depend on mood: a hungry pet (compute budget empty) still walks the
+/// sponsored sign while the agent works, because that's how it earns food. Mood only stops the paid AI calls.
+/// Only an asleep pet (the chain can't be read) with no agent work stays home.
+func staysHome(mood: String, agentWorking: Bool) -> Bool { mood == "asleep" && !agentWorking }
 // The product name, in one place, for every user-facing string in the Mac app.
 let productName = "Notchi"
 let brokeReason = "sleeping: compute budget empty"
@@ -1201,8 +1207,10 @@ final class Backend: NSObject {
         lastImpression[c.campaignId] = Date()
         let view: [String: Any] = ["petKey": petName, "campaignId": c.campaignId, "hook": currentHook,
                                    "shownMs": Int(Date().timeIntervalSince(since) * 1000), "unlocked": true, "visible": true, "idleS": Int(idle)]
-        request("/impressions", body: ["impressions": [view]]) { _, err in
-            if let err { print("impression not sent: \(err)") }
+        print("view: posting campaign \(c.campaignId) hook \(currentHook), sign up \(Int(Date().timeIntervalSince(since)))s")
+        request("/impressions", body: ["impressions": [view]]) { data, err in
+            if let err { print("view: not sent: \(err)") }
+            else { print("view: server answered \(String(decoding: data ?? Data(), as: UTF8.self).prefix(120))") }
             self.refresh()
         }
     }
@@ -1689,6 +1697,9 @@ assert(nearGain("123456789012345678901234567", "123456789012345678901234568") ==
 assert(near4("19279999998320000000000") == "0.0192 NEAR" && near4("0") == "0.0000 NEAR" && near4("1000000000000000000000000000") == "1000.0000 NEAR")
 assert(near4("99999999999999999999") == "0.0000 NEAR" && near4(nil) == "\u{2014}")
 assert(near4("-5") == "\u{2014}" && near4("0x1f") == "\u{2014}" && near4(" 5") == "\u{2014}" && near4("") == "\u{2014}")
+assert(!staysHome(mood: "hungry", agentWorking: true) && !staysHome(mood: "hungry", agentWorking: false), "a hungry pet still shows the sign")
+assert(!staysHome(mood: "asleep", agentWorking: true) && staysHome(mood: "asleep", agentWorking: false), "only an idle, asleep pet stays home")
+assert(!staysHome(mood: "thriving", agentWorking: true) && !staysHome(mood: "stable", agentWorking: false))
 assert(nearGain("5", "5") == nil && nearGain("5", "4") == nil && nearGain(nil, "5") == nil)
 do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt closes the open stretch
     var w = WaitClock(); let t0 = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())! // away from midnight
