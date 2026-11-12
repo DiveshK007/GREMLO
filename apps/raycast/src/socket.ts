@@ -12,6 +12,7 @@ export function send(cmd: string, args: Record<string, string> = {}): Promise<Re
   return new Promise((resolve) => {
     let buf = "";
     const c = createConnection(SOCKET, () => c.write(JSON.stringify({ cmd, args }) + "\n"));
+    c.setTimeout(3000, () => { c.destroy(); resolve({ ok: false, text: "Notchi didn't answer" }); });
     c.on("data", (d) => (buf += d.toString()));
     c.on("end", () => {
       try { resolve(JSON.parse(buf)); } catch { resolve({ ok: false, text: "no answer from the app" }); }

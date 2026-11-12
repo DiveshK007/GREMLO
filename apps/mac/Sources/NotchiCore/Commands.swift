@@ -47,7 +47,7 @@ public enum Commands {
 
     /// "30", "30m", "1h", "90s" (rounded up to a minute), "1h30m".
     public static func minutes(_ s: String) -> Int? {
-        if let n = Int(s), n > 0 { return n }
+        if let n = Int(s) { return n > 0 && n <= 7 * 24 * 60 ? n : nil }
         var total = 0.0, num = ""
         for c in s.lowercased() {
             if c.isNumber { num.append(c); continue }
@@ -55,7 +55,8 @@ public enum Commands {
             switch c { case "h": total += v * 60; case "m": total += v; case "s": total += v / 60; default: return nil }
             num = ""
         }
-        guard num.isEmpty, total > 0 else { return nil }
+        // a week at most: anything bigger is a mistake (or a hostile link), and Int() of a huge Double would trap
+        guard num.isEmpty, total > 0, total <= 7 * 24 * 60 else { return nil }
         return Int(total.rounded(.up))
     }
 
@@ -196,7 +197,10 @@ public final class CommandSocket {
             while true {
                 let c = accept(listenFd, nil, nil)
                 guard c >= 0 else { if errno == EINTR { continue } else { return } }
-                self?.serve(c)
+                // a client that never finishes its line times out after 2 s, and each one is served on its own
+                var tv = timeval(tv_sec: 2, tv_usec: 0)
+                setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+                DispatchQueue.global(qos: .utility).async { self?.serve(c) }
             }
         }
     }

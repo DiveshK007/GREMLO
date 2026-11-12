@@ -40,15 +40,19 @@ final class PrivacyController {
         let d = Duck.decide(screenShared: silence.screenShared, inMeeting: silence.inMeeting, focus: silence.focus,
                             fullScreen: silence.fullScreenVideo, streamMode: Self.streamOn)
         if silence.screenShared && !Self.streamOn { backend.hunt.clearBugs() }  // bugs leave on a share too
-        guard d != duck else { return }
-        print("privacy: \(duck) -> \(d)")
+        let changed = d != duck
+        if changed { print("privacy: \(duck) -> \(d)") }
         duck = d
         let hide = d == .intoNotch || d == .hidden
-        for p in [pet] + Array(backend.companions.pets.values) {
-            for w in [p.panel, p.signPanel, p.bubblePanel] { w.alphaValue = hide ? 0 : 1; if hide { w.ignoresMouseEvents = true } }
-            p.ducked = hide
-            if d == .sleep || d == .home { p.goHome(lock: false) }
+        // applied on every check, so a companion or visitor that arrives mid-share is hidden too
+        for p in [pet] + Array(backend.companions.pets.values) + backend.social.visitors {
+            if p.ducked != hide {
+                for w in [p.panel, p.signPanel, p.bubblePanel] { w.alphaValue = hide ? 0 : 1; if hide { w.ignoresMouseEvents = true } }
+                p.ducked = hide
+            }
+            if changed && (d == .sleep || d == .home) { p.goHome(lock: false) }
         }
+        guard changed else { return }
         backend.shown = ""
         backend.render()
     }
@@ -171,7 +175,9 @@ final class PrivacyController {
         NSApp.activate(ignoringOtherApps: true)
         guard p.runModal() == .OK, let url = p.url else { return }
         var out: [String: Any] = [:]
-        let prefs = defaults.persistentDomain(forName: Self.domain) ?? [:]
+        // keys, tokens and pairings stay out of the file (never print keys)
+        let secret = ["pairing", "token", "key", "secret"]
+        let prefs = (defaults.persistentDomain(forName: Self.domain) ?? [:]).filter { k, _ in !secret.contains { k.lowercased().contains($0) } }
         out["settings"] = prefs.mapValues { v -> Any in
             if let d = v as? Data { return (try? JSONSerialization.jsonObject(with: d)) ?? d.base64EncodedString() }
             if let d = v as? Date { return ISO8601DateFormatter().string(from: d) }

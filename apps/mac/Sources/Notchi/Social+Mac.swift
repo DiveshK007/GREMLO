@@ -37,7 +37,10 @@ final class SocialController {
         if PrivacyController.visitsOn, let id = defaults.string(forKey: "park.id"), let token = defaults.string(forKey: "park.token") {
             backend.request("/visits?id=\(id)&token=\(token)") { [weak self] data, _ in
                 guard let self, let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let list = o["visits"] as? [[String: Any]] else { return }
-                for v in list { self.backend.privacy.visit(v); self.walkIn(species: v["species"] as? String ?? "notchi", plate: nil, url: nil, stay: GuestbookEntry.visitSeconds) }
+                for v in list {
+                    self.backend.privacy.visit(v)  // the guestbook entry always lands; the walk-in waits for a quiet screen
+                    if !silence.silent && self.backend.privacy.duck == .none { self.walkIn(species: v["species"] as? String ?? "notchi", plate: nil, url: nil, stay: GuestbookEntry.visitSeconds) }
+                }
             }
         }
     }

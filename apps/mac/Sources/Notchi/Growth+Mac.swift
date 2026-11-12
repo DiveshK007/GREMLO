@@ -177,7 +177,11 @@ final class GrowthController {
             try? (text + "\n").write(to: url, atomically: true, encoding: .utf8)
         }
         let template = Diary.template(counts, name: petDisplayName)
-        guard Self.diaryModelOn, let ask = askModel, let pet else { save(template); return }
+        // a model-written entry is kept for the day (it carries its request id); a later write never replaces it
+        if let old = try? String(contentsOf: url, encoding: .utf8), old.contains("(written by the pet") { return }
+        // one paid call a day: once asked for this day, later writes use the counts template
+        guard Self.diaryModelOn, let ask = askModel, let pet, defaults.string(forKey: "diary.asked") != key else { save(template); return }
+        defaults.set(key, forKey: "diary.asked")
         let s = Roster.species(pet.skin.name)
         ask(Diary.payload(counts, species: s?.kind ?? "pet", voice: s?.voice ?? "plain", elder: p.stage == .elder)) { entry, requestId in
             // a model entry only with its request id; anything else falls back to the counts template
@@ -255,9 +259,7 @@ final class CompanionController {
         guard let pet else { return false }
         pet.handle(event: ev, notification: hook["notification_type"] as? String, tool: hook["tool_name"] as? String,
                    command: (hook["tool_input"] as? [String: Any])?["command"] as? String)
-        if ev == "SessionEnd" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.retire(session) }
-        }
+        if ev == "SessionEnd" { retire(session, tries: 0) }
         return true
     }
 
@@ -273,8 +275,15 @@ final class CompanionController {
         return pet
     }
 
-    private func retire(_ session: String) {
-        guard let pet = pets[session], pet.path == .home else { return }
+    /// Waits for the companion to walk home (perched, mid-trick or far away takes a while); after 2 minutes it's
+    /// sent home and removed anyway, so a stuck one never blocks later agents.
+    private func retire(_ session: String, tries: Int) {
+        guard let pet = pets[session] else { return }
+        if pet.path != .home && tries < 6 {
+            if pet.path == .floor { pet.perch = nil; pet.goHome(lock: true) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.retire(session, tries: tries + 1) }
+            return
+        }
         pets.removeValue(forKey: session)
         pet.retire()
         print("companion: \(pet.skin.name) went home for good")

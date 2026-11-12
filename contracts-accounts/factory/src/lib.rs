@@ -28,6 +28,7 @@ pub struct Factory {
 #[near]
 impl Factory {
     #[init]
+    #[private]  // only the factory account itself initialises it, so nobody can front-run the setup
     pub fn new(providers: Vec<AccountId>, per_call: U128, daily: U128) -> Self {
         Self { providers, per_call: per_call.0, daily: daily.0 }
     }

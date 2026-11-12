@@ -65,8 +65,10 @@ extension Backend {
         case "approve":
             let chosen = r.args["id"].flatMap { id in broker.queue.waiting.first { $0.id == id } }
             if r.args["id"] != nil && chosen == nil { return Reply(ok: false, text: "already answered") }
-            guard let top = chosen ?? broker.queue.top else { return Reply(ok: false, text: "nothing waiting") }
             let deny = r.args["answer"] == "deny"
+            // "next" means the oldest one this command may answer: any for deny, an ordinary one for allow
+            let fallback = deny ? broker.queue.top : broker.queue.waiting.first(where: ApprovalQueue.shortcutAllowed)
+            guard let top = chosen ?? fallback else { return Reply(ok: false, text: broker.queue.waiting.isEmpty ? "nothing waiting" : "only requests that delete, push or spend are waiting: answer those with a click") }
             // a command can deny anything, but can only allow an ordinary request; risky ones need a click
             guard deny || ApprovalQueue.shortcutAllowed(top) else { return Reply(ok: false, text: "that one deletes, pushes or spends: answer it with a click") }
             broker.answer(top.id, deny ? .deny : .allowOnce)

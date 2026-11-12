@@ -51,7 +51,7 @@ impl Purse {
         let today = env::block_timestamp() / DAY_NS;
         if today != self.day { self.day = today; self.spent_today = 0; }
         require!(self.spent_today + a <= self.daily, "over the daily cap");
-        require!(env::account_balance().as_yoctonear() >= a + RESERVE, "not enough in the purse");
+        require!(env::account_balance().as_yoctonear() >= a + Self::locked(), "not enough in the purse");
         self.spent_today += a;
         self.total_paid += a;
         env::log_str(&format!("EVENT_JSON:{}", json!({"standard": "notchi", "version": "1.0.0", "event": "paid_for_thinking",
@@ -76,7 +76,7 @@ impl Purse {
     /// Owner only, to the owner unless told otherwise. The reserve stays.
     pub fn withdraw(&mut self, amount: U128, to: Option<AccountId>) -> Promise {
         self.only_owner();
-        require!(env::account_balance().as_yoctonear() >= amount.0 + RESERVE, "that would dip into the reserve");
+        require!(env::account_balance().as_yoctonear() >= amount.0 + Self::locked(), "that would dip into the reserve");
         Promise::new(to.unwrap_or_else(|| self.owner.clone())).transfer(NearToken::from_yoctonear(amount.0))
     }
 
@@ -84,6 +84,9 @@ impl Purse {
         PurseView { owner: self.owner.clone(), providers: self.providers.clone(), per_call: U128(self.per_call), daily: U128(self.daily),
                     spent_today: U128(if env::block_timestamp() / DAY_NS == self.day { self.spent_today } else { 0 }), total_paid: U128(self.total_paid) }
     }
+
+    /// What must stay: the storage stake for the code and state, plus the reserve.
+    fn locked() -> u128 { env::storage_usage() as u128 * env::storage_byte_cost().as_yoctonear() + RESERVE }
 
     fn only_owner(&self) {
         let p = env::predecessor_account_id();
@@ -101,7 +104,7 @@ mod tests {
     fn acc(s: &str) -> AccountId { s.parse().unwrap() }
     fn ctx(pred: &str, day: u64) {
         testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.notchi.near")).predecessor_account_id(acc(pred))
-            .account_balance(NearToken::from_yoctonear(2 * NEAR)).block_timestamp(day * DAY_NS + 1).build());
+            .account_balance(NearToken::from_yoctonear(2 * NEAR)).storage_usage(130_000).block_timestamp(day * DAY_NS + 1).build());
     }
     fn purse() -> Purse {
         ctx("notchi.near", 1);
@@ -155,6 +158,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "reserve")]
     fn withdraw_keeps_the_reserve() { let mut p = purse(); ctx("owner.near", 1); p.withdraw(U128(2 * NEAR - RESERVE + 1), None); }
+
+    #[test]
+    #[should_panic(expected = "not enough in the purse")]
+    fn the_storage_stake_is_never_spent() {
+        let mut p = purse();
+        testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.notchi.near")).predecessor_account_id(acc("mochi.notchi.near"))
+            .account_balance(NearToken::from_yoctonear(18 * NEAR / 10)).storage_usage(130_000).block_timestamp(DAY_NS + 1).build());
+        p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), "r".into()); // 1.3 stake + 0.5 reserve leaves nothing to spend
+    }
 
     #[test]
     #[should_panic(expected = "a request id is required")]

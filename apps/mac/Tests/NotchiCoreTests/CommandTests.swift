@@ -6,6 +6,8 @@ import Testing
     @Test func durations() {
         #expect(Commands.minutes("30") == 30 && Commands.minutes("30m") == 30 && Commands.minutes("2h") == 120)
         #expect(Commands.minutes("1h30m") == 90 && Commands.minutes("90s") == 2 && Commands.minutes("x") == nil && Commands.minutes("0") == nil)
+        #expect(Commands.minutes("99999999999999999999m") == nil && Commands.minutes("99999999999999999999") == nil && Commands.minutes("10081") == nil, "no trap on huge values")
+        #expect(Commands.fromURL(URL(string: "notchi://pause?min=99999999999999999999m")!) == nil)
     }
 
     @Test func parsing() throws {

@@ -8,7 +8,7 @@ import WidgetKit
 struct NotchiApp: App {
     @StateObject var model = Model()
     // the QR code is a notchi-pair: link, so the Camera app offers to open it here
-    var body: some Scene { WindowGroup { ContentView().environmentObject(model).onOpenURL { model.pair($0.absoluteString) } } }
+    var body: some Scene { WindowGroup { ContentView().environmentObject(model).onOpenURL { model.offer($0.absoluteString) } } }
 }
 
 /// Polls the relay while the app is open, keeps the Live Activity and widgets current, and hands the pairing to the Watch.
@@ -16,12 +16,14 @@ struct NotchiApp: App {
     @Published var pairing = Store.pairing
     @Published var state = Store.state
     @Published var note = ""
+    @Published var offered: String?   // a pairing code from a link, waiting for the user to confirm
     private var timer: Timer?
     private var activity: Activity<RunAttributes>?
 
     override init() {
         super.init()
         if WCSession.isSupported() { WCSession.default.delegate = self; WCSession.default.activate() }
+        activity = Activity<RunAttributes>.activities.first  // one left from before a relaunch: keep updating it, never start a second
         // simulator checks: `simctl launch <device> dev.notchi.phone -pairCode <code>` pairs without a tap
         if pairing == nil, let c = UserDefaults.standard.string(forKey: "pairCode") { pair(c) }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { await self?.poll() } }
@@ -34,6 +36,9 @@ struct NotchiApp: App {
         sendToWatch()
         Task { await poll() }
     }
+
+    /// A link may pair a fresh phone at once; replacing an existing pairing always asks first.
+    func offer(_ code: String) { if pairing == nil { pair(code) } else { offered = code } }
 
     func unpair() { Store.pairing = nil; Store.state = nil; pairing = nil; state = nil; sendToWatch(); endActivity() }
 
@@ -94,6 +99,10 @@ struct ContentView: View {
                 if model.pairing == nil { pairView } else { statusView }
             }
             .navigationTitle("Notchi")
+            .alert("Pair with a different Mac?", isPresented: Binding(get: { model.offered != nil }, set: { if !$0 { model.offered = nil } })) {
+                Button("Replace pairing", role: .destructive) { if let c = model.offered { model.pair(c) }; model.offered = nil }
+                Button("Keep this one", role: .cancel) { model.offered = nil }
+            } message: { Text("A link asked to pair this phone with another Mac. Only do this if you just showed a code on your own Mac.") }
         }
     }
 

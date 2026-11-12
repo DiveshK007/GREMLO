@@ -9,9 +9,14 @@ import NotchiCore
 final class PhoneController {
     unowned let backend: Backend
     var lastSent = ""
+    var lastBeat = Date.distantPast
+    /// The pairing holds the key that seals approvals, so it lives in the Keychain (an older copy in defaults moves).
     var pairing: PhonePairing? {
-        get { defaults.string(forKey: "phone.pairing").flatMap(PhonePairing.from(code:)) }
-        set { defaults.set(newValue?.code, forKey: "phone.pairing") }
+        get {
+            if let old = defaults.string(forKey: "phone.pairing") { Keychain.set(old); defaults.removeObject(forKey: "phone.pairing") }
+            return Keychain.get().flatMap(PhonePairing.from(code:))
+        }
+        set { if let c = newValue?.code { Keychain.set(c) } else { Keychain.delete() } }
     }
 
     init(backend: Backend) {
@@ -32,8 +37,9 @@ final class PhoneController {
         var s = state()
         let key = "\(s.mood)|\(s.running)|\(s.tools)|\(s.waiting.map(\.id))|\(s.quiet)|\(s.doneAt?.timeIntervalSince1970 ?? 0)"
         // the state changes rarely; send on a change, and every 30 s so the phone knows the Mac is there
-        if key != lastSent || Int(Date().timeIntervalSince1970) % 30 < 2 {
+        if key != lastSent || Date().timeIntervalSince(lastBeat) >= 30 {
             s.at = Date()
+            lastBeat = s.at
             if let box = try? p.seal(s) { put("/phone/\(p.channel)/state", p.relay, ["box": box]) }
             lastSent = key
         }
@@ -122,4 +128,21 @@ extension Backend {
         guard let e = info?.explorer, let u = URL(string: "\(e)/address/\(petName)") else { return }
         NSWorkspace.shared.open(u)
     }
+}
+
+/// One generic-password item for the phone pairing.
+enum Keychain {
+    static let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "dev.notchi.phone", kSecAttrAccount as String: "pairing"]
+    static func get() -> String? {
+        var q = query; q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
+        return String(data: d, encoding: .utf8)
+    }
+    static func set(_ v: String) {
+        delete()
+        var q = query; q[kSecValueData as String] = Data(v.utf8); q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(q as CFDictionary, nil)
+    }
+    static func delete() { SecItemDelete(query as CFDictionary) }
 }
