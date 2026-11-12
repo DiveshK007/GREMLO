@@ -1,0 +1,100 @@
+name: NotchiPhone
+options:
+  bundleIdPrefix: dev.notchi
+  deploymentTarget: { iOS: "17.0", watchOS: "10.0" }
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  Notchi:
+    type: application
+    platform: iOS
+    sources:
+      - Phone
+      - Shared
+      - path: ../mac/Sources/NotchiCore/PhoneLink.swift
+      - path: ../web/public/pets
+        type: folder
+        buildPhase: resources
+    entitlements: { path: Phone/Notchi.entitlements, properties: { com.apple.security.application-groups: [group.dev.notchi] } }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.notchi.phone
+        INFOPLIST_KEY_CFBundleDisplayName: Notchi
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Face ID confirms an approval before it goes to your Mac.
+        INFOPLIST_KEY_NSCameraUsageDescription: The camera reads the pairing code your Mac shows.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    info:
+      path: Phone/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.notchi.pair
+            CFBundleURLSchemes: [notchi-pair]
+    dependencies:
+      - target: NotchiWidgets
+      - target: NotchiWatch
+  NotchiWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widgets
+      - Shared
+      - path: ../mac/Sources/NotchiCore/PhoneLink.swift
+      - path: ../web/public/pets
+        type: folder
+        buildPhase: resources
+    entitlements: { path: Widgets/NotchiWidgets.entitlements, properties: { com.apple.security.application-groups: [group.dev.notchi] } }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.notchi.phone.widgets
+        INFOPLIST_KEY_CFBundleDisplayName: Notchi
+        INFOPLIST_KEY_NSExtension: { NSExtensionPointIdentifier: com.apple.widgetkit-extension }
+    info:
+      path: Widgets/Info.plist
+      properties:
+        NSExtension: { NSExtensionPointIdentifier: com.apple.widgetkit-extension }
+  NotchiWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - Watch
+      - Shared
+      - path: ../mac/Sources/NotchiCore/PhoneLink.swift
+      - path: ../web/public/pets
+        type: folder
+        buildPhase: resources
+    entitlements: { path: Watch/NotchiWatch.entitlements, properties: { com.apple.security.application-groups: [group.dev.notchi.watch] } }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.notchi.phone.watchkitapp
+        INFOPLIST_KEY_CFBundleDisplayName: Notchi
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: dev.notchi.phone
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO
+    dependencies:
+      - target: NotchiWatchWidgets
+  NotchiWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - WatchWidgets
+      - Shared
+      - path: ../mac/Sources/NotchiCore/PhoneLink.swift
+      - path: ../web/public/pets
+        type: folder
+        buildPhase: resources
+    entitlements: { path: WatchWidgets/NotchiWatchWidgets.entitlements, properties: { com.apple.security.application-groups: [group.dev.notchi.watch] } }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.notchi.phone.watchkitapp.widgets
+    info:
+      path: WatchWidgets/Info.plist
+      properties:
+        NSExtension: { NSExtensionPointIdentifier: com.apple.widgetkit-extension }
