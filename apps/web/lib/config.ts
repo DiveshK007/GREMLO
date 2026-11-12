@@ -10,7 +10,9 @@ export const WORLD_ENV = process.env.NEXT_PUBLIC_WORLD_ENV === "production" ? "p
 
 export const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" : "testnet";
 export const VAULT_ID = process.env.NEXT_PUBLIC_NEAR_CONTRACT_ID ?? "";
-export const RPC_URL = process.env.NEXT_PUBLIC_NEAR_RPC_URL || (NETWORK === "mainnet" ? "https://rpc.mainnet.fastnear.com" : "https://test.rpc.fastnear.com");
+// rpc.testnet.near.org is deprecated and answers 429 to everything; these answered vault views on 2026-11-12
+export const RPC_URLS = (process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? "").split(",").map((u) => u.trim()).filter(Boolean);
+if (!RPC_URLS.length) RPC_URLS.push(...(NETWORK === "mainnet" ? ["https://rpc.mainnet.fastnear.com"] : ["https://test.rpc.fastnear.com", "https://near-testnet.drpc.org", "https://testnet-rpc.intea.rs"]));
 export const EXPLORER = NETWORK === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
 
 export const txLink = (hash: string) => `${EXPLORER}/txns/${hash}`;

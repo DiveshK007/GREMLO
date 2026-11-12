@@ -1,20 +1,30 @@
 // NEAR access for the browser: views over plain JSON-RPC, signing through NEAR Connect (the brand's or owner's wallet).
 import { keccak256, toHex } from "viem";
-import { NETWORK, RPC_URL, VAULT_ID } from "./config";
+import { NETWORK, RPC_URLS, VAULT_ID } from "./config";
 
-/** A vault view over JSON-RPC; returns the parsed JSON result. */
+/** A vault view over JSON-RPC; returns the parsed JSON result. A 429, 5xx or network error moves to the next RPC URL. */
 export async function view<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: "view", method: "query",
-      params: { request_type: "call_function", finality: "final", account_id: VAULT_ID, method_name: method, args_base64: btoa(JSON.stringify(args)) },
-    }),
+  const body = JSON.stringify({
+    jsonrpc: "2.0", id: "view", method: "query",
+    params: { request_type: "call_function", finality: "final", account_id: VAULT_ID, method_name: method, args_base64: btoa(JSON.stringify(args)) },
   });
-  const j = await res.json();
-  if (j.error || j.result?.error) throw new Error(`NEAR view ${method} failed: ${JSON.stringify(j.error ?? j.result.error).slice(0, 200)}`);
-  return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
+  let last = "";
+  for (const [k, url] of RPC_URLS.entries()) {
+    if (k > 0) await new Promise((r) => setTimeout(r, 400 * 2 ** (k - 1)));
+    let j: any;
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+      if (res.status === 429 || res.status >= 500) { last = `${new URL(url).host} HTTP ${res.status}`; continue; }
+      j = await res.json();
+    } catch (e) {
+      last = `${new URL(url).host}: ${(e as Error).message}`;
+      continue;
+    }
+    if (j.error?.code === -429) { last = `${new URL(url).host} rate limited`; continue; }
+    if (j.error || j.result?.error) throw new Error(`NEAR view ${method} failed: ${JSON.stringify(j.error ?? j.result.error).slice(0, 200)}`);
+    return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
+  }
+  throw new Error(`NEAR view ${method}: every RPC failed (last: ${last})`);
 }
 
 /** keccak256 of the hook lines, 0x-prefixed (the server checks it; the vault stores it without 0x). */
