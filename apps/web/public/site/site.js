@@ -1,5 +1,26 @@
 // The 1.0 website script, ported from docs/design/1.0/web/notchi.html. Waits for GSAP, ScrollTrigger and Lenis
 // (loaded by app/(site)/page.tsx), then runs unchanged. Every section still reads with no motion.
+// System · Light · Dark (R2 §7). The choice is a per-viewer convenience, so browser storage is enough.
+(function theme() {
+  const order = ['system', 'light', 'dark'];
+  let pick = 'system';
+  try { pick = localStorage.getItem('notchi.theme') || 'system'; } catch (e) {}
+  const mq = matchMedia('(prefers-color-scheme: light)');
+  const apply = () => {
+    const light = pick === 'light' || (pick === 'system' && mq.matches);
+    document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    const b = document.getElementById('themeBtn');
+    if (b) b.textContent = pick[0].toUpperCase() + pick.slice(1);
+  };
+  mq.addEventListener('change', apply);
+  document.addEventListener('click', (e) => {
+    if (!e.target || e.target.id !== 'themeBtn') return;
+    pick = order[(order.indexOf(pick) + 1) % order.length];
+    try { localStorage.setItem('notchi.theme', pick); } catch (err) {}
+    apply();
+  });
+  apply();
+})();
 (function start(tries) {
   if ((!window.gsap || !window.ScrollTrigger || !window.Lenis) && tries < 100) return setTimeout(function () { start(tries + 1); }, 30);
 (() => {
@@ -108,6 +129,13 @@ async function init() {
     IMG[s.id] = await load('/site/sprites/' + s.id + '.webp');
     ACCIMG[s.id] = await load('/site/sprites/' + s.id + '-acc.png');
     KIT[s.id] = '/site/sprites/' + s.id + '-kit.png';
+    // anchors come from each pack's pet.json (the inline values above are the fallback if it can't load)
+    try {
+      const n = (await (await fetch('/site/sprites/' + s.id + '.json')).json()).notchi;
+      const idle = n.headAnchor && n.headAnchor[R.idle];
+      if (idle) { s.head = idle.slice(0, 4).map((a, i) => a ? [a[0], a[1]] : s.head[i]); if (idle[0]) s.u = idle[0][2]; }
+      if (n.plateAnchor && n.plateAnchor[0]) s.plate = n.plateAnchor[0][1];
+    } catch (e) { /* keep the inline anchors */ }
   }));
 
   const hasGsap = !!(window.gsap && window.ScrollTrigger);

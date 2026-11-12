@@ -355,3 +355,16 @@ footer { border-top: 1px solid var(--rule); padding-block: 24px 40px; font: 11.5
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: 1ms !important; }
 }
+
+/* ---------- light mode (R2 §7): paper background, ink text; the notch and pets never change ---------- */
+html[data-theme="light"] {
+  --ink: #F4F2ED; --carbon: #E9E6DF; --graphite: #DEDAD2; --desk: #EFECE6;
+  --paper: #0B0B0B; --bone: #1F1F1F;
+  --text-2: rgba(11,11,11,.62); --text-3: rgba(11,11,11,.45); --rule: rgba(11,11,11,.14);
+  color-scheme: light;
+}
+html[data-theme="light"] .bar { background: linear-gradient(rgba(244,242,237,.94), rgba(244,242,237,.7)); }
+html[data-theme="light"] .btn.solid { color: #0B0B0B; }
+html[data-theme="light"] .notch { --paper: #F4F2ED; --text-2: rgba(244,242,237,.66); --text-3: rgba(244,242,237,.42); --rule: rgba(244,242,237,.12); color: #F4F2ED; }
+.theme-btn { background: none; border: 0; cursor: pointer; font: 500 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); padding: 0 6px; }
+.theme-btn:hover { color: var(--paper); }
