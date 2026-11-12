@@ -27,7 +27,7 @@ Decisions (2026-11-13):
 | 9 | Server and web: plate lines 6–40 characters enforced in the console and the claim checks (R2 §2); brand A/B (4 lines, Thompson), moments, brand safety, signed hourly batches with a public log and `notchi verify`, money page; team relay; pet park; guestbook visits; creator tools and gallery | R2§11,13,15–16, R4§12,14 || done (open: the public log chains each signed P-256 sighting report rather than an hourly ed25519 batch per pet; domain and business-payment verification and the human line review are a process, not code; GitHub review/@-mention triggers for team visits need a GitHub connection, so visits are sent by hand; gallery image safety and look-alike checks are for the reviewers; the money page shows vault totals, and the fee stays a dash until published) |
 | 10 | Website: full port of `web/notchi.html` into Next (hero physics and bug hunt, Notch Live scrub, hatching, eight pets, Closet, room, dreams, park, money, privacy), light mode switch | R3§5, R4§19 || done: the design page is the home page in its own route group (markup and CSS as is, its script in public/site/site.js after GSAP 3.12.5, ScrollTrigger and Lenis 1.1.13), the app pages keep their layout, the old home is /live (open: the site script still uses its inline anchor table instead of each pet.json, and the light-mode switch from R4 §19 isn't added) |
 | 11 | Reach: VS Code/Cursor extension; iPhone app (Live Activity, lock-screen approvals, Dynamic Island, widgets); Watch complication | D§10, R4§16–17 | |
-| 12 | Readable accounts: factory and purse contracts, function-call key limited to `pay_inference`, caps and allow-list | R4§18 | |
+| 12 | Readable accounts: factory and purse contracts, function-call key limited to `pay_inference`, caps and allow-list | R4§18 || done: contracts-accounts (factory and purse, 13 unit tests incl. the Mac key's single method and the call that crosses the daily cap). Not deployed and not wired into the live flow, which still uses the vault's compute budget; Settings, Advanced would show the account id once it is |
 | 13 | Copy review (no chain names in product copy), docs, README, full QA pass | all | |
 
 ## Tests the spec requires (tick as they land)
@@ -44,4 +44,4 @@ Decisions (2026-11-13):
 - [x] Runner matcher; bug lifecycle; stuck normaliser; git force-push fixture and MERGE_HEAD watcher; drop-zone quoting; dreams, tricks, seasons, heads-up
 - [x] Drop zone quoting and image pasteboard; stream mode turns the plate off and freezes sightings
 - [x] Park payload is exactly `{id, name, species, stage, outfit}`; postcard text has no path, repo or currency
-- [ ] Purse: a function-call key can't transfer; caps reject the call that crosses them
+- [x] Purse: a function-call key can't transfer (the factory gives the Mac's key only pay_inference); caps reject the call that crosses them

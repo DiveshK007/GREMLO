@@ -27,6 +27,18 @@ jobs:
       - run: cargo test
         working-directory: contracts-near
 
+  contracts-accounts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: contracts-accounts }
+      # unit tests only; the factory embeds res/notchi_purse.wasm (built by build.sh, committed)
+      - run: cargo test
+        working-directory: contracts-accounts
+
   server:
     runs-on: ubuntu-latest
     steps:
