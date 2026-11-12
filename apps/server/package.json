@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env --import tsx src/index.ts",
-    "test": "node --import tsx --test src/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts",
+    "verify": "node --env-file=.env --import tsx scripts/verify.ts"
   },
   "dependencies": {
     "@arkiv-network/sdk": "^1.0.1",
