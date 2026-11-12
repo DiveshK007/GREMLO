@@ -33,7 +33,7 @@ export function checkEmail(v: unknown) {
   return s;
 }
 
-export type Payout = { at: number; id: string; pet: string; views: number; wei: string };
+export type Payout = { at: number; id: string; pet: string; views: number; wei: string; tx?: string }; // tx: the settlement, the pet's meal receipt
 /** Payouts this server made since `since` (ms), filtered by `match`. */
 export function sumSince(payouts: Payout[], since: number, match: (p: Payout) => boolean) {
   return payouts.filter((p) => p.at >= since && match(p)).reduce((a, p) => ({ views: a.views + p.views, wei: a.wei + BigInt(p.wei) }), { views: 0, wei: 0n });

@@ -247,7 +247,7 @@ async function settle(id: string) {
         const txHash = await send("settle_impressions", { id: Number(id), pet_id: s.pet, count: s.count });
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
         markSettled(store.pending[id], s.pet, s.count, "paid");
-        store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString() }].slice(-5000);
+        store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString(), tx: txHash }].slice(-5000);
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
         console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
@@ -322,6 +322,8 @@ async function getPet(key: string) {
       lastThoughts: store.thoughts[petKey],
     }),
     petKey,
+    // settlement txs that fed this pet's compute budget: each is one meal (a receipt) for growth on the Mac
+    meals: store.payouts.filter((x) => x.pet === petKey && x.tx).map((x) => x.tx!).slice(-500),
     owner: pet?.owner ?? rec.owner,
     payout: pet?.payout ?? rec.payout,
     compute: pet && {

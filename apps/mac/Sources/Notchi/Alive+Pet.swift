@@ -19,7 +19,14 @@ extension Pet {
         }
         network.start(queue: DispatchQueue(label: "notchi.network"))
         readPower()
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.readPower() }
+        timers.append(Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.readPower() })
+    }
+
+    /// A companion going away for good: stop its timers and monitors and take its windows down.
+    func retire() {
+        timers.forEach { $0.invalidate() }
+        network.cancel()
+        for w in [panel, signPanel, bubblePanel, door.panel] { w.orderOut(nil) }
     }
 
     func setOffline(_ off: Bool) {
@@ -207,6 +214,7 @@ extension Pet {
         case .gaze: return [gazeFrame]
         case .tools: return [currentProp?.rawValue ?? Prop.terminal.rawValue]
         case .land: if let f = squashFrame { return [f] }; return dizzy ? [0, 1, 2, 3, 4, 5] : [0, 1, 4, 5]
+        case .hatch: return [eggFrame]
         case .idle where napping: return Sequence.frames(.idle, count: strip.frames.count, mood: "asleep")
         default: return nil
         }

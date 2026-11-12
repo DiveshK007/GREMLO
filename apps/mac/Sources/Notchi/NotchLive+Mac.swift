@@ -29,6 +29,7 @@ final class ApprovalBroker {
         reply(Decision.json(a, suggestions: suggestions.removeValue(forKey: id) ?? []))
         queue.remove(id)
         approvalsAnswered += 1
+        onAnswered?()
         Feel.sound(a == .deny ? "deny" : "allow")
         Feel.haptic(a == .deny ? .deny : .allow)
         print("approval: answered \(a.rawValue) from the notch")
@@ -50,6 +51,7 @@ final class ApprovalBroker {
     }
 
     var approvalsAnswered = 0
+    var onAnswered: (() -> Void)?
 }
 
 /// What the current run is doing, for the ticker and the done card. Counts and times only; nothing leaves the Mac.
@@ -181,6 +183,7 @@ final class NotchLiveController: NSObject {
         i.hoverOrPin = (hovered || pinned) && run.started != nil
         i.toolRunning = run.toolRunning
         i.thinking = run.thinking
+        if let g = backend?.growth { i.egg = g.isEgg && backend?.pet.path != .home || (g.unlockNote.map { Date() < $0.until } ?? false) }
         i.sleeping = backend.map { $0.pet.napping || $0.pet.night && $0.pet.path == .home } ?? false
         i.offline = backend?.pet.offline ?? false
         return i
@@ -263,7 +266,10 @@ final class NotchLiveController: NSObject {
                                      stack.topAnchor.constraint(equalTo: content.topAnchor)])
         border(state == .think ? breathing() : nil)
         switch state {
-        case .rest, .room, .egg, .visitor, .focus: break
+        case .egg:
+            if let n = backend?.growth.unlockNote, Date() < n.until { stack.addArrangedSubview(text(n.text, 11, .primary)) }
+            else if let g = backend?.growth { stack.addArrangedSubview(row([eyes(), spacer(), text("egg \u{00B7} \(g.egg.calls)/50", 11, .secondary, mono: true)])) }
+        case .rest, .room, .visitor, .focus: break
         case .think: break  // the breathing accent edge says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))
         case .sleep: stack.addArrangedSubview(row([eyes(asleep: true), spacer(), text("Zzz", 11, .secondary)]))

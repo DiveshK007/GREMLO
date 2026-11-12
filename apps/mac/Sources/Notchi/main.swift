@@ -56,12 +56,12 @@ func spacesBehavior() -> NSWindow.CollectionBehavior {
 
 enum PetState: String, CaseIterable {
     case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy, backflip, moonwalk
-    case sit, yawn, gaze, grabbed, thrown, land, edgepeek, night, tools, special
+    case sit, yawn, gaze, grabbed, thrown, land, edgepeek, night, tools, special, hatch, evolve
     /// The pack row this state draws. Holding the line is the hold row, with the plate overhead.
     var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch]
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering, held, airborne }
@@ -337,7 +337,18 @@ final class Pet {
     var speed: Double { Rates.multiplier(mood: mood) }
     // Accessories: one layer per slot, inside the sprite layer so they share its flips and squashes.
     var accLayers: [Slot: CALayer] = [:]
-    var worn: [String] { defaults.stringArray(forKey: "wardrobe.\(skin.name)") ?? [] }
+    // From the Closet (Growth+Mac.swift); a free try-on overrides it for a few seconds.
+    var wornItems: [String] = []
+    var wornOverride: [String]?
+    var worn: [String] { wornOverride ?? wornItems }
+    // Before hatching the pet is an egg: it shows the hatch row, never walks, holds no line (R3 §3).
+    var egg = false
+    var eggFrame = 0
+    var onEggSkip: (() -> Void)?
+    var onStomp: (() -> Void)?
+    // A companion: every animation, no sign, no thinking, no views (spec D §2).
+    var isCompanion = false
+    var timers: [Timer] = []
     // Tricks: the backflip's jump arc lifts the whole window; the moonwalk slides against the facing.
     var trickStart = Date.distantPast
     var liftY: CGFloat = 0
@@ -382,7 +393,11 @@ final class Pet {
         panel.contentView?.layer?.addSublayer(sprite)
         let grab = GrabView(frame: CGRect(origin: .zero, size: skin.size))
         grab.autoresizingMask = [.width, .height]
-        grab.onClick = { [weak self] in self?.poke() }
+        grab.onClick = { [weak self] in
+            guard let self else { return }
+            if self.egg && NSEvent.modifierFlags.contains(.option) { self.onEggSkip?(); return }  // option-click hatches now
+            self.poke()
+        }
         grab.onGrab = { [weak self] in self?.beginGrab(at: $0) }
         grab.onDrag = { [weak self] in self?.drag(to: $0) }
         grab.onRelease = { [weak self] in self?.release(at: $0) }
@@ -406,7 +421,7 @@ final class Pet {
         bubbleLabel.drawsBackground = true
         bubbleLabel.backgroundColor = .white
         bubblePanel.contentView?.addSubview(bubbleLabel)
-        Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
+        timers.append(Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() })
         startContextMonitors()
     }
 
@@ -416,6 +431,8 @@ final class Pet {
     }
 
     func set(_ s: PetState, then after: PetState? = nil) {
+        let s = egg ? .hatch : s
+        let after = egg ? .hatch : after
         if s != state { print("state \(state.rawValue) -> \(s.rawValue)") }
         state = s
         next = after ?? s
@@ -462,6 +479,9 @@ final class Pet {
     }
 
     func goHome(lock: Bool) {
+        if egg && path != .home {  // an egg can't climb: it pops back behind the door
+            go(.home); panel.orderOut(nil); door.close(lock: lock); return
+        }
         lockWhenHome = lock
         switch path {
         case .home: if lock { door.close(lock: true) }
@@ -608,6 +628,7 @@ final class Pet {
         lastPoke = Date()
         Feel.sound(Sounds.poke(click: annoyance))
         Feel.haptic(annoyance >= 5 ? .stomp : .boop)
+        if annoyance == 5 { onStomp?() }
         if state != .annoy {
             if state != .hover { beforeFun = state }
             set(.annoy)
@@ -1032,14 +1053,11 @@ struct PetInfo: Decodable {
     let impressionsToday: Int; let lastThoughts: [Thought]; let seeded: Bool
     let paidViews: Int?; let earnedWei: String?; let level: Int?; let streak: Int? // nil: older server or chain unreadable
     let explorer: String? // nearblocks for the server's network
+    let meals: [String]? // settlement txs that fed the compute budget: one meal each, for growth
 }
 
 /// Species are earned, never bought (spec D §2): starters are open; the rest show what unlocks them.
-/// shortcut: unlock tracking lands with hatching (milestone 5); until then only the starters can be picked, demo mode previews any.
-func speciesLock(_ id: String) -> String? {
-    guard let s = Roster.species(id) else { return "unknown" }
-    return s.starter ? nil : s.unlock
-}
+func speciesLock(_ id: String) -> String? { backend.growth.lockReason(id) }
 
 /// Time the agent worked while you waited today (prompt to stop), counted on this Mac from hook events, never uploaded.
 struct WaitClock {
@@ -1139,6 +1157,23 @@ final class Backend: NSObject {
         print("paused for \(Int(minutes)) min")
         shown = ""; render()
     }
+    // Growing up and companions (Growth+Mac.swift)
+    let growth = GrowthController(existingUser: ClaudeHooks.isConnected)
+    lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
+    lazy var growthStack: NSStackView = {
+        let s = NSStackView(); s.orientation = .vertical; s.alignment = .leading; s.spacing = 6
+        s.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 16, right: 18); return s
+    }()
+    lazy var growthWindow: NSWindow = {
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 640), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false
+        growthStack.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = growthStack
+        growthStack.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        w.contentView = scroll
+        w.isReleasedWhenClosed = false
+        return w
+    }()
     var demoHooks: [String]?
     var showingDemo = false
     let demoEvents: [(String, String)] = [
@@ -1169,6 +1204,18 @@ final class Backend: NSObject {
         self.pet = pet
         super.init()
         pet.onContextChange = { [weak self] in self?.shown = ""; self?.render() }
+        growth.pet = pet
+        pet.egg = growth.isEgg
+        pet.eggFrame = growth.egg.restFrame
+        pet.wornItems = growth.worn
+        if pet.egg { pet.state = .hatch }
+        pet.onEggSkip = { [weak self] in self?.growth.skip() }
+        pet.onStomp = { [weak self] in self?.growth.stomped() }
+        growth.onChange = { [weak self] in
+            guard let self else { return }
+            self.applyWorn(); self.rebuildGrowth(); self.shown = ""; self.render(); self.live.update()
+        }
+        broker.onAnswered = { [weak self] in self?.growth.approvalAnswered() }
         // A sign click goes through the server, which counts it once per window and redirects to the brand.
         pet.onSignClick = { [weak self] in
             guard let self, let c = self.campaign, c.url != nil else { return }
@@ -1289,6 +1336,8 @@ final class Backend: NSObject {
                     self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
                 }
                 self.info = new
+                self.growth.meals(new.meals ?? [], seeded: new.seeded)
+                self.growth.mood(new.mood)
             }
             self.render()
         }
@@ -1296,7 +1345,7 @@ final class Backend: NSObject {
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
     func think(_ hook: [String: Any]) {
-        guard !thinking, !demoMode, !pet.offline, !paused else { return } // no AI spend while demoing, offline or paused
+        guard !thinking, !demoMode, !pet.offline, !paused, !pet.egg else { return } // no AI spend while demoing, offline or paused
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
@@ -1328,15 +1377,15 @@ final class Backend: NSObject {
             pet.signLinks = showHooks && campaign?.url != nil
             pet.setSign(showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil, brand: campaign?.brand ?? "")
         }
-        if paused && !demoMode {
-            pet.setSign(nil)
+        if (paused || pet.egg) && !demoMode {
+            pet.setSign(nil)  // paused, or still an egg: no line
         } else if pet.offline && !demoMode {
             // offline: sleeps, no lines, no meals, and says why (spec R2 §6)
             pet.setSign(nil)
             pet.setMood("asleep", reason: offlineReason)
         } else if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings || showingDemo { return }  // don't rebuild under a dragging slider
-        let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
+        let key = "\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
         if key == shown { return }
         shown = key
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1383,9 +1432,9 @@ final class Backend: NSObject {
         if let i = info, let views = i.paidViews {
             stack.addArrangedSubview(row("Paid by brands", "\(near4(i.earnedWei)) for \(views) views" + tag))
         }
-        if let l = info?.level, let s = info?.streak {
-            stack.addArrangedSubview(row("Level \(l)", s == 0 ? "no streak yet" : "\(s)-day streak"))
-        }
+        let gp = growth.p
+        stack.addArrangedSubview(row(growth.isEgg ? "Egg" : "\(gp.stage)".capitalized, growth.isEgg ? "\(growth.egg.calls) of 50 tool calls" : "\(gp.meals.count) meals, \(gp.stars) stars"))
+        stack.addArrangedSubview(NSButton(title: "Closet, stars and certificate", target: self, action: #selector(openGrowth)))
         stack.addArrangedSubview(NSButton(title: "Your pet page and weekly recap", target: self, action: #selector(openPetPage)))
 
         stack.addArrangedSubview(caption("Now showing"))
@@ -1541,8 +1590,8 @@ final class Backend: NSObject {
             // try-on is free and unlimited; earning items comes with the Closet (milestone 5)
             let names = pet.skin.pack.notchi.accessories?.names ?? []
             let now = pet.worn.last.flatMap { names.firstIndex(of: $0) } ?? -1
-            if !names.isEmpty { defaults.set([names[(now + 1) % names.count]], forKey: "wardrobe.\(pet.skin.name)") }
-        case "demo.undress": defaults.removeObject(forKey: "wardrobe.\(pet.skin.name)")
+            if !names.isEmpty { pet.wornOverride = [names[(now + 1) % names.count]] }
+        case "demo.undress": pet.wornOverride = []
         case let m where m.hasPrefix("mood."):
             let mood = String(m.dropFirst(5))
             pet.setMood(mood, reason: mood == "asleep" ? "demo: can't read the chain" : mood == "hungry" ? "demo: " + brokeReason : nil)
@@ -1749,6 +1798,8 @@ let server: HookServer
 do {
     server = try HookServer(port: 47474) { hook in
         backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
+        backend.growth.hook(hook)
+        if backend.companions.route(hook) { backend.render(); return }  // another agent's companion took it
         backend.broker.sawEvent(session: hook["session_id"] as? String ?? "", tool: hook["tool_name"] as? String, event: hook["hook_event_name"] as? String ?? "")
         // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)
         pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String,
