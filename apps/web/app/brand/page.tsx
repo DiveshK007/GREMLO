@@ -6,7 +6,7 @@ import {
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign, topUpCampaign } from "@/lib/chain";
-import { addressLink, formatNear, formatWhen, parseNear, txLink, VAULT_ID } from "@/lib/config";
+import { addressLink, formatNear, formatWhen, parseNear, SERVER_URL, txLink, VAULT_ID } from "@/lib/config";
 import { PetSmall } from "@/components/PetArt";
 import { HookTicker } from "@/components/HookTicker";
 
@@ -41,6 +41,7 @@ export default function FundCampaign() {
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [dropped, setDropped] = useState<Dropped[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
+  const [moments, setMoments] = useState<Record<string, string>>({}); // line -> tests | deploy | long run | any
   const [own, setOwn] = useState("");
   const [budget, setBudget] = useState("0.1");
   const [rate, setRate] = useState("0.001");
@@ -159,7 +160,7 @@ export default function FundCampaign() {
       let recordWarning: string | undefined;
       setBusy("record");
       try {
-        await recordCampaign({ campaignId: campaignId.toString(), hooks: picked, lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief, email: email.trim() || undefined });
+        await recordCampaign({ campaignId: campaignId.toString(), hooks: picked, moments: picked.map((h) => moments[h] ?? "any"), lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief, email: email.trim() || undefined });
       } catch (e) {
         recordWarning = `Paid onchain, but the server didn't save your hooks: ${(e as Error).message}. Your budget is safe; contact us with the receipt.`;
       }
@@ -350,7 +351,23 @@ export default function FundCampaign() {
       {(hooks.length > 0 || hooksError) && (
         <div className="card">
           <h2><span className="mono num">02</span>Pick {MIN_PICK} to {MAX_PICK} hooks</h2>
-          <p className="muted">Picked {picked.length} of {MAX_PICK}. The pet rotates them and favours the ones developers click.</p>
+          <p className="muted">Picked {picked.length} of {MAX_PICK}. Traffic is even until each line has 2,000 sightings, then favours the lines developers open.</p>
+          {picked.length > 0 && (
+            <div className="moments">
+              <p className="muted">When should each line show? The pet works out the moment on the developer&apos;s Mac; nothing about their work is sent.</p>
+              {picked.map((h) => (
+                <label key={h} className="moment">
+                  <span>{h}</span>
+                  <select value={moments[h] ?? "any"} onChange={(e) => setMoments({ ...moments, [h]: e.target.value })}>
+                    <option value="any">any time</option>
+                    <option value="tests">while tests run</option>
+                    <option value="deploy">during a deploy</option>
+                    <option value="long run">on a long run</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
           {groups.map(({ f, list }) => (
             <div key={f} className="hook-group">
               <p className="mono hook-format">{FORMAT_LABEL[f]}</p>
@@ -521,6 +538,15 @@ export default function FundCampaign() {
               <p key={reason} className="muted">{n} view{n === 1 ? "" : "s"} voided, not charged: {reason}.</p>
             ))}
             {stats && stats.pendingViews > 0 && <p className="muted">{stats.pendingViews} view{stats.pendingViews === 1 ? "" : "s"} waiting to be settled.</p>}
+            {stats?.moments && Object.keys(stats.moments).length > 0 && (
+              <p className="muted">By moment: {Object.entries(stats.moments).map(([m, n]) => `${m} ${n ?? "(under 50 pets)"}`).join(" · ")}</p>
+            )}
+            {stats?.paused && stats.paused.length > 0 && <p className="muted">Paused by reports: line {stats.paused.map((i) => i + 1).join(", ")}.</p>}
+            {stats && (
+              <p className="muted">
+                Every counted view is a signed report from a pet. <a href={`${SERVER_URL}/campaigns/${stats.campaignId}/log`}>Public log</a> · check it yourself with <code>notchi verify {stats.campaignId}</code>
+              </p>
+            )}
             {!lookup.closed && lookup.endTime + 3600n <= nowSec && (
               <button onClick={onClose} disabled={busy === "close"}>{busy === "close" ? "Closing…" : "Close and refund"}</button>
             )}

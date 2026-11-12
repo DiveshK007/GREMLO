@@ -75,11 +75,12 @@ export const checkCampaign = (brief: Brief, hooks: string[], url: string, email 
 
 /** GET /campaigns/:id/stats -> per-hook views and clicks, queued views. */
 export type Stats = { campaignId: string; url: string | null; views: number[]; clicks: number[]; pendingViews: number; best: number | null; emailAlerts: boolean;
-  heldViews: number; holdbackHours: number; voided: Record<string, number> };
+  heldViews: number; holdbackHours: number; voided: Record<string, number>;
+  moments?: Record<string, number | null>; reports?: number[]; paused?: number[] }; // a moment shows a count only with 50+ distinct pets
 export const campaignStats = (id: string) => call<Stats>(`/campaigns/${encodeURIComponent(id)}/stats`);
 
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
-export const recordCampaign = (body: { campaignId: string; hooks: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief; email?: string }) =>
+export const recordCampaign = (body: { campaignId: string; hooks: string[]; moments?: string[]; lineHash: string; brand: string; txHash: string; url: string; brief: Brief; email?: string }) =>
   call<unknown>(`/campaigns`, { method: "POST", body: JSON.stringify(body) });
 
 /** POST /settle/:id -> the server pays queued impressions onchain, one tx per pet. amount is yoctoNEAR as a string. */
