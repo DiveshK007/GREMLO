@@ -62,6 +62,7 @@ final class RunTracker {
     var lastTool = ""
     var agent = "Claude Code"
     var activity: [Character] = []   // r read, e edit, x run, f failed, a approval, p passed
+    var steps: [Step] = []           // the scrubber's data (R4 §6), saved for 7 days on Stop
     var reader = TranscriptUsageReader()
     /// Estimated spend today across runs (micro-cents), for the per-day soft alert. Local only.
     var dayMicroCents = 0
@@ -75,18 +76,32 @@ final class RunTracker {
         if let path = hook["transcript_path"] as? String, path != transcript { transcript = path; offset = 0; reader = TranscriptUsageReader() }
         switch ev {
         case "UserPromptSubmit":
-            started = Date(); endedAt = nil; doneUntil = nil; tools = 0; errors = 0; activity = []
+            started = Date(); endedAt = nil; doneUntil = nil; tools = 0; errors = 0; activity = []; steps = []
             thinking = true; approvalsAtStart = approvalsAnswered
         case "PreToolUse":
             thinking = false; toolRunning = true; tools += 1; lastTool = tool ?? ""
+            let input = hook["tool_input"] as? [String: Any] ?? [:]
+            let summary = (input["command"] as? String) ?? (input["file_path"] as? String).map { ($0 as NSString).lastPathComponent }
+                ?? (input["pattern"] as? String) ?? (input["url"] as? String) ?? ""
+            steps.append(Step(tool: tool ?? "tool", start: Date(), kind: Step.kind(tool: tool ?? ""), summary: String(summary.prefix(80)),
+                              command: input["command"] as? String, file: input["file_path"] as? String))
             mark(Tools.prop(tool: tool ?? "", command: (hook["tool_input"] as? [String: Any])?["command"] as? String))
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
             toolRunning = false
-        case "PermissionRequest": push("a")
+            if let i = steps.lastIndex(where: { $0.tool == (tool ?? "") && $0.end == nil }) {
+                steps[i].end = Date()
+                let cmd = (hook["tool_input"] as? [String: Any])?["command"] as? String
+                if ev == "PostToolUseFailure" { steps[i].kind = .failed; push("f") }
+                else if TestRun.outcome(event: ev, tool: tool, command: cmd) == true { steps[i].kind = .passed }
+            }
+        case "PermissionRequest":
+            push("a")
+            steps.append(Step(tool: tool ?? "tool", start: Date(), end: Date(), kind: .approval, summary: "approval", command: nil, file: nil))
         case "Stop", "StopFailure":
             thinking = false; toolRunning = false; endedAt = Date()
             if ev == "StopFailure" { errors += 1; push("f") } else { push("p") }
             doneUntil = Date().addingTimeInterval(NotchLive.doneHold)
+            RunLog.save(steps)
         default: break
         }
         tail()
@@ -132,6 +147,10 @@ final class NotchLiveController: NSObject {
     var state = LiveState.rest
     var pinned = false, hovered = false
     var selected = 0
+    var dragging = false
+    var toastUntil = Date.distantPast
+    var dreamIndex = 0
+    var scrubLabel: String?
     private var pressStart: Date?
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
@@ -155,7 +174,8 @@ final class NotchLiveController: NSObject {
         panel.hasShadow = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        panel.contentView = NSView()
+        let drop = DropView(frame: .zero)
+        panel.contentView = drop
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.backgroundColor = NSColor.black.cgColor  // always black, whatever the theme
         panel.contentView?.layer?.cornerRadius = 14
@@ -163,6 +183,8 @@ final class NotchLiveController: NSObject {
         let track = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
         panel.contentView?.addTrackingArea(track)
         broker.onChange = { [weak self] in self?.update() }
+        drop.onDragging = { [weak self] on in self?.dragging = on; self?.update() }
+        drop.onDropped = { [weak self] in self?.toastUntil = Date().addingTimeInterval(2); Feel.haptic(.tick); self?.update() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in self?.key(e) == true ? nil : e }
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] e in
             guard let self, e.window === self.panel else { return e }
@@ -183,6 +205,9 @@ final class NotchLiveController: NSObject {
         i.hoverOrPin = (hovered || pinned) && run.started != nil
         i.toolRunning = run.toolRunning
         i.thinking = run.thinking
+        i.dragging = dragging || Date() < toastUntil
+        i.stuck = backend?.hunt.stuckTrigger != nil
+        i.meetingSoon = backend?.hunt.meetingSoonText != nil
         if let g = backend?.growth { i.egg = g.isEgg && backend?.pet.path != .home || (g.unlockNote.map { Date() < $0.until } ?? false) }
         i.sleeping = backend.map { $0.pet.napping || $0.pet.night && $0.pet.path == .home } ?? false
         i.offline = backend?.pet.offline ?? false
@@ -250,7 +275,8 @@ final class NotchLiveController: NSObject {
     private var lastKey = ""
 
     func refreshContent(clear: Bool = false) {
-        let key = "\(state)|\(broker.queue.waiting.map(\.id))|\(selected)|\(run.tools)|\(Int(run.elapsed))|\(run.reader.usage.total)|\(pinned)"
+        if state == .sleep { dreamIndex = Int(Date().timeIntervalSince1970 / DreamLog.interval) }
+        let key = "\(state)|\(dreamIndex)|\(scrubLabel ?? "")|\(dragging)|\(broker.queue.waiting.map(\.id))|\(selected)|\(run.tools)|\(Int(run.elapsed))|\(run.reader.usage.total)|\(pinned)"
         if !clear && key == lastKey { return }
         lastKey = key
         stack.removeFromSuperview()
@@ -269,11 +295,13 @@ final class NotchLiveController: NSObject {
         case .egg:
             if let n = backend?.growth.unlockNote, Date() < n.until { stack.addArrangedSubview(text(n.text, 11, .primary)) }
             else if let g = backend?.growth { stack.addArrangedSubview(row([eyes(), spacer(), text("egg \u{00B7} \(g.egg.calls)/50", 11, .secondary, mono: true)])) }
-        case .stuck, .meeting, .drop: break
+        case .drop: stack.addArrangedSubview(text(dragging ? "Drop to copy it for your agent" : "Ready to paste", 13, .primary))
+        case .meeting: stack.addArrangedSubview(row([eyes(), spacer(), text(backend?.hunt.meetingSoonText ?? "", 11, .secondary, mono: true)]))
+        case .stuck: if let h = backend?.hunt, let t = h.stuckTrigger { stuckCard(t) }
         case .rest, .room, .visitor, .focus: break
         case .think: break  // the breathing accent edge says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))
-        case .sleep: stack.addArrangedSubview(row([eyes(asleep: true), spacer(), text("Zzz", 11, .secondary)]))
+        case .sleep: stack.addArrangedSubview(row([eyes(asleep: true), spacer(), dreamIcon()]))
         case .offline: stack.addArrangedSubview(text("Can't reach the network \u{00B7} sleeping safely", 12, .primary))
         case .ticker: ticker()
         case .done: done()
@@ -287,9 +315,46 @@ final class NotchLiveController: NSObject {
         let alert = softAlert
         stack.addArrangedSubview(row([text(run.lastTool.isEmpty ? "waiting" : run.lastTool, 13, .primary, mono: true), spacer(),
                                       text(run.agent, 11, .secondary)]))
-        stack.addArrangedSubview(row([text("\(run.tools) tools \u{00B7} \(clock(run.elapsed))", 11, .secondary), spacer(),
+        stack.addArrangedSubview(row([text(scrubLabel ?? "\(run.tools) tools \u{00B7} \(clock(run.elapsed))", 11, .secondary), spacer(),
                                       text(cost, 11, alert ? .amber : .secondary, mono: true)]))
-        stack.addArrangedSubview(bars())
+        if run.endedAt != nil && !run.steps.isEmpty {
+            let scrub = ScrubView()
+            scrub.steps = run.steps
+            if let a = backend?.pet.skin.accent { scrub.accent = NSColor(cgColor: a) ?? .white }
+            scrub.onHover = { [weak self] s in self?.scrubLabel = s; self?.lastKey = ""; self?.refreshContent() }
+            scrub.widthAnchor.constraint(equalToConstant: CGFloat(NotchLive.size(.ticker).w) - 36).isActive = true
+            scrub.heightAnchor.constraint(equalToConstant: 14).isActive = true
+            stack.addArrangedSubview(scrub)
+        } else {
+            stack.addArrangedSubview(bars())
+        }
+    }
+
+    func stuckCard(_ t: StuckTrigger) {
+        stack.addArrangedSubview(text(StuckDetector.title(t, now: Date()), 13, .amber))
+        stack.addArrangedSubview(text(t.line, 12, .primary, mono: true))
+        let ignore = NSButton(title: "Ignore this run", target: self, action: #selector(stuckIgnore))
+        let nudge = NSButton(title: "Copy a nudge", target: self, action: #selector(stuckNudge))
+        let show = NSButton(title: "Show me", target: self, action: #selector(stuckShow))
+        stack.addArrangedSubview(row([ignore, nudge, show, spacer()]))
+    }
+    @objc func stuckIgnore() { backend?.hunt.ignoreRun() }
+    @objc func stuckNudge() { backend?.hunt.copyNudge(); Feel.haptic(.tick) }
+    @objc func stuckShow() { backend?.approveInTerminal() }
+
+    /// One dream icon per 1.7 s from today's events; hover tells what it's dreaming about (R4 §7).
+    func dreamIcon() -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        let icons = backend?.hunt.dreams.icons ?? [.moon]
+        let d = icons[dreamIndex % icons.count]
+        v.layer?.contents = Props.image("d-\(d.rawValue)")
+        v.layer?.contentsGravity = .resizeAspect
+        v.layer?.magnificationFilter = .nearest
+        v.toolTip = backend.map { $0.hunt.dreams.summary(name: $0.growth.petDisplayName) }
+        v.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        v.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        return v
     }
 
     func done() {

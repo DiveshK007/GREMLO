@@ -53,12 +53,18 @@ enum ClaudeHooks {
 
     /// An app update can change the hook script; when connected, keep the installed copy identical to ours.
     static func refreshScriptIfStale() {
-        guard isConnected, let bundled = Bundle.main.url(forResource: "notchi-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "notchi-hook", withExtension: "sh"),
-              let want = try? Data(contentsOf: bundled), (try? Data(contentsOf: scriptURL)) != want else { return }
-        try? want.write(to: scriptURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        try? write(merged(try read()))  // also brings the PermissionRequest timeout up to date
-        print("hook script updated in \(scriptURL.path)")
+        guard isConnected else { return }
+        if let bundled = Bundle.main.url(forResource: "notchi-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "notchi-hook", withExtension: "sh"),
+           let want = try? Data(contentsOf: bundled), (try? Data(contentsOf: scriptURL)) != want {
+            try? want.write(to: scriptURL, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+            print("hook script updated in \(scriptURL.path)")
+        }
+        // new events (PostToolUseFailure) and the PermissionRequest timeout reach installs made by older versions
+        if let now = try? read(), !NSDictionary(dictionary: merged(now)).isEqual(to: now) {
+            try? write(merged(now))
+            print("Claude Code hook settings brought up to date")
+        }
     }
 
     static func disconnect() throws {

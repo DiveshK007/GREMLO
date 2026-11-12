@@ -57,11 +57,12 @@ func spacesBehavior() -> NSWindow.CollectionBehavior {
 enum PetState: String, CaseIterable {
     case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy, backflip, moonwalk
     case sit, yawn, gaze, grabbed, thrown, land, edgepeek, night, tools, special, hatch, evolve
+    case chase, gulp, covereyes, tangled, juggle, wrist
     /// The pack row this state draws. Holding the line is the hold row, with the plate overhead.
     var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch, .tangled]
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering, held, airborne }
@@ -971,6 +972,8 @@ final class HookServer {
     let onEvent: ([String: Any]) -> Void
     /// PermissionRequest: the connection stays open until `reply` is called with the user's answer (or nil).
     var onPermission: (([String: Any], @escaping (Data?) -> Void) -> Void)?
+    /// Git hooks (R4 §4) post one line: {"type":"git","event":...,"repo":<hash>}.
+    var onGit: ((GitEvent) -> Void)?
 
     init(port: UInt16, onEvent: @escaping ([String: Any]) -> Void) throws {
         self.onEvent = onEvent
@@ -1025,6 +1028,11 @@ final class HookServer {
     }
 
     func finish(_ conn: NWConnection, path: String, body: Data) {
+        if path == "/git" {
+            respond(conn, nil)
+            if let j = try? JSONSerialization.jsonObject(with: body) as? [String: Any], let e = GitEvent.parse(j) { onGit?(e) }
+            return
+        }
         guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any], json["hook_event_name"] is String else {
             respond(conn, nil); return
         }
@@ -1159,6 +1167,7 @@ final class Backend: NSObject {
     }
     // Growing up and companions (Growth+Mac.swift)
     let growth = GrowthController(existingUser: ClaudeHooks.isConnected)
+    lazy var hunt: HuntController = HuntController(backend: self)
     lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
     lazy var growthStack: NSStackView = {
         let s = NSStackView(); s.orientation = .vertical; s.alignment = .leading; s.spacing = 6
@@ -1491,6 +1500,7 @@ final class Backend: NSObject {
         let quiet = NSButton(checkboxWithTitle: "Quiet hours (no hooks 22:00\u{2013}08:00)", target: self, action: #selector(toggleQuiet(_:)))
         quiet.state = quietHours ? .on : .off
         for v in feelControls() { stack.addArrangedSubview(v) }
+        for v in huntControls() { stack.addArrangedSubview(v) }
         stack.addArrangedSubview(sponsored)
         stack.addArrangedSubview(quiet)
         let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
@@ -1799,6 +1809,7 @@ do {
     server = try HookServer(port: 47474) { hook in
         backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
         backend.growth.hook(hook)
+        backend.hunt.hook(hook)
         if backend.companions.route(hook) { backend.render(); return }  // another agent's companion took it
         backend.broker.sawEvent(session: hook["session_id"] as? String ?? "", tool: hook["tool_name"] as? String, event: hook["hook_event_name"] as? String ?? "")
         // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)
@@ -1810,6 +1821,7 @@ do {
         backend.render()
     }
     server.onPermission = { payload, reply in backend.broker.receive(payload, reply: reply) }
+    server.onGit = { e in backend.hunt.git(e) }
 } catch {
     print("cannot listen on 47474: \(error)")
     exit(1)

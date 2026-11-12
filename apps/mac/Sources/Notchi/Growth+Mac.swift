@@ -20,7 +20,7 @@ final class GrowthController {
 
     init(existingUser: Bool) {
         let dec = JSONDecoder()
-        p = defaults.data(forKey: "growth").flatMap { try? dec.decode(PetProgress.self, from: $0) } ?? PetProgress()
+        p = defaults.data(forKey: "growth").flatMap { Tolerant.decode(PetProgress.self, from: $0, defaults: PetProgress()) } ?? PetProgress()
         egg = defaults.data(forKey: "egg").flatMap { try? dec.decode(Egg.self, from: $0) } ?? Egg()
         if defaults.data(forKey: "growth") == nil && existingUser {
             // installed before hatching existed: the pet is already out, so it starts hatched (today, honestly dated)
@@ -80,6 +80,10 @@ final class GrowthController {
 
     func approvalAnswered() { Stars.approvalAnswered(&p, at: Date()); day.approvals += 1; checkUnlocks(); save(); onChange?() }
     func stomped() { p.stomps += 1; checkUnlocks(); save() }
+    func sessionTools(_ n: Int) { if n > p.maxSessionTools { p.maxSessionTools = n; if n == 100 { save() } } }
+    func setBugJar(_ n: Int) { p.bugJar = n; save(); onChange?() }
+    func releaseTag() { p.releaseTags += 1; save(); onChange?() }
+    var tricks: [Trick] { Trick.learned(approvals: p.approvalsAnswered, maxSessionTools: p.maxSessionTools, releaseTags: p.releaseTags) }
     func mood(_ m: String) {
         guard m == "thriving" else { return }
         let d = WaitClock.dayOf(Date())
@@ -284,6 +288,18 @@ extension Backend {
             s.addArrangedSubview(b)
         }
 
+        s.addArrangedSubview(label("Bug jar: \(p.bugJar) caught on passing runs", 12, .regular, .secondaryLabelColor))
+        s.addArrangedSubview(caption("Tricks (learned, never sold)"))
+        for t in Trick.allCases {
+            if growth.tricks.contains(t) {
+                let b = ItemButton(title: t.rawValue.capitalized, target: self, action: #selector(doTrick(_:)))
+                b.item = t.rawValue
+                s.addArrangedSubview(b)
+            } else {
+                s.addArrangedSubview(label("\(t.rawValue.capitalized): learned at \(t.requirement)", 11, .regular, .tertiaryLabelColor))
+            }
+        }
+
         s.addArrangedSubview(caption("Closet (stars are earned, never bought)"))
         let names = pet.skin.pack.notchi.accessories?.names ?? []
         for item in names {
@@ -330,6 +346,7 @@ extension Backend {
     }
 
     @objc func hatchNow() { growth.skip(); rebuildGrowth() }
+    @objc func doTrick(_ b: ItemButton) { if let t = Trick(rawValue: b.item) { hunt.doTrick(t) } }
     @objc func closetTake(_ b: ItemButton) { growth.take(b.item); applyWorn(); rebuildGrowth() }
     @objc func closetWear(_ b: ItemButton) { growth.wear(b.item); applyWorn(); rebuildGrowth() }
     @objc func closetTakeOff(_ b: ItemButton) { growth.takeOff(b.item); applyWorn(); rebuildGrowth() }
