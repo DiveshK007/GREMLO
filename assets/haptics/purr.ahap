@@ -1,0 +1,42 @@
+{
+ "Version": 1.0,
+ "Metadata": {
+  "Project": "Notchi",
+  "Description": "purr"
+ },
+ "Pattern": [
+  {
+   "Event": {
+    "Time": 0,
+    "EventType": "HapticContinuous",
+    "EventDuration": 0.36,
+    "EventParameters": [
+     {
+      "ParameterID": "HapticIntensity",
+      "ParameterValue": 0.3
+     },
+     {
+      "ParameterID": "HapticSharpness",
+      "ParameterValue": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "ParameterCurve": {
+    "ParameterID": "HapticIntensityControl",
+    "Time": 0,
+    "ParameterCurveControlPoints": [
+     {
+      "Time": 0,
+      "ParameterValue": 1
+     },
+     {
+      "Time": 0.36,
+      "ParameterValue": 0
+     }
+    ]
+   }
+  }
+ ]
+}

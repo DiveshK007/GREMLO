@@ -4,6 +4,11 @@ A desktop AI pet that has to earn its own food. It lives on the Mac screen edge 
 
 ETHGlobal Mumbai 2026, Classic (from scratch). Submission deadline: Sat 7 Nov, 09:00 IST. Freeze features at midnight Fri.
 
+## Notchi 1.0 (branch `notchi-1.0`)
+The design export in `docs/design/1.0/` is the source of truth (rounds 2-4 extend the base spec; later rounds win).
+The build plan and progress live in `docs/PLAN_1.0.md`. Windows/Linux and the Rust core are out of scope for now.
+Product copy names no chain ("purse", "earned", "paid for thinking"); account IDs and hashes appear only in Advanced views, docs and the README.
+
 ## Sponsors (what each must prove)
 - **0G Private Computer:** inference in the main flow, request ID shown for every call.
 - **0G Agents That Pay for Themselves:** money in -> credit lands in the pet's own 0G compute account -> next inference paid from it. Tx hashes + request IDs. Spend cap. Degrades gracefully when low, never crashes.
@@ -20,7 +25,8 @@ ETHGlobal Mumbai 2026, Classic (from scratch). Submission deadline: Sat 7 Nov, 0
 - `contracts/` Foundry: CampaignVault.sol (0G chain)
 
 ## Pet state machine (Claude Code hook -> pet)
-Hooks POST to `http://127.0.0.1:47474/claude/hook`. The server must answer fast and never return a decision.
+Hooks POST to `http://127.0.0.1:47474/claude/hook`. The server must answer fast.
+Approvals (1.0): only a `PermissionRequest` may get a decision back, and only one the user gave on a surface (notch, menu bar, phone, Watch). Nothing ever decides for the user. Commands that delete, push or spend money get no keyboard shortcut and always need a click. Answering in the terminal still works and wins; the other surfaces grey out.
 
 | Hook event | Pet state |
 |---|---|
