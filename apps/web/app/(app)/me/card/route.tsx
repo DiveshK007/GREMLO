@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const res = await fetch(`${SERVER_URL}/pets/${encodeURIComponent(name)}`, { cache: "no-store" }).catch(() => null);
   if (!res?.ok) return new Response("unknown pet", { status: 404 });
   const p = (await res.json()) as PetPublic;
-  const week = `${Number(formatNear(BigInt(p.week.wei))).toFixed(4)} NEAR`;
+  const week = Number(formatNear(BigInt(p.week.wei))).toFixed(4);
   const rows: [string, string][] = [
     ["this week", `${week} · ${p.week.views} views`],
     ["level", p.level === null ? "?" : String(p.level)],
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 72, background: "#F4F2ED", color: "#0B0B0B", fontFamily: "sans-serif" }}>
-        <div style={{ display: "flex", fontSize: 32, letterSpacing: 2 }}>{PRODUCT.toUpperCase()}{p.seeded ? " · SEEDED, NOT REAL NEAR" : ""}</div>
+        <div style={{ display: "flex", fontSize: 32, letterSpacing: 2 }}>{PRODUCT.toUpperCase()}{p.seeded ? " · SEEDED, NOT REAL" : ""}</div>
         <div style={{ display: "flex", fontSize: 84, fontWeight: 700, lineHeight: 1 }}>{p.name}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {rows.map(([k, v]) => (
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", fontSize: 28, color: "#FF5A3C" }}>Earned from sponsored hooks while a coding agent worked. Paid on NEAR.</div>
+        <div style={{ display: "flex", fontSize: 28, color: "#FF5A3C" }}>Earned from sponsored hooks while a coding agent worked.</div>
       </div>
     ),
     { width: 1200, height: 630 },

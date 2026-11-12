@@ -42,9 +42,9 @@ export default function GetYourPet() {
   }
 
   function validate(): string {
-    if (!owner) return "Connect your NEAR wallet first.";
+    if (!owner) return "Connect your wallet first.";
     if (!/^[a-z0-9-]{2,24}$/.test(fullName)) return "Name: 2-24 letters, numbers or dashes.";
-    if (!isAccountId(payout.trim())) return "Payout must be a NEAR account, like mochi.testnet.";
+    if (!isAccountId(payout.trim())) return "Payout must be an account id, like mochi.testnet.";
     if (!WORLD_APP_ID || !WORLD_RP_ID) return "World app ID / RP ID missing in .env.";
     return "";
   }
@@ -106,7 +106,7 @@ export default function GetYourPet() {
         <div className="card">
           {!owner ? (
             <>
-              <button onClick={onConnect}>Connect NEAR wallet</button>
+              <button onClick={onConnect}>Connect wallet</button>
               {walletError && <p className="bad">{walletError}</p>}
             </>
           ) : (
@@ -121,7 +121,7 @@ export default function GetYourPet() {
 
           <label>Payout account</label>
           <input className="mono" value={payout} onChange={(e) => setPayout(e.target.value)} placeholder="mochi.testnet" />
-          <p className="hint">The NEAR account the pet&apos;s earnings go to. It must already exist. Only you can change it later.</p>
+          <p className="hint">The account the pet&apos;s earnings go to. It must already exist. Only you can change it later.</p>
 
           {formError && <p className="bad">{formError}</p>}
           <p>
@@ -129,7 +129,7 @@ export default function GetYourPet() {
               {busy ? "Starting…" : "Prove you're a real person"}
             </button>
           </p>
-          {!owner && <p className="hint">Connect your NEAR wallet first.</p>}
+          {!owner && <p className="hint">Connect your wallet first.</p>}
         </div>
       )}
 
@@ -163,7 +163,7 @@ export default function GetYourPet() {
 
       {phase.kind === "registering" && (
         <div className="card">
-          <p>Verified. Checking the proof on our server and registering your pet on NEAR…</p>
+          <p>Verified. Checking the proof on our server and registering your pet…</p>
         </div>
       )}
 
@@ -173,7 +173,7 @@ export default function GetYourPet() {
           <h2 style={{ textAlign: "center" }}>{phase.name} is moving into your notch.</h2>
           {phase.txHash || phase.verifyTx ? (
             <p className="muted" style={{ textAlign: "center" }}>
-              {phase.txHash && <>Registered on NEAR:{" "}<a className="mono" href={txLink(phase.txHash)} target="_blank" rel="noreferrer">{phase.txHash}</a><br /></>}
+              {phase.txHash && <>Registered:{" "}<a className="mono" href={txLink(phase.txHash)} target="_blank" rel="noreferrer">{phase.txHash}</a><br /></>}
               {phase.verifyTx && <>Marked verified:{" "}<a className="mono" href={txLink(phase.verifyTx)} target="_blank" rel="noreferrer">{phase.verifyTx}</a></>}
             </p>
           ) : (

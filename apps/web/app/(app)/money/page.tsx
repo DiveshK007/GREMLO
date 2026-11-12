@@ -29,7 +29,7 @@ export default function Money() {
         <h2>So far</h2>
         {error && <p className="error">{error}</p>}
         <p>Campaigns <span className="mono">{s?.campaigns ?? "—"}</span> · pets <span className="mono">{s?.pets ?? "—"}</span> · settled sightings <span className="mono">{s?.settledViews ?? "—"}</span></p>
-        <p>Paid to pets <span className="mono">{n(s?.paidWei)} NEAR</span> · spent on thinking <span className="mono">{n(s?.computeChargedWei)} NEAR</span></p>
+        <p>Paid to pets <span className="mono">{n(s?.paidWei)}</span> · paid for thinking <span className="mono">{n(s?.computeChargedWei)}</span></p>
       </section>
       <section className="card">
         <h2>A sighting counts only when</h2>

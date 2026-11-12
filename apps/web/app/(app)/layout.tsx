@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </nav>
         </header>
         <main>{children}</main>
-        <footer className="foot">Testnet build. Brains on NEAR AI Cloud (TEE inference), money on NEAR, humans verified by World.</footer>
+        <footer className="foot">Testnet build. Thinking runs on private inference; one human, one pet, verified by World.</footer>
       </body>
     </html>
   );

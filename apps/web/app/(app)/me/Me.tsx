@@ -6,7 +6,7 @@ import { PetSmall } from "@/components/PetArt";
 import { addressLink, formatNear, formatWhen, PRODUCT, txLink } from "@/lib/config";
 
 const KEY = "notchi.pet";
-const near = (yocto: string | null) => (yocto === null ? "unknown" : `${formatNear(BigInt(yocto))} NEAR`);
+const near = (yocto: string | null) => (yocto === null ? "unknown" : formatNear(BigInt(yocto)));
 
 export default function Me() {
   const [name, setName] = useState("");
@@ -55,7 +55,7 @@ export default function Me() {
       {pet && (
         <div className="card">
           <PetSmall />
-          {pet.seeded && <p className="bad">Seeded data on a local sandbox, not real NEAR.</p>}
+          {pet.seeded && <p className="bad">Seeded data on a local sandbox, not real money.</p>}
           <dl className="receipt">
             <div><dt>This week</dt><dd>{near(pet.week.wei)} for {pet.week.views} views</dd></div>
             <div><dt>Paid by brands, all time</dt><dd>{pet.paidViews === null ? "chain unreachable" : `${near(pet.earnedWei)} for ${pet.paidViews} views`}</dd></div>
@@ -64,7 +64,7 @@ export default function Me() {
             <div><dt>Views today</dt><dd>{pet.impressionsToday}</dd></div>
             <div><dt>Mood</dt><dd>{pet.mood}{pet.moodReason ? `: ${pet.moodReason}` : ""}</dd></div>
           </dl>
-          <p className="muted">Earnings come from settlements in the <a href={addressLink(pet.vault)} target="_blank" rel="noreferrer">NEAR vault</a>, paid to <a className="mono" href={addressLink(pet.payout)} target="_blank" rel="noreferrer">{pet.payout}</a>. The streak and level are just for fun and never change what you're paid.</p>
+          <p className="muted">Earnings come from settlements in the <a href={addressLink(pet.vault)} target="_blank" rel="noreferrer">vault</a>, paid to <a className="mono" href={addressLink(pet.payout)} target="_blank" rel="noreferrer">{pet.payout}</a>. The streak and level are just for fun and never change what you're paid.</p>
           {share && <a className="button ghost" href={share} target="_blank" rel="noreferrer">Share this week on X</a>}
         </div>
       )}

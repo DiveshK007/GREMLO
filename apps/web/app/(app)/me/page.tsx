@@ -9,7 +9,7 @@ export function generateMetadata({ searchParams }: { searchParams: { pet?: strin
   const image = `/me/card?pet=${encodeURIComponent(pet)}`;
   return {
     title: `${pet} · ${PRODUCT}`,
-    description: "What this pet earned from sponsored hooks this week, read from the NEAR vault.",
+    description: "What this pet earned from sponsored hooks this week, read from the vault.",
     openGraph: { images: [image] },
     twitter: { card: "summary_large_image", images: [image] },
   };

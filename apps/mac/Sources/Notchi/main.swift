@@ -1118,10 +1118,10 @@ func near4(_ yocto: String?) -> String {
     var whole = Decimal()
     NSDecimalRound(&whole, &units, 0, .down)
     let digits = String(repeating: "0", count: max(0, 5 - "\(whole)".count)) + "\(whole)"
-    return "\(digits.dropLast(4)).\(digits.suffix(4)) NEAR"
+    return "\(digits.dropLast(4)).\(digits.suffix(4))"  // product copy names no chain; the unit lives in Advanced and the docs
 }
 
-func nearAmount(_ yocto: Decimal) -> String { "\(yocto / Decimal(sign: .plus, exponent: 24, significand: 1)) NEAR" }
+func nearAmount(_ yocto: Decimal) -> String { "\(yocto / Decimal(sign: .plus, exponent: 24, significand: 1))" }
 
 // "+0.0002 NEAR" when the balance went up, nil otherwise (first poll, unknown, same or down).
 func nearGain(_ old: String?, _ new: String?) -> String? {
@@ -1448,7 +1448,7 @@ final class Backend: NSObject {
         stack.addArrangedSubview(head)
         stack.setCustomSpacing(16, after: head)
 
-        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real NEAR", 11, .bold, mono: true)) }
+        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real money", 11, .bold, mono: true)) }
         if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .secondaryLabelColor)) }
         if let f = privacy.focus {
             stack.addArrangedSubview(row("Focus", "\(Int(f.remaining(Date()) / 60) + 1) min left, lines off, not earning"))
@@ -1630,7 +1630,7 @@ final class Backend: NSObject {
             demoHooks = ["Clearlog: logs, found. Try it free", "Still grepping logs at 2am? Clearlog.", "Your hook here, carried by the pet"]
             pet.handle(event: "PreToolUse", notification: nil)
         case "idle": pet.handle(event: "Notification", notification: "idle_prompt")
-        case "demo.eat": pet.eat("+0.0002 NEAR food [demo]")
+        case "demo.eat": pet.eat("+0.0002 food [demo]")
         case "demo.say": pet.say("On it! Tests look green. [demo]", for: 4)
         case "demo.remind":
             reminders.message = "Claude Code is done and waiting for you [demo]"
@@ -1821,10 +1821,10 @@ final class Backend: NSObject {
     }
 }
 
-assert(nearGain("1000000000000000000000000", "1000200000000000000000000") == "+0.0002 NEAR")
-assert(nearGain("123456789012345678901234567", "123456789012345678901234568") == "+0.000000000000000000000001 NEAR")
-assert(near4("19279999998320000000000") == "0.0192 NEAR" && near4("0") == "0.0000 NEAR" && near4("1000000000000000000000000000") == "1000.0000 NEAR")
-assert(near4("99999999999999999999") == "0.0000 NEAR" && near4(nil) == "\u{2014}")
+assert(nearGain("1000000000000000000000000", "1000200000000000000000000") == "+0.0002")
+assert(nearGain("123456789012345678901234567", "123456789012345678901234568") == "+0.000000000000000000000001")
+assert(near4("19279999998320000000000") == "0.0192" && near4("0") == "0.0000" && near4("1000000000000000000000000000") == "1000.0000")
+assert(near4("99999999999999999999") == "0.0000" && near4(nil) == "\u{2014}")
 assert(near4("-5") == "\u{2014}" && near4("0x1f") == "\u{2014}" && near4(" 5") == "\u{2014}" && near4("") == "\u{2014}")
 assert(!staysHome(mood: "hungry", agentWorking: true) && !staysHome(mood: "hungry", agentWorking: false), "a hungry pet still shows the sign")
 assert(!staysHome(mood: "asleep", agentWorking: true) && staysHome(mood: "asleep", agentWorking: false), "only an idle, asleep pet stays home")
