@@ -58,5 +58,11 @@ Decisions (2026-11-13):
 ## Still open
 - App Intents metadata in the release (Shortcuts lists the actions only from an Xcode-built bundle; notchi:// and the CLI work now)
 - System Focus and browser screen sharing can't be detected; exact agent window for perching and Show me
-- Purse contracts not deployed; live loop and on-screen checks by a person; the full audit
+- Purse contracts not deployed; live loop and on-screen checks by a person
+
+## Audit (2026-11-13)
+Two code-review passes (server and web; then Mac UI, phone, extensions, contracts, site). 20 findings fixed, incl. a
+settlement that could be paid twice after a timeout, an unauthenticated campaign overwrite, a crash from a hostile
+notchi:// link, pets left visible during a screen share, and the pairing key leaving the Keychain. All suites and CI green.
+Not fixed on purpose: the brand console names the token on amounts (brands pay with it); the unused approve-spend World action.
 
