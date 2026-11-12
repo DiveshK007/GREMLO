@@ -24,7 +24,7 @@ Decisions (2026-11-13):
 | 6 | Hook plumbing (test-runner matcher, git hooks with install/remove), bug hunt and jar, stuck detector, git moods, drop zone, session scrubber, dreams, tricks, seasons, meeting heads-up | R4§2–10 | |
 | 7 | The room and guestbook, focus mode, privacy ledger (screen-share duck, meetings, Focus, ⌥⌘P, export/delete), stream mode, weekly postcard | D§9, R2§12, R4§11–15 | |
 | 8 | `notchi` CLI over the local socket, `notchi://` URL scheme, App Intents (Shortcuts), Raycast extension | R2§10 | |
-| 9 | Server and web: brand A/B (4 lines, Thompson), moments, brand safety, signed hourly batches with a public log and `notchi verify`, money page; team relay; pet park; guestbook visits; creator tools and gallery | R2§11,13,15–16, R4§12,14 | |
+| 9 | Server and web: plate lines 6–40 characters enforced in the console and the claim checks (R2 §2); brand A/B (4 lines, Thompson), moments, brand safety, signed hourly batches with a public log and `notchi verify`, money page; team relay; pet park; guestbook visits; creator tools and gallery | R2§11,13,15–16, R4§12,14 | |
 | 10 | Website: full port of `web/notchi.html` into Next (hero physics and bug hunt, Notch Live scrub, hatching, eight pets, Closet, room, dreams, park, money, privacy), light mode switch | R3§5, R4§19 | |
 | 11 | Reach: VS Code/Cursor extension; iPhone app (Live Activity, lock-screen approvals, Dynamic Island, widgets); Watch complication | D§10, R4§16–17 | |
 | 12 | Readable accounts: factory and purse contracts, function-call key limited to `pay_inference`, caps and allow-list | R4§18 | |
