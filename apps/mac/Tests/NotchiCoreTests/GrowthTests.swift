@@ -45,8 +45,8 @@ import Testing
     @Test func noMoneyPathExistsInGrowth() throws {
         // Stars can't be bought, gifted or sold, and no money is ever shown (R3 §4). This fails if a money word or a
         // currency amount ever appears in the growth code.
-        let src = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../../Sources/NotchiCore/Growth.swift").standardized, encoding: .utf8)
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../Sources/NotchiCore").standardized
+        let src = try ["Growth.swift", "Room.swift"].map { try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }.joined(separator: "\n")
         let banned = #"(?i)(\$(\s|\d+\.\d)|\b(usd|cents?|yocto|near|wallet|checkout|storekit|iap|invoice|payment|buy(Stars|With)|gift|sell)\b)"#
         let hits = src.components(separatedBy: "\n").filter { $0.range(of: banned, options: .regularExpression) != nil }
         #expect(hits.isEmpty, "\(hits)")
