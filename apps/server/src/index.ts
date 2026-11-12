@@ -192,15 +192,21 @@ function addImpressions(req: IncomingMessage, raw: string) {
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
     const hook = i.hook === undefined ? null : Number(i.hook);
     if (hook !== null && !(Number.isInteger(hook) && hook >= 0 && hook < 5)) throw bad("hook must be 0-4");
-    checkViewable(i);
+    try {
+      checkViewable(i);
+    } catch (e) {
+      console.log(`view: ${pet.name} campaign ${id} refused: ${errMsg(e)}`);
+      throw e;
+    }
     return { id, petKey: pet.petKey, hook };
   });
   let accepted = 0;
   for (const r of rows) {
     const t0 = store.today[r.petKey];
-    if (!underDailyCap(t0?.day === utcDay() ? t0.count : 0)) continue; // respect the developer: 120 views a day at most
-    if (!countImpression(store.lastImpression, `${r.id}:${r.petKey}`, Date.now(), IMPRESSION_WINDOW_MS)) continue;
+    if (!underDailyCap(t0?.day === utcDay() ? t0.count : 0)) { console.log(`view: ${r.petKey} campaign ${r.id} skipped: daily cap reached`); continue; } // respect the developer: 120 views a day at most
+    if (!countImpression(store.lastImpression, `${r.id}:${r.petKey}`, Date.now(), IMPRESSION_WINDOW_MS)) { console.log(`view: ${r.petKey} campaign ${r.id} skipped: one per minute`); continue; }
     accepted++;
+    console.log(`view: ${r.petKey} campaign ${r.id} hook ${r.hook ?? "-"} counted; held ${HOLDBACK_HOURS}h, then the worker settles it`);
     hold((store.held[r.id] ??= []), r.petKey, Math.floor(Date.now() / 3_600_000), ipTag); // paid after holdback + rules
     if (r.hook !== null) (store.hookViews[r.id] ??= [0, 0, 0, 0, 0])[r.hook]++;
     const t = store.today[r.petKey];
@@ -244,6 +250,7 @@ async function settle(id: string) {
         store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString() }].slice(-5000);
         save();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
+        console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
       } catch (e: any) {
         markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
         save();
@@ -481,6 +488,7 @@ function release(id: string, ended: boolean) {
   for (const h of r.ok) p[h.pet] = (p[h.pet] ?? 0) + h.n;
   const v = (store.voided[id] ??= {});
   for (const h of r.voided) v[h.reason] = (v[h.reason] ?? 0) + h.n;
+  if (r.ok.length) console.log(`release: campaign ${id}: ${r.ok.reduce((a, h) => a + h.n, 0)} views now payable`);
   if (r.voided.length) console.log(`fraud: campaign ${id} voided ${r.voided.reduce((a, h) => a + h.n, 0)} views`);
   store.held[id] = r.waiting;
   save();
@@ -556,6 +564,9 @@ async function workerPass() {
         release(String(id), now >= endTime);
         const pending = Object.values(store.pending[String(id)] ?? {}).reduce((a, b) => a + b, 0);
         const job = workFor({ closed: c.closed, endTime, remaining }, pending, now);
+        const held = (store.held[String(id)] ?? []).reduce((a, h) => a + h.n, 0);
+        if (!c.closed && (job !== "none" || pending || held)) console.log(`worker: campaign ${id}: ${pending} payable, ${held} held, job ${job}`);
+        if (job === "refund" && pending) console.error(`worker: campaign ${id}: ${pending} views expired unpaid (the vault pays only until 1h after the end)`);
         if (job === "settle") {
           const r = await settle(String(id));
           console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, stopped: ${r.error}` : ""}`);

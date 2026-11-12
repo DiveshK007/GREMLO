@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { review } from "./fraud.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
@@ -94,4 +95,16 @@ test("streak: consecutive days ending today or yesterday; level from paid views"
   assert.equal(streak(["2026-10-31", "2026-11-01"], "2026-11-01"), 2); // across a month
   assert.equal(streak([], "2026-11-01"), 0);
   assert.deepEqual([0, 9, 10, 39, 40, 90].map(level), [1, 1, 2, 2, 3, 4]);
+});
+
+test("the worker settles before it closes: views held back are released at the end and paid inside the grace hour", () => {
+  const c = { closed: false, endTime: 1000n, remaining: 500n };
+  // 4 views still in a 24 h holdback when the campaign ends; at the end they are reviewed with no wait
+  const held = [{ pet: "mochi", hour: 0, ip: "a", n: 4 }];
+  assert.equal(review(held, 0, 24).ok.length, 0, "still held while the campaign runs");
+  const released = review(held, 0, 0).ok.reduce((a, h) => a + h.n, 0);
+  assert.equal(released, 4);
+  for (const t of [1000n, 1001n, 1000n + 3600n]) assert.equal(workFor(c, released, t), "settle", `at ${t} it pays, never closes`);
+  assert.equal(workFor(c, 0, 1001n), "none", "ended but inside the grace hour with nothing queued: it waits, no early close");
+  assert.equal(workFor(c, 0, 1000n + 3601n), "refund", "only after the grace hour does it close and refund");
 });
