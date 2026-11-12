@@ -389,7 +389,7 @@ final class Pet {
     var signShownAt: Date?
     var onSignClick: (() -> Void)?
     var signLinks = false // the current campaign has a link to open
-    // Short speech bubble ("+0.005 0G"). Above the pet, or under the door while it is home.
+    // Short speech bubble ("+0.0002 NEAR food"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
     let bubbleLabel = NSTextField(wrappingLabelWithString: "")
     var bubbleUntil = Date.distantPast
@@ -656,7 +656,8 @@ final class Pet {
     func setMood(_ m: String, reason: String?) {
         if m != mood { print("mood \(mood) -> \(m)") }
         mood = m
-        sleepNote = m == "asleep" ? "zzz  " + (reason ?? brokeReason) : nil
+        // asleep (can't read the chain) and hungry (can't pay for an AI call) both show why, next to the pet
+        sleepNote = m == "asleep" || (m == "hungry" && reason != nil) ? "zzz  " + (reason ?? brokeReason) : nil
         placeBubble()
     }
 
@@ -981,7 +982,7 @@ final class HookServer {
         listener.stateUpdateHandler = { state in
             if case .failed(let err) = state {
                 if case .posix(.EADDRINUSE) = err {
-                    print("Port 47474 is taken: Notchi is probably already running. Stop it with: pkill -x Notchi")
+                    print("Port 47474 is taken: \(productName) is probably already running. Stop it with: pkill -x Notchi")
                 } else {
                     print("hook server failed: \(err)")
                 }
@@ -1026,12 +1027,12 @@ struct Campaign: Decodable {
     let campaignId: String; let line: String?; let hooks: [String]?; let url: String?; let order: [Int]?; let brand: String; let ratePerImpression: String
     var allHooks: [String] { hooks?.isEmpty == false ? hooks! : line.map { [$0] } ?? [] }
 }
-struct Thought: Decodable { let action: String; let requestId: String; let at: Int }
-struct Meal: Decodable { let amount: String; let txHash: String; let at: Int }
+struct Thought: Decodable { let action: String; let requestId: String; let at: Int; let model: String?; let chargeTx: String? }
 struct PetInfo: Decodable {
     let name: String; let mood: String; let moodReason: String?; let walletBalance: String?; let computeBalance: String?
-    let impressionsToday: Int; let lastThoughts: [Thought]; let lastMeal: Meal?; let seeded: Bool
+    let impressionsToday: Int; let lastThoughts: [Thought]; let seeded: Bool
     let paidViews: Int?; let earnedWei: String?; let level: Int?; let streak: Int? // nil: older server or chain unreadable
+    let explorer: String? // nearblocks for the server's network
 }
 
 /// Looks are earned, never bought: what a skin still needs, or nil when it's available. Unlisted skins are always open.
@@ -1068,30 +1069,32 @@ struct WaitClock {
 struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
 
 let popoverWidth: CGFloat = 320
-let brokeReason = "wallet too low to pay for 0G calls"
+// The product name, in one place, for every user-facing string in the Mac app.
+let productName = "Notchi"
+let brokeReason = "sleeping: compute budget empty"
 
-// Wei string to "0.0192 0G": 4 decimals, rounded down so the popover never shows more than the wallet holds.
-func og4(_ wei: String?) -> String {
-    guard let wei, !wei.isEmpty, wei.allSatisfy({ $0.isASCII && $0.isNumber }), var units = Decimal(string: wei) else { return "\u{2014}" }
-    units /= Decimal(sign: .plus, exponent: 14, significand: 1)
+// yoctoNEAR string to "0.0192 NEAR": 4 decimals, rounded down so the popover never shows more than the account holds.
+func near4(_ yocto: String?) -> String {
+    guard let yocto, !yocto.isEmpty, yocto.allSatisfy({ $0.isASCII && $0.isNumber }), var units = Decimal(string: yocto) else { return "\u{2014}" }
+    units /= Decimal(sign: .plus, exponent: 20, significand: 1)
     var whole = Decimal()
     NSDecimalRound(&whole, &units, 0, .down)
     let digits = String(repeating: "0", count: max(0, 5 - "\(whole)".count)) + "\(whole)"
-    return "\(digits.dropLast(4)).\(digits.suffix(4)) 0G"
+    return "\(digits.dropLast(4)).\(digits.suffix(4)) NEAR"
 }
 
-func og(_ wei: Decimal) -> String { "\(wei / Decimal(sign: .plus, exponent: 18, significand: 1)) 0G" }
+func nearAmount(_ yocto: Decimal) -> String { "\(yocto / Decimal(sign: .plus, exponent: 24, significand: 1)) NEAR" }
 
-// "+0.005 0G" when the wei balance went up, nil otherwise (first poll, unknown, same or down).
-func ogGain(_ old: String?, _ new: String?) -> String? {
+// "+0.0002 NEAR" when the balance went up, nil otherwise (first poll, unknown, same or down).
+func nearGain(_ old: String?, _ new: String?) -> String? {
     guard let o = old.flatMap({ Decimal(string: $0) }), let n = new.flatMap({ Decimal(string: $0) }), n > o else { return nil }
-    return "+" + og(n - o)
+    return "+" + nearAmount(n - o)
 }
 
 // Talks to apps/server. Server down means the popover says so; nothing is invented.
 final class Backend: NSObject {
     let base = ProcessInfo.processInfo.environment["NOTCHI_SERVER"] ?? "http://localhost:8787"
-    let petName = ProcessInfo.processInfo.environment["NOTCHI_PET"] ?? "mochi.notchi.eth"
+    let petName = ProcessInfo.processInfo.environment["NOTCHI_PET"] ?? "mochi"
     let pet: Pet
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
@@ -1119,7 +1122,7 @@ final class Backend: NSObject {
     var shown = ""
     var showingSettings = false
     // Demo mode: lets you trigger every pet reaction from the menu bar for a demo. Local only: while it is on,
-    // no 0G think calls and no views are reported, so nothing is spent or paid. Demo content is labelled [demo].
+    // no AI think calls and no views are reported, so nothing is spent or paid. Demo content is labelled [demo].
     var demoMode = false
     var demoHooks: [String]?
     var showingDemo = false
@@ -1133,12 +1136,12 @@ final class Backend: NSObject {
         ("Agent done (celebrates)", "Stop"),
         ("Agent failed (trips, sad)", "StopFailure"),
         ("Session ends (goes home, door locks)", "SessionEnd"),
-        ("Gets paid: eats +0G", "demo.eat"),
-        ("0G brain says something (bubble)", "demo.say"),
+        ("Gets paid: compute budget refills", "demo.eat"),
+        ("AI says something (bubble)", "demo.say"),
         ("Come-back reminder notification", "demo.remind"),
         ("Mood: thriving", "mood.thriving"),
-        ("Mood: hungry", "mood.hungry"),
-        ("Mood: asleep (wallet empty)", "mood.asleep"),
+        ("Mood: hungry (compute budget empty)", "mood.hungry"),
+        ("Mood: asleep (chain unreachable)", "mood.asleep"),
     ]
     var demoPick = 0
     lazy var reminders: Reminders = Reminders(pet: self.pet)
@@ -1156,7 +1159,7 @@ final class Backend: NSObject {
             if let s = deviceSign(method: "GET", path: path, body: Data(self.petName.utf8)) { q += "&key=\(s.key)&t=\(s.time)&sig=\(s.sig)" }
             if let u = URL(string: "\(self.base)\(path)?\(q)") { NSWorkspace.shared.open(u) }
         }
-        item.button?.title = "Notchi"
+        item.button?.title = productName
         item.button?.target = self
         item.button?.action = #selector(toggle)
         stack.orientation = .vertical
@@ -1252,13 +1255,13 @@ final class Backend: NSObject {
                 // No balance means no mood: sleep and say why instead of showing the last known one.
                 self.serverError = "pet \(self.petName): \(err)"
                 self.info = nil
-                self.pet.setMood("asleep", reason: "can't reach the Notchi server")
+                self.pet.setMood("asleep", reason: "can't reach the \(productName) server")
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
-                if let meal = new.lastMeal, self.info != nil, meal.txHash != self.info?.lastMeal?.txHash {
-                    // a self-feeding pet eats when its deposit into the 0G Router lands (real tx)
-                    self.pet.eat((ogGain("0", meal.amount) ?? og4(meal.amount)) + " food" + (new.seeded ? " [seeded]" : ""))
-                } else if new.lastMeal == nil, self.info?.seeded == new.seeded, let gain = ogGain(self.info?.walletBalance, new.walletBalance) {
+                // it eats when a settlement refills its onchain compute budget (real tx), or when its payout grows
+                if self.info?.seeded == new.seeded, let gain = nearGain(self.info?.computeBalance, new.computeBalance) {
+                    self.pet.eat(gain + " food" + (new.seeded ? " [seeded]" : ""))
+                } else if self.info?.seeded == new.seeded, let gain = nearGain(self.info?.walletBalance, new.walletBalance) {
                     self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
                 }
                 self.info = new
@@ -1269,7 +1272,7 @@ final class Backend: NSObject {
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
     func think(_ hook: [String: Any]) {
-        guard !thinking, !demoMode else { return } // no 0G spend while demoing
+        guard !thinking, !demoMode else { return } // no AI spend while demoing
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
@@ -1277,9 +1280,9 @@ final class Backend: NSObject {
             self.thinking = false
             if let err { self.lastThink = "think failed: \(err)" }
             else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
-                let id = r.requestId.map { "request \($0)" } ?? "no request ID"
+                let id = r.requestId.map { "completion \($0)" } ?? "no AI call"
                 self.lastThink = r.action == "sleep" ? "sleep: \(r.reason ?? "") (\(id))" : "\(r.action) \"\(r.say ?? "")\" (\(id))"
-                // Exactly what 0G said, only when it said something. Never invent a line.
+                // Exactly what the AI said, only when it said something. Never invent a line.
                 if let say = r.say?.trimmingCharacters(in: .whitespacesAndNewlines), !say.isEmpty { self.pet.say(say, for: 4) }
             }
             self.refresh()
@@ -1326,23 +1329,25 @@ final class Backend: NSObject {
         stack.addArrangedSubview(head)
         stack.setCustomSpacing(16, after: head)
 
-        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real 0G tokens", 11, .bold, mono: true)) }
+        if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real NEAR", 11, .bold, mono: true)) }
         if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .secondaryLabelColor)) }
-        if let i = info, i.mood == "asleep" { stack.addArrangedSubview(label(i.moodReason ?? brokeReason, 13, .regular, .secondaryLabelColor)) }
+        if let i = info, i.mood == "asleep" || i.mood == "hungry", let why = i.moodReason ?? (i.mood == "asleep" ? brokeReason : nil) {
+            stack.addArrangedSubview(label(why, 13, .medium, i.mood == "hungry" ? .systemOrange : .secondaryLabelColor))
+        }
 
         // Bars compare the two balances to each other; there is no fixed "full".
         let earned = info?.walletBalance.flatMap { Decimal(string: $0) }
         let food = info?.computeBalance.flatMap { Decimal(string: $0) }
         let top = max(earned ?? 0, food ?? 0)
-        for (name, wei, value) in [("Earned", info?.walletBalance, earned), ("Food", info?.computeBalance, food)] {
-            stack.addArrangedSubview(row(name, og4(wei) + (name == "Earned" ? tag : "")))
+        for (name, yocto, value) in [("Earned", info?.walletBalance, earned), ("Compute budget", info?.computeBalance, food)] {
+            stack.addArrangedSubview(row(name, near4(yocto) + (name == "Earned" ? tag : "")))
             if let value, top > 0 {
                 stack.addArrangedSubview(bar(CGFloat(truncating: (value / top) as NSDecimalNumber)))
             }
         }
         stack.addArrangedSubview(row("Today", "waited \(waited.minutes()) min, \(info.map { "\($0.impressionsToday)" } ?? "\u{2014}") views" + tag))
         if let i = info, let views = i.paidViews {
-            stack.addArrangedSubview(row("Paid by brands", "\(og4(i.earnedWei)) for \(views) views" + tag))
+            stack.addArrangedSubview(row("Paid by brands", "\(near4(i.earnedWei)) for \(views) views" + tag))
         }
         if let l = info?.level, let s = info?.streak {
             stack.addArrangedSubview(row("Level \(l)", s == 0 ? "no streak yet" : "\(s)-day streak"))
@@ -1360,13 +1365,10 @@ final class Backend: NSObject {
         let thoughts = info?.lastThoughts.prefix(3) ?? []
         if thoughts.isEmpty { stack.addArrangedSubview(label("none yet", 12, .regular, .secondaryLabelColor)) }
         for t in thoughts { stack.addArrangedSubview(copyButton(t.action.uppercased(), t.requestId)) }
-
-        stack.addArrangedSubview(caption("Last meal"))
-        if let m = info?.lastMeal {
-            stack.addArrangedSubview(label(og4(m.amount) + tag, 13, .medium))
-            stack.addArrangedSubview(copyButton("TX", m.txHash))
-        } else {
-            stack.addArrangedSubview(label("none yet", 12, .regular, .secondaryLabelColor))
+        if let tx = info?.lastThoughts.first(where: { $0.chargeTx != nil })?.chargeTx {
+            let b = NSButton(title: "Last AI charge on nearblocks", target: self, action: #selector(openLastCharge))
+            b.identifier = NSUserInterfaceItemIdentifier(tx)
+            stack.addArrangedSubview(b)
         }
 
         if pet.waiting {
@@ -1467,7 +1469,7 @@ final class Backend: NSObject {
         back.contentTintColor = .secondaryLabelColor
         stack.addArrangedSubview(back)
         stack.addArrangedSubview(label("Demo", 22, .semibold))
-        stack.addArrangedSubview(caption("Play any event to see what the pet does. Local only: while demo mode is on there are no 0G calls and no paid views."))
+        stack.addArrangedSubview(caption("Play any event to see what the pet does. Local only: while demo mode is on there are no AI calls and no paid views."))
         let toggle = NSButton(checkboxWithTitle: "Demo mode", target: self, action: #selector(toggleDemo(_:)))
         toggle.state = demoMode ? .on : .off
         stack.addArrangedSubview(toggle)
@@ -1497,14 +1499,14 @@ final class Backend: NSObject {
             demoHooks = ["Clearlog: logs, found. Try it free", "Still grepping logs at 2am? Clearlog.", "Your hook here, carried by the pet"]
             pet.handle(event: "PreToolUse", notification: nil)
         case "idle": pet.handle(event: "Notification", notification: "idle_prompt")
-        case "demo.eat": pet.eat("+0.0005 0G [demo]")
+        case "demo.eat": pet.eat("+0.0002 NEAR food [demo]")
         case "demo.say": pet.say("On it! Tests look green. [demo]", for: 4)
         case "demo.remind":
             reminders.message = "Claude Code is done and waiting for you [demo]"
             reminders.fire()
         case let m where m.hasPrefix("mood."):
             let mood = String(m.dropFirst(5))
-            pet.setMood(mood, reason: mood == "asleep" ? "demo: wallet empty" : nil)
+            pet.setMood(mood, reason: mood == "asleep" ? "demo: can't read the chain" : mood == "hungry" ? "demo: " + brokeReason : nil)
         default:
             if code == "SessionEnd" || code == "Stop" { demoHooks = nil }
             pet.handle(event: code, notification: nil)
@@ -1581,6 +1583,11 @@ final class Backend: NSObject {
             a.runModal()
         }
         renderSettings()
+    }
+    @objc func openLastCharge(_ sender: NSButton) {
+        let explorer = info?.explorer ?? "https://testnet.nearblocks.io"
+        if let tx = sender.identifier?.rawValue, let u = URL(string: "\(explorer)/txns/\(tx)") { NSWorkspace.shared.open(u) }
+        popover.close()
     }
     @objc func openPetPage() {
         let web = ProcessInfo.processInfo.environment["NOTCHI_WEB"] ?? "http://localhost:3000"
@@ -1675,12 +1682,12 @@ final class Backend: NSObject {
     }
 }
 
-assert(ogGain("1000000000000000000", "1005000000000000000") == "+0.005 0G")
-assert(ogGain("123456789012345678901", "123456789012345678902") == "+0.000000000000000001 0G")
-assert(og4("19279999998320000") == "0.0192 0G" && og4("0") == "0.0000 0G" && og4("1000000000000000000000") == "1000.0000 0G")
-assert(og4("99999999999999") == "0.0000 0G" && og4(nil) == "\u{2014}")
-assert(og4("-5") == "\u{2014}" && og4("0x1f") == "\u{2014}" && og4(" 5") == "\u{2014}" && og4("") == "\u{2014}")
-assert(ogGain("5", "5") == nil && ogGain("5", "4") == nil && ogGain(nil, "5") == nil)
+assert(nearGain("1000000000000000000000000", "1000200000000000000000000") == "+0.0002 NEAR")
+assert(nearGain("123456789012345678901234567", "123456789012345678901234568") == "+0.000000000000000000000001 NEAR")
+assert(near4("19279999998320000000000") == "0.0192 NEAR" && near4("0") == "0.0000 NEAR" && near4("1000000000000000000000000000") == "1000.0000 NEAR")
+assert(near4("99999999999999999999") == "0.0000 NEAR" && near4(nil) == "\u{2014}")
+assert(near4("-5") == "\u{2014}" && near4("0x1f") == "\u{2014}" && near4(" 5") == "\u{2014}" && near4("") == "\u{2014}")
+assert(nearGain("5", "5") == nil && nearGain("5", "4") == nil && nearGain(nil, "5") == nil)
 do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt closes the open stretch
     var w = WaitClock(); let t0 = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())! // away from midnight
     w.handle("UserPromptSubmit", at: t0); w.handle("PreToolUse", at: t0 + 60); w.handle("Stop", at: t0 + 120)
@@ -1708,7 +1715,7 @@ do {
     print("cannot listen on 47474: \(error)")
     exit(1)
 }
-print("Notchi running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
+print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
 #if DEBUG
 ClaudeHooks.selfCheck()
