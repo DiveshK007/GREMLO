@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
+import { baseDecode } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
 import { HttpError, type PetRecord } from "./register.ts";
 // @ts-expect-error plain ESM JS package, no types
@@ -52,12 +53,27 @@ export const pairMessage = (petName: string, deviceKeyId: string) =>
  * A NEP-413 signed message from `owner`: the exact message, our recipient, a 32-byte nonce never seen before, and a
  * key that is a full-access key of the owner account (near-api-js checks that against the chain). Throws 400/401/403.
  */
+/**
+ * A NEP-413 signature as wallets send it: base64 per the standard, but some wallets use base58, sometimes with an
+ * "ed25519:" prefix. Returns the 64 raw bytes, or an empty buffer when it is neither.
+ */
+export function decodeSignature(raw: unknown): Buffer {
+  const s = String(raw ?? "").trim().replace(/^ed25519:/, "");
+  if (/^[A-Za-z0-9+/_-]{86}(==)?$/.test(s)) return Buffer.from(s, s.includes("-") || s.includes("_") ? "base64url" : "base64");
+  try {
+    const b = Buffer.from(baseDecode(s));
+    return b.length === 64 ? b : Buffer.alloc(0);
+  } catch {
+    return Buffer.alloc(0);
+  }
+}
+
 export async function checkOwnerSignature(body: any, owner: string, message: string, recipient: string, provider: Parameters<typeof verifyMessage>[0]["provider"], used: Set<string>) {
-  const signature = Buffer.from(String(body?.signature ?? ""), "base64");
+  const signature = decodeSignature(body?.signature);
   const nonce = Buffer.from(String(body?.nonce ?? ""), "base64");
   const publicKey = String(body?.publicKey ?? "");
   if (signature.length !== 64 || nonce.length !== 32 || !/^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(publicKey)) {
-    throw new HttpError(400, "signature (64 bytes, base64), nonce (32 bytes, base64) and an ed25519 publicKey are required");
+    throw new HttpError(400, "signature (64 bytes, base64 or base58), nonce (32 bytes, base64) and an ed25519 publicKey are required");
   }
   if (used.has(nonce.toString("hex"))) throw new HttpError(401, "nonce already used");
   try {

@@ -151,9 +151,9 @@ function signer(req: IncomingMessage, path: string, raw: string) {
   const key = req.headers["x-notchi-key"], time = req.headers["x-notchi-time"], sig = req.headers["x-notchi-sig"];
   if (typeof key !== "string" || typeof time !== "string" || typeof sig !== "string") return null;
   checkSigned({ key, time, sig, message: canonical(req.method ?? "GET", path, time, raw), now: Date.now(), seen: seenSigs });
-  const pet = petByDevice(key);
-  if (!pet) throw new HttpError(401, "device is not paired to any pet");
-  return pet;
+  // an unpaired Mac signs anyway; that proves nothing more than no signature, so it counts as unsigned and
+  // mustBeFrom decides (fine locally, refused with "pair this Mac" when REQUIRE_SIGNED=1)
+  return petByDevice(key) ?? null;
 }
 
 

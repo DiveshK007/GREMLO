@@ -75,6 +75,23 @@ test("NEP-413 owner signature: real ed25519, the exact message and recipient, fu
   assert.equal(await code(await sign(key, msg), pairMessage("mochi", "other-device")), 403); // signed a different message
   assert.equal(await code(await sign(key, msg, "evil.testnet")), 403); // signed for another recipient
   assert.equal(await code(await sign(other, msg)), 403); // not a full-access key of the owner
+  // the same signature as base58 (some wallets send it that way), with and without the ed25519: prefix
+  const { baseEncode } = await import("near-api-js");
+  const again = await sign(key, msg);
+  const b58 = baseEncode(Buffer.from(again.signature, "base64"));
+  assert.equal(await code({ ...again, signature: b58 }), 200);
+  const again2 = await sign(key, msg);
+  assert.equal(await code({ ...again2, signature: "ed25519:" + baseEncode(Buffer.from(again2.signature, "base64")) }), 200);
   assert.equal(await code({ ...good, nonce: "AAAA" }), 400);
   assert.equal(await code({}), 400);
+});
+
+test("decodeSignature: base64, base64url and base58 give the same 64 bytes; anything else is empty", async () => {
+  const { baseEncode } = await import("near-api-js");
+  const { decodeSignature } = await import("./auth.ts");
+  const raw = Buffer.from(Array.from({ length: 64 }, (_, i) => (i * 37 + 11) % 256));
+  for (const enc of [raw.toString("base64"), raw.toString("base64url"), baseEncode(raw), "ed25519:" + baseEncode(raw)]) {
+    assert.deepEqual(decodeSignature(enc), raw, enc);
+  }
+  for (const bad of ["", "abc", raw.subarray(0, 32).toString("base64"), "0OIl" + "1".repeat(80)]) assert.equal(decodeSignature(bad).length, 0, bad);
 });

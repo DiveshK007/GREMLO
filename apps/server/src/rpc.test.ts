@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { broadcastOnce, failover, isRetryable, parseUrls, viewCache } from "./rpc.ts";
+import { broadcastOnce, failover, isRetryable, parseUrls, viewCache, withTimeout } from "./rpc.ts";
 
 const rateLimited = () => Object.assign(new Error("HTTP 429 Too Many Requests"), { status: 429 });
 const timedOut = () => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ETIMEDOUT 1.2.3.4:443"), { code: "ETIMEDOUT" }) });
@@ -90,4 +90,39 @@ test("broadcastOnce: unknown to the next RPC, the same signed tx is sent there; 
   let tries = 0;
   await assert.rejects(broadcastOnce(["a", "b"], { wait: noWait, send: async () => { tries++; throw new Error("Smart contract panicked: OverBudget"); }, status: async () => null }), /OverBudget/);
   assert.equal(tries, 1);
+});
+
+test("circuit breaker: a URL that times out is skipped for 60 s, healthy ones go first, and it comes back after", async () => {
+  let t = 0;
+  const hits: string[] = [];
+  const fo = failover(["fast", "drpc", "intea"], { wait: noWait, now: () => t, cooldownMs: 60_000 });
+  const health: Record<string, "ok" | "slow" | "429"> = { fast: "429", drpc: "slow", intea: "ok" };
+  const call = async (url: string) => {
+    hits.push(url);
+    if (health[url] === "429") throw rateLimited();
+    if (health[url] === "slow") throw timedOut();
+    return url;
+  };
+  assert.equal(await fo.run(call), "intea");
+  assert.deepEqual(hits, ["fast", "drpc", "intea"]);
+  // intea now hangs; fast and drpc are both inside their cooldown, so they're last resorts
+  health.intea = "slow"; health.fast = "ok"; hits.length = 0; t = 10_000;
+  assert.equal(await fo.run(call), "fast");
+  assert.deepEqual(hits, ["intea", "fast"], "broken URLs come after healthy ones, soonest to recover first");
+  hits.length = 0;
+  assert.equal(await fo.run(call), "fast");
+  assert.deepEqual(hits, ["fast"], "sticky: the URL that answered is tried first");
+  // after the cooldown a URL is healthy again and back in the normal order
+  t = 200_000; health.drpc = "ok";
+  assert.deepEqual(fo.order(), ["fast", "drpc", "intea"]);
+});
+
+test("withTimeout: a hanging call is cut off and counts as retryable, so failover moves on fast", async () => {
+  const hang = new Promise<never>(() => {});
+  await assert.rejects(withTimeout(hang, 20), (e: any) => e.name === "TimeoutError" && isRetryable(e));
+  assert.equal(await withTimeout(Promise.resolve(5), 20), 5);
+  const fo = failover(["dead", "fast"], { wait: noWait, timeoutMs: 20 });
+  const t0 = Date.now();
+  assert.equal(await fo.run((url) => (url === "dead" ? hang : Promise.resolve(url))), "fast");
+  assert.ok(Date.now() - t0 < 500, "did not wait for the dead host");
 });

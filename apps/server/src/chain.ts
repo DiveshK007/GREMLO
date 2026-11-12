@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Account, actions, baseEncode, JsonRpcProvider, type Provider } from "near-api-js";
 import { errText } from "./register.ts";
-import { broadcastOnce, failover, parseUrls, viewCache } from "./rpc.ts";
+import { broadcastOnce, failover, parseUrls, viewCache, withTimeout } from "./rpc.ts";
 
 // NEAR access for the vault (contracts-near). Views go through RPC, cached for a few seconds so many pollers cost
 // one call, with failover across RPC URLs on rate limits and timeouts. Changes are signed by the operator, whose key
@@ -16,10 +16,11 @@ const env = (k: string) => {
 export const network = process.env.NEAR_NETWORK ?? "testnet";
 export const vault = env("NEAR_CONTRACT_ID");
 export const operatorId = env("NEAR_OPERATOR_ACCOUNT_ID");
-// rpc.testnet.near.org is deprecated and answers 429 to everything; these answered vault views on 2026-11-12
+// rpc.testnet.near.org is deprecated and answers 429 to everything; testnet-rpc.intea.rs hung on connect (10 s) in
+// the live run. These two answered vault views reliably on 2026-11-12.
 export const rpcUrls = parseUrls(process.env.NEAR_RPC_URL, network === "mainnet"
   ? ["https://rpc.mainnet.fastnear.com"]
-  : ["https://test.rpc.fastnear.com", "https://near-testnet.drpc.org", "https://testnet-rpc.intea.rs"]);
+  : ["https://test.rpc.fastnear.com", "https://near-testnet.drpc.org"]);
 export const explorer = network === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
 // a local sandbox runs on free test accounts, so everything it holds is seeded, not real money
 export const seeded = network === "sandbox";
@@ -74,10 +75,12 @@ export function send(methodName: string, args: Record<string, unknown>, deposit 
   const attempt = async () => {
     const signed = await operator.createSignedTransaction({ receiverId: vault, actions: [actions.functionCall(methodName, args, 100_000_000_000_000n, deposit)] });
     const hash = baseEncode(createHash("sha256").update(signed.transaction.encode()).digest());
-    const order = [fo.current, ...rpcUrls.filter((u) => u !== fo.current)];
-    return broadcastOnce<any>(order, {
-      send: (url) => at(url).sendTransactionUntil(signed, "EXECUTED_OPTIMISTIC"),
-      status: (url) => at(url).viewTransactionStatus({ txHash: hash, accountId: operatorId, waitUntil: "EXECUTED_OPTIMISTIC" }).catch((e) => { if (unknownTx(e)) return null; throw e; }),
+    // a send waits for execution, so it gets 30 s; a status check is a plain read and gets the usual 3 s
+    return broadcastOnce<any>(fo.order(), {
+      send: (url) => withTimeout(at(url).sendTransactionUntil(signed, "EXECUTED_OPTIMISTIC"), 30_000),
+      status: (url) => withTimeout(at(url).viewTransactionStatus({ txHash: hash, accountId: operatorId, waitUntil: "EXECUTED_OPTIMISTIC" }), 3_000).catch((e) => { if (unknownTx(e)) return null; throw e; }),
+      ok: fo.ok,
+      fail: fo.fail,
     });
   };
   const run = async () => {
