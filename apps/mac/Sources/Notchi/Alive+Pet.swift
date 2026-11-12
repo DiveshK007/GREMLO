@@ -125,6 +125,7 @@ extension Pet {
     // MARK: Grab and throw (spec R2 §4)
 
     func beginGrab(at mouse: NSPoint) {
+        target = nil
         guard path == .floor || path == .airborne else { return }
         grabOffset = CGPoint(x: mouse.x - pos.x, y: mouse.y - pos.y)
         dragSamples = [(Date(), mouse)]

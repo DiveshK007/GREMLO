@@ -141,6 +141,7 @@ final class HuntController {
 
     private func crawl() {
         frameTick += 1
+        if frameTick % 10 == 0 { chase() }
         let f = mainScreen.visibleFrame
         for b in hunt.bugs {
             guard var e = bugPanels[b.id] else { continue }
@@ -160,23 +161,36 @@ final class HuntController {
         if pet.path == .floor { pet.set(.fail, then: .walk) }  // a beat of sulking
     }
 
-    /// A passing run: the pet catches each bug in turn, nearest first. Each one goes in the jar.
+    /// Every pet on the bottom edge, earner first (companions perched on a window don't count).
+    var floorPets: [Pet] { ([pet] + Array(backend.companions.pets.values)).filter { $0.path == .floor && $0.perch == nil && !$0.ducked } }
+
+    /// A passing run: the nearest pet walks to each bug in turn, pounces and gulps it. Each one goes in the jar.
     func caught() {
-        let eaten = hunt.passed(petX: Double(pet.pos.x))
+        let catcher = floorPets.first
+        let eaten = hunt.passed(petX: Double(catcher?.pos.x ?? pet.pos.x))
         backend.growth.setBugJar(hunt.jar)
-        for (i, b) in eaten.enumerated() {
-            guard let e = bugPanels.removeValue(forKey: b.id) else { continue }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.9) { [weak self] in
-                guard let self else { return }
-                if self.pet.path == .floor { self.pet.set(.chase, then: .walk) }
-                NSAnimationContext.runAnimationGroup({ c in
-                    c.duration = 0.35
-                    e.panel.animator().setFrameOrigin(NSPoint(x: self.pet.pos.x + self.pet.size.width / 2, y: self.floorY))
-                }) {
-                    e.panel.orderOut(nil)
-                    if self.pet.path == .floor { self.pet.set(.gulp, then: .walk) }
-                }
-            }
+        var panels = eaten.compactMap { b in bugPanels.removeValue(forKey: b.id).map { ($0.panel, $0.panel.frame.midX) } }
+        func next() {
+            guard !panels.isEmpty else { return }
+            let (panel, x) = panels.removeFirst()
+            // the nearest free pet to this bug catches it; if nobody is out, the bug just leaves (still counted)
+            guard let p = floorPets.min(by: { abs($0.pos.x + $0.size.width / 2 - x) < abs($1.pos.x + $1.size.width / 2 - x) }) else { panel.orderOut(nil); next(); return }
+            p.target = (x, { [weak p] in
+                panel.orderOut(nil)
+                p?.set(.gulp, then: .walk)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { next() }
+            })
+        }
+        next()
+    }
+
+    /// Companions chase bugs but never catch them until a pass; the earner only watches (R4 §2).
+    private func chase() {
+        guard !hunt.bugs.isEmpty else { return }
+        for c in backend.companions.pets.values where c.path == .floor && c.perch == nil && !c.busy && c.target == nil {
+            guard let b = hunt.bugs.min(by: { abs($0.x - Double(c.pos.x)) < abs($1.x - Double(c.pos.x)) }) else { continue }
+            let x = CGFloat(b.x), side: CGFloat = c.pos.x < x ? -40 : 40
+            if abs(c.pos.x + c.size.width / 2 - (x + side)) > 30 { c.target = (x + side, {}) }
         }
     }
 

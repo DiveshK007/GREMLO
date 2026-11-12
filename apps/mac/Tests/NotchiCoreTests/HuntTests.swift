@@ -174,3 +174,16 @@ import Testing
         #expect(LineMoment.pick(order: [], tags: tags, moment: "any", slot: 0) == nil)
     }
 }
+
+@Suite struct PerchTests {
+    @Test func agentWindowsBecomePerchesInCocoaCoordinates() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let list = [Perch.Window(owner: "Ghostty", bounds: CGRect(x: 100, y: 80, width: 800, height: 500), layer: 0),
+                    Perch.Window(owner: "Safari", bounds: CGRect(x: 0, y: 40, width: 1000, height: 700), layer: 0),
+                    Perch.Window(owner: "Code", bounds: CGRect(x: 600, y: 300, width: 200, height: 100), layer: 0),
+                    Perch.Window(owner: "Terminal", bounds: CGRect(x: 0, y: 0, width: 1512, height: 982), layer: 0),
+                    Perch.Window(owner: "iTerm2", bounds: CGRect(x: 50, y: 200, width: 700, height: 400), layer: 3)]
+        let spots = Perch.spots(list, primaryHeight: 982, screen: screen)
+        #expect(spots == [CGRect(x: 100, y: 402, width: 800, height: 500)], "only the ordinary agent window; top edge at 982 - 80")
+    }
+}

@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import CoreAudio
+import CoreMediaIO
 import Network
 import NotchiCore
 
@@ -34,7 +35,7 @@ final class PrivacyController {
     func detect() {
         silence.screenShared = Detect.screenShared()
         silence.fullScreenVideo = Detect.fullScreen()
-        let micMeeting = Detect.micInUse()
+        let micMeeting = Detect.micInUse() || Detect.cameraInUse()
         silence.inMeeting = micMeeting || backend.hunt.inMeeting
         let d = Duck.decide(screenShared: silence.screenShared, inMeeting: silence.inMeeting, focus: silence.focus,
                             fullScreen: silence.fullScreenVideo, streamMode: Self.streamOn)
@@ -234,6 +235,24 @@ enum Detect {
         return running != 0
     }
 
+    /// Any camera is in use by some app: a call.
+    static func cameraInUse() -> Bool {
+        var addr = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyDevices),
+                                             mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal), mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
+        var size: UInt32 = 0
+        guard CMIOObjectGetPropertyDataSize(CMIOObjectID(kCMIOObjectSystemObject), &addr, 0, nil, &size) == 0, size > 0 else { return false }
+        var ids = [CMIODeviceID](repeating: 0, count: Int(size) / MemoryLayout<CMIODeviceID>.size)
+        var used: UInt32 = 0
+        guard CMIOObjectGetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &addr, 0, nil, size, &used, &ids) == 0 else { return false }
+        for id in ids {
+            var a = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
+                                              mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeWildcard), mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementWildcard))
+            var running: UInt32 = 0, got: UInt32 = 0
+            if CMIOObjectGetPropertyData(id, &a, 0, nil, UInt32(MemoryLayout<UInt32>.size), &got, &running) == 0, running != 0 { return true }
+        }
+        return false
+    }
+
     /// Another app's window covers the whole main screen (full-screen video, a presentation).
     static func fullScreen() -> Bool {
         let screen = mainScreen.frame.size
@@ -376,7 +395,19 @@ final class RoomView: NSView {
         let strip = backend.pet.skin.strips.first { $0.value.row == spot.row }?.value ?? backend.pet.skin.strips[.idle]
         let ph = 40 * u / 2.2, pw = ph * 192 / 208
         let px = spot.item.map { $0.x + 4 } ?? 80, py = spot.item.map { $0.y - 14 } ?? 74
-        _ = place(strip?.frames.first, unitX: px, unitY: py, w: pw, h: ph)
+        let petLayer = place(strip?.frames.first, unitX: px, unitY: py, w: pw, h: ph)
+        // the pet in the room moves through its row at the spec rate (a still frame looked stuffed)
+        let frames = strip?.frames ?? [], fps = Rates.fps(spot.row, mood: backend.pet.mood) ?? 6
+        if frames.count > 1 {
+            var f = 0
+            Timer.scheduledTimer(withTimeInterval: 1 / max(fps, 1), repeats: true) { [weak self, weak petLayer] t in
+                guard self?.window != nil, let petLayer else { t.invalidate(); return }
+                f = (f + 1) % frames.count
+                CATransaction.begin(); CATransaction.setDisableActions(true)
+                petLayer.contents = frames[f]
+                CATransaction.commit()
+            }
+        }
         let jar = NSTextField(labelWithString: "bug jar \(g.bugJar) \u{00B7} \(g.guestbook.count) visits \u{00B7} click a piece to put it away")
         jar.font = .systemFont(ofSize: 10)
         jar.textColor = NSColor(white: 1, alpha: 0.5)

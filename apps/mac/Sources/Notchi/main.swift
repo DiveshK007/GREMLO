@@ -62,7 +62,7 @@ enum PetState: String, CaseIterable {
     var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch, .tangled, .focus]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch, .tangled, .focus, .chase]
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering, held, airborne }
@@ -379,10 +379,20 @@ final class Pet {
     var squashFrame: Int?
     var onContextChange: (() -> Void)?
 
-    var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
+    // A companion may perch on its agent's window: the window's top edge becomes its floor (spec D §4).
+    var perch: CGRect? {
+        didSet {
+            guard perch != oldValue, path == .floor else { return }
+            if let p = perch, abs(p.maxY - (oldValue?.maxY ?? p.maxY)) < 400, oldValue != nil { pos.y = floorY; pos.x = min(max(pos.x, leftX), rightX) }  // follows a dragged window
+            else { vy = 0; go(.falling); afterLanding = .walk }  // the window went away (or appeared): drop to the new floor
+        }
+    }
+    var floorY: CGFloat { perch.map { $0.maxY - skin.footPadding } ?? mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
-    var leftX: CGFloat { mainScreen.visibleFrame.minX }
-    var rightX: CGFloat { mainScreen.visibleFrame.maxX - size.width }
+    var leftX: CGFloat { perch?.minX ?? mainScreen.visibleFrame.minX }
+    var rightX: CGFloat { perch.map { $0.maxX - size.width } ?? mainScreen.visibleFrame.maxX - size.width }
+    /// Walk to an x and then do something (catching a bug). Cleared by anything that takes the pet off the floor.
+    var target: (x: CGFloat, done: () -> Void)?
     var doorX: CGFloat { door.center.x - size.width / 2 }
 
     init(skin: Skin, door: Door) {
@@ -509,6 +519,7 @@ final class Pet {
             if pos.y <= floorY {
                 pos.y = floorY
                 go(.floor)
+                panel.setFrameOrigin(pos)
                 set(.greet, then: afterLanding)
                 if lockWhenHome { goHome(lock: true) }  // SessionEnd arrived mid-fall
             }
@@ -519,7 +530,18 @@ final class Pet {
                 pos.x += Arcs.moonwalkVelocity(facing: dir, walkPointsPerSecond: 24 * walkSpeed) * dt
                 if pos.x < leftX || pos.x > rightX { pos.x = min(max(pos.x, leftX), rightX); set(.walk) }
             }
-            if state == .walk || state == .sign {
+            if let t = target {
+                let dx = t.x - (pos.x + size.width / 2)
+                if abs(dx) < 6 { target = nil; t.done() }
+                else {
+                    dir = dx > 0 ? 1 : -1
+                    if state != .chase { set(.chase) }
+                    pos.x = min(max(pos.x + dir * 120 * dt, leftX), rightX)
+                    if pos.x == leftX || pos.x == rightX { target = nil; t.done() }
+                }
+            } else if state == .chase {
+                set(.walk)  // the bug is gone (or the pet was picked up mid-chase)
+            } else if state == .walk || state == .sign {
                 pos.x += dir * 24 * speed * walkSpeed * (state == .sign ? (working ? 0.6 : 0.4) : 1) * dt
                 if pos.x < leftX { pos.x = leftX; dir = 1 }
                 if pos.x > rightX { pos.x = rightX; dir = -1 }

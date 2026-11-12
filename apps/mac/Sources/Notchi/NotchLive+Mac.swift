@@ -278,6 +278,7 @@ final class NotchLiveController: NSObject {
     var lastKey = ""
     var roomOpen = false
     private var pull: CGFloat = 0
+    private var swipe: CGFloat = 0
 
     func refreshContent(clear: Bool = false) {
         if state == .sleep { dreamIndex = Int(Date().timeIntervalSince1970 / DreamLog.interval) }
@@ -339,6 +340,19 @@ final class NotchLiveController: NSObject {
 
     /// A two-finger pull down on the notch opens the room; a pull up closes it.
     func scrolled(_ e: NSEvent) {
+        // a sideways swipe moves between waiting agents in the queue
+        if state == .queue, abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) {
+            swipe += e.scrollingDeltaX
+            if abs(swipe) > 40 {
+                let n = min(broker.queue.waiting.count, 4)
+                selected = (selected + (swipe < 0 ? 1 : n - 1)) % max(n, 1)
+                swipe = 0
+                Feel.haptic(.tick)
+                refreshContent(clear: true)
+            }
+            if e.phase == .ended { swipe = 0 }
+            return
+        }
         let dy = e.isDirectionInvertedFromDevice ? e.scrollingDeltaY : -e.scrollingDeltaY
         pull += dy
         if e.phase == .ended || e.phase == .cancelled || abs(pull) > 40 {

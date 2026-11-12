@@ -418,3 +418,21 @@ public enum LineMoment {
         return pool[slot % pool.count]
     }
 }
+
+// MARK: - Window perching (spec D §4): a companion stands on its agent's window title bar and follows it
+
+public enum Perch {
+    /// Apps an agent runs in. Window bounds need no permission; titles would, so they aren't read.
+    public static let agentApps: Set<String> = ["Terminal", "iTerm2", "Ghostty", "Warp", "Alacritty", "kitty", "WezTerm", "Code", "Cursor", "Windsurf", "Zed"]
+
+    public struct Window: Equatable, Sendable { public let owner: String; public let bounds: CGRect; public let layer: Int
+        public init(owner: String, bounds: CGRect, layer: Int) { self.owner = owner; self.bounds = bounds; self.layer = layer } }
+
+    /// Agent windows front to back, as Cocoa rects (origin bottom-left of the primary display). Small or
+    /// off-screen windows are skipped; full-screen ones too (the pets hide then).
+    public static func spots(_ list: [Window], primaryHeight: CGFloat, screen: CGRect) -> [CGRect] {
+        list.filter { $0.layer == 0 && agentApps.contains($0.owner) && $0.bounds.width >= 320 && $0.bounds.height >= 160 }
+            .map { CGRect(x: $0.bounds.minX, y: primaryHeight - $0.bounds.maxY, width: $0.bounds.width, height: $0.bounds.height) }
+            .filter { screen.contains(CGPoint(x: $0.midX, y: $0.maxY - 1)) && !($0.width >= screen.width && $0.height >= screen.height - 40) }
+    }
+}

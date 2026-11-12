@@ -203,7 +203,30 @@ final class CompanionController {
     init(earner: Pet, growth: GrowthController) {
         self.earner = earner
         self.growth = growth
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.meetups() }
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.meetups(); self?.perchTick() }
+    }
+
+    static var perchingOn: Bool { defaults.object(forKey: "perching") as? Bool ?? true }
+    private var order: [String] = []  // sessions in the order their companions arrived
+
+    /// Each companion takes an agent window, front to back, and stands on its title bar; the earner stays on the
+    /// screen edges. shortcut: which window belongs to which agent isn't knowable without reading titles, so
+    /// companions take agent windows in order.
+    private func perchTick() {
+        guard !pets.isEmpty else { return }
+        let primaryH = NSScreen.screens.first?.frame.height ?? mainScreen.frame.height
+        let raw = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+        let list = raw.compactMap { w -> Perch.Window? in
+            guard let owner = w[kCGWindowOwnerName as String] as? String, let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { return nil }
+            return Perch.Window(owner: owner, bounds: CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0), layer: w[kCGWindowLayer as String] as? Int ?? 0)
+        }
+        let spots = Self.perchingOn ? Perch.spots(list, primaryHeight: primaryH, screen: mainScreen.visibleFrame) : []
+        order = order.filter { pets[$0] != nil } + pets.keys.filter { !order.contains($0) }
+        for (i, s) in order.enumerated() {
+            guard let p = pets[s], p.path == .floor || p.path == .falling else { continue }
+            let want = i < spots.count ? spots[i] : nil
+            if p.perch != want { p.perch = want }
+        }
     }
 
     /// Returns true when a companion took the event, so the earner skips it.
