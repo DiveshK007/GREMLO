@@ -184,6 +184,7 @@ final class NotchLiveController: NSObject {
         panel.contentView?.addTrackingArea(track)
         broker.onChange = { [weak self] in self?.update() }
         drop.onDragging = { [weak self] on in self?.dragging = on; self?.update() }
+        drop.onScroll = { [weak self] e in self?.scrolled(e) }
         drop.onDropped = { [weak self] in self?.toastUntil = Date().addingTimeInterval(2); Feel.haptic(.tick); self?.update() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in self?.key(e) == true ? nil : e }
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] e in
@@ -206,6 +207,8 @@ final class NotchLiveController: NSObject {
         i.toolRunning = run.toolRunning
         i.thinking = run.thinking
         i.dragging = dragging || Date() < toastUntil
+        i.roomOpen = roomOpen
+        i.focus = backend?.privacy.focus != nil
         i.stuck = backend?.hunt.stuckTrigger != nil
         i.meetingSoon = backend?.hunt.meetingSoonText != nil
         if let g = backend?.growth { i.egg = g.isEgg && backend?.pet.path != .home || (g.unlockNote.map { Date() < $0.until } ?? false) }
@@ -272,11 +275,13 @@ final class NotchLiveController: NSObject {
     // MARK: Content
 
     private var stack = NSStackView()
-    private var lastKey = ""
+    var lastKey = ""
+    var roomOpen = false
+    private var pull: CGFloat = 0
 
     func refreshContent(clear: Bool = false) {
         if state == .sleep { dreamIndex = Int(Date().timeIntervalSince1970 / DreamLog.interval) }
-        let key = "\(state)|\(dreamIndex)|\(scrubLabel ?? "")|\(dragging)|\(broker.queue.waiting.map(\.id))|\(selected)|\(run.tools)|\(Int(run.elapsed))|\(run.reader.usage.total)|\(pinned)"
+        let key = "\(state)|\(dreamIndex)|\(backend?.privacy.focus.map { Int($0.remaining(Date())) } ?? 0)|\(scrubLabel ?? "")|\(dragging)|\(broker.queue.waiting.map(\.id))|\(selected)|\(run.tools)|\(Int(run.elapsed))|\(run.reader.usage.total)|\(pinned)"
         if !clear && key == lastKey { return }
         lastKey = key
         stack.removeFromSuperview()
@@ -298,7 +303,9 @@ final class NotchLiveController: NSObject {
         case .drop: stack.addArrangedSubview(text(dragging ? "Drop to copy it for your agent" : "Ready to paste", 13, .primary))
         case .meeting: stack.addArrangedSubview(row([eyes(), spacer(), text(backend?.hunt.meetingSoonText ?? "", 11, .secondary, mono: true)]))
         case .stuck: if let h = backend?.hunt, let t = h.stuckTrigger { stuckCard(t) }
-        case .rest, .room, .visitor, .focus: break
+        case .room: if let b = backend { room(b) }
+        case .focus: if let f = backend?.privacy.focus { stack.addArrangedSubview(row([ring(f.progress(Date())), spacer(), text("focus \(f.label(Date()))", 11, .secondary, mono: true)])) }
+        case .rest, .visitor: break
         case .think: break  // the breathing accent edge says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))
         case .sleep: stack.addArrangedSubview(row([eyes(asleep: true), spacer(), dreamIcon()]))
@@ -328,6 +335,41 @@ final class NotchLiveController: NSObject {
         } else {
             stack.addArrangedSubview(bars())
         }
+    }
+
+    /// A two-finger pull down on the notch opens the room; a pull up closes it.
+    func scrolled(_ e: NSEvent) {
+        let dy = e.isDirectionInvertedFromDevice ? e.scrollingDeltaY : -e.scrollingDeltaY
+        pull += dy
+        if e.phase == .ended || e.phase == .cancelled || abs(pull) > 40 {
+            if pull > 30, !roomOpen { roomOpen = true; Feel.haptic(.snap); update() }
+            else if pull < -30, roomOpen { roomOpen = false; update() }
+            pull = 0
+        }
+    }
+
+    func room(_ b: Backend) {
+        let size = NSSize(width: NotchLive.size(.room).w, height: NotchLive.size(.room).h + notchHeight)
+        let v = RoomView(backend: b, size: size, top: notchHeight + 4)
+        v.widthAnchor.constraint(equalToConstant: size.width - 36).isActive = true
+        v.heightAnchor.constraint(equalToConstant: size.height - notchHeight - 18).isActive = true
+        stack.addArrangedSubview(v)
+    }
+
+    /// The 290 x 36 focus timer ring.
+    func ring(_ progress: Double) -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        let track = CAShapeLayer(), arc = CAShapeLayer()
+        let path = CGPath(ellipseIn: CGRect(x: 2, y: 2, width: 18, height: 18), transform: nil)
+        for (l, c) in [(track, NSColor(white: 1, alpha: 0.2).cgColor), (arc, backend?.pet.skin.accent ?? NSColor.white.cgColor)] {
+            l.path = path; l.fillColor = nil; l.strokeColor = c; l.lineWidth = 3
+            v.layer?.addSublayer(l)
+        }
+        arc.strokeEnd = progress
+        v.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        v.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        return v
     }
 
     func stuckCard(_ t: StuckTrigger) {
@@ -479,7 +521,7 @@ final class NotchLiveController: NSObject {
     /// ⌥↩ allow once, ⌥⌫ deny, ⌥↓ next, esc folds. Risky requests get no shortcut.
     func key(_ e: NSEvent) -> Bool {
         guard panel.isKeyWindow else { return false }
-        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; update(); return true }
+        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; update(); return true }
         guard e.modifierFlags.contains(.option) else { return false }
         let items = broker.queue.waiting
         guard !items.isEmpty else { return false }

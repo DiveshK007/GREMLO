@@ -315,6 +315,8 @@ final class HuntController {
 
 final class DropView: NSView {
     var onDragging: ((Bool) -> Void)?
+    var onScroll: ((NSEvent) -> Void)?
+    override func scrollWheel(with e: NSEvent) { onScroll?(e) }
     var onDropped: (() -> Void)?
 
     override init(frame: NSRect) {

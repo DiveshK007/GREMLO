@@ -22,7 +22,7 @@ Decisions (2026-11-13):
 | 4 | Notch Live: 12 states, priority resolver, gestures, approval queue answering with guards, usage and cost readers, soft alerts, done and offline | D§5, R2§9, R3§2 | done (room, egg, visitor and focus content and the drag-down/swipe gestures arrive with their milestones) |
 | 5 | One earner + companions per agent; hatching and eggs; growth stages from meals; Closet with the stars ledger; wardrobe; diary (opt-in); certificate | D§2,6–8, R3§3–4 | done (window perching, model-written diary entries and the certificate/diary share cards are open: perching needs the agent's window, the cards come with the postcard in M7) |
 | 6 | Hook plumbing (test-runner matcher, git hooks with install/remove), bug hunt and jar, stuck detector, git moods, drop zone, session scrubber, dreams, tricks, seasons, meeting heads-up | R4§2–10 | done (open: `--global` git hooks via core.hooksPath come with the CLI in M8; PR-merged needs a GitHub connection; companions don't chase bugs yet and the bug flies to the pet; Show me focuses the first running terminal, not the exact window; approvals to the phone during meetings wait for M11) |
-| 7 | The room and guestbook, focus mode, privacy ledger (screen-share duck, meetings, Focus, ⌥⌘P, export/delete), stream mode, weekly postcard | D§9, R2§12, R4§11–15 | |
+| 7 | The room and guestbook, focus mode, privacy ledger (screen-share duck, meetings, Focus, ⌥⌘P, export/delete), stream mode, weekly postcard | D§9, R2§12, R4§11–15 || done (open: a system Focus can't be read without the Focus Status entitlement, so only our own Focus sessions count; camera-in-use and browser screen sharing aren't detected (mic and Zoom/system recorder are); visits arrive through the M9 relay; the pet in the room is a still frame) |
 | 8 | `notchi` CLI over the local socket, `notchi://` URL scheme, App Intents (Shortcuts), Raycast extension | R2§10 | |
 | 9 | Server and web: plate lines 6–40 characters enforced in the console and the claim checks (R2 §2); brand A/B (4 lines, Thompson), moments, brand safety, signed hourly batches with a public log and `notchi verify`, money page; team relay; pet park; guestbook visits; creator tools and gallery | R2§11,13,15–16, R4§12,14 | |
 | 10 | Website: full port of `web/notchi.html` into Next (hero physics and bug hunt, Notch Live scrub, hatching, eight pets, Closet, room, dreams, park, money, privacy), light mode switch | R3§5, R4§19 | |
@@ -42,6 +42,6 @@ Decisions (2026-11-13):
 - [x] Notch Live priority resolver table; approval queue (risk rules, decision JSON, terminal answer releases); usage and cost estimate; hook-settings merge
 - [x] Closet: no purchase path with money (a test that fails if one appears); stages, meals once per receipt, stars ledger, hatching table, unlocks, companions
 - [x] Runner matcher; bug lifecycle; stuck normaliser; git force-push fixture and MERGE_HEAD watcher; drop-zone quoting; dreams, tricks, seasons, heads-up
-- [ ] Drop zone quoting and image pasteboard; stream mode turns the plate off and freezes sightings
-- [ ] Park payload is exactly `{id, name, species, stage, outfit}`; postcard text has no path, repo or currency
+- [x] Drop zone quoting and image pasteboard; stream mode turns the plate off and freezes sightings
+- [ ] Park payload is exactly `{id, name, species, stage, outfit}` (M9); [x] postcard text has no path, repo or currency
 - [ ] Purse: a function-call key can't transfer; caps reject the call that crosses them

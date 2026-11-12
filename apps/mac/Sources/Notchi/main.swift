@@ -57,12 +57,12 @@ func spacesBehavior() -> NSWindow.CollectionBehavior {
 enum PetState: String, CaseIterable {
     case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy, backflip, moonwalk
     case sit, yawn, gaze, grabbed, thrown, land, edgepeek, night, tools, special, hatch, evolve
-    case chase, gulp, covereyes, tangled, juggle, wrist
+    case chase, gulp, covereyes, tangled, juggle, wrist, focus
     /// The pack row this state draws. Holding the line is the hold row, with the plate overhead.
     var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch, .tangled]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools, .hatch, .tangled, .focus]
 
 // Where the pet is, separate from what it is doing.
 enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering, held, airborne }
@@ -349,6 +349,7 @@ final class Pet {
     var onStomp: (() -> Void)?
     // A companion: every animation, no sign, no thinking, no views (spec D §2).
     var isCompanion = false
+    var ducked = false  // hidden for a screen share or full screen (Privacy+Mac.swift)
     var timers: [Timer] = []
     // Tricks: the backflip's jump arc lifts the whole window; the moonwalk slides against the facing.
     var trickStart = Date.distantPast
@@ -600,9 +601,9 @@ final class Pet {
     // The overlay stays click-through except while the cursor is over a visible pixel of the pet.
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
-        let inside = (path == .floor || path == .held) && onHomeSpace && panel.isVisible && opaque(at: mouse)
+        let inside = !ducked && (path == .floor || path == .held) && onHomeSpace && panel.isVisible && opaque(at: mouse)
         updateGaze(mouse: mouse, inside: inside)
-        let overSign = signPanel.isVisible && signPanel.frame.contains(mouse)
+        let overSign = !ducked && signPanel.isVisible && signPanel.frame.contains(mouse)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         // the sign is clickable only under the cursor, and never while the agent waits for approval
         let signTakesClick = overSign && !waiting && signLinks
@@ -1168,6 +1169,7 @@ final class Backend: NSObject {
     // Growing up and companions (Growth+Mac.swift)
     let growth = GrowthController(existingUser: ClaudeHooks.isConnected)
     lazy var hunt: HuntController = HuntController(backend: self)
+    lazy var privacy: PrivacyController = PrivacyController(backend: self)
     lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
     lazy var growthStack: NSStackView = {
         let s = NSStackView(); s.orientation = .vertical; s.alignment = .leading; s.spacing = 6
@@ -1267,7 +1269,7 @@ final class Backend: NSObject {
 
     func reportImpression() {
         rotateHooks()
-        if demoMode || paused { return } // demo views are never reported or paid; a pause freezes counters
+        if demoMode || paused || privacy.focus != nil || PrivacyController.streamOn { return } // demo views are never paid; a pause, focus or stream mode counts nothing
         guard let c = campaign, !c.allHooks.isEmpty, let since = pet.signShownAt, Date().timeIntervalSince(since) >= 5 else { return }
         if let last = lastImpression[c.campaignId], Date().timeIntervalSince(last) < 60 { return }
         // Viewability (README): unlocked screen, sign visible (placeSign), someone used the Mac in the last 5 minutes.
@@ -1384,7 +1386,8 @@ final class Backend: NSObject {
         } else {
             let hooks = campaign?.allHooks ?? []
             pet.signLinks = showHooks && campaign?.url != nil
-            pet.setSign(showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil, brand: campaign?.brand ?? "")
+            let line = showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil
+            pet.setSign(privacy.lineAllowed(line) ? line : nil, brand: campaign?.brand ?? "")  // focus, stream, share, 12/hour
         }
         if (paused || pet.egg) && !demoMode {
             pet.setSign(nil)  // paused, or still an egg: no line
@@ -1394,7 +1397,7 @@ final class Backend: NSObject {
             pet.setMood("asleep", reason: offlineReason)
         } else if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings || showingDemo { return }  // don't rebuild under a dragging slider
-        let key = "\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
+        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / 60) } ?? -1)|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
         if key == shown { return }
         shown = key
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1423,6 +1426,11 @@ final class Backend: NSObject {
 
         if seeded { stack.addArrangedSubview(label("SEEDED DATA: not real NEAR", 11, .bold, mono: true)) }
         if let e = serverError { stack.addArrangedSubview(label("Server: \(e)", 12, .regular, .secondaryLabelColor)) }
+        if let f = privacy.focus {
+            stack.addArrangedSubview(row("Focus", "\(Int(f.remaining(Date()) / 60) + 1) min left, lines off, not earning"))
+            stack.addArrangedSubview(NSButton(title: "End focus", target: self, action: #selector(endFocusNow)))
+        }
+        if PrivacyController.streamOn { stack.addArrangedSubview(label("Stream mode: lines off, views not counted", 12, .regular, .secondaryLabelColor)) }
         if let i = info, i.mood == "asleep" || i.mood == "hungry", let why = i.moodReason ?? (i.mood == "asleep" ? brokeReason : nil) {
             stack.addArrangedSubview(label(why, 13, .medium, i.mood == "hungry" ? .systemOrange : .secondaryLabelColor))
         }
@@ -1501,6 +1509,7 @@ final class Backend: NSObject {
         quiet.state = quietHours ? .on : .off
         for v in feelControls() { stack.addArrangedSubview(v) }
         for v in huntControls() { stack.addArrangedSubview(v) }
+        for v in privacyControls() { stack.addArrangedSubview(v) }
         stack.addArrangedSubview(sponsored)
         stack.addArrangedSubview(quiet)
         let spaces = NSButton(checkboxWithTitle: "Show over full-screen apps", target: self, action: #selector(toggleAllDesktops(_:)))
@@ -1827,6 +1836,7 @@ do {
     exit(1)
 }
 _ = backend.live  // the notch panel
+_ = backend.privacy  // detectors, hot keys, stream mode
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
 ClaudeHooks.refreshScriptIfStale()

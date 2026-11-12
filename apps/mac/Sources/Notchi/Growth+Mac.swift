@@ -81,6 +81,10 @@ final class GrowthController {
     func approvalAnswered() { Stars.approvalAnswered(&p, at: Date()); day.approvals += 1; checkUnlocks(); save(); onChange?() }
     func stomped() { p.stomps += 1; checkUnlocks(); save() }
     func sessionTools(_ n: Int) { if n > p.maxSessionTools { p.maxSessionTools = n; if n == 100 { save() } } }
+    func focusFinished(id: String) { Stars.focusFinished(&p, id: id, at: Date()); save(); onChange?() }
+    func addGuest(_ e: GuestbookEntry) { p.guestbook = Array((p.guestbook + [e]).suffix(200)); save(); onChange?() }
+    func toggleFurniture(_ id: String) { Room.toggle(id, &p); save(); onChange?() }
+    func takeFurniture(_ id: String) { if Room.take(id, &p, at: Date()) { Feel.haptic(.tick); save(); onChange?() } }
     func setBugJar(_ n: Int) { p.bugJar = n; save(); onChange?() }
     func releaseTag() { p.releaseTags += 1; save(); onChange?() }
     var tricks: [Trick] { Trick.learned(approvals: p.approvalsAnswered, maxSessionTools: p.maxSessionTools, releaseTags: p.releaseTags) }
@@ -324,6 +328,36 @@ extension Backend {
             r.widthAnchor.constraint(equalToConstant: 320).isActive = true
             s.addArrangedSubview(r)
         }
+
+        s.addArrangedSubview(caption("Room (same stars; pull the notch down to see it)"))
+        for f in Room.items {
+            let owned = p.furniture.contains(f.id)
+            var views: [NSView] = [label(f.id, 12, .medium), label(owned ? (p.placed.contains(f.id) ? "in the room" : "put away") : "\(f.stars) stars", 11, .regular, .secondaryLabelColor), NSView()]
+            if !owned && p.stars >= f.stars { let b = ItemButton(title: "Take", target: self, action: #selector(roomTake(_:))); b.item = f.id; views.append(b) }
+            let r = NSStackView(views: views)
+            r.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            s.addArrangedSubview(r)
+        }
+        s.addArrangedSubview(NSButton(title: "Open the room", target: self, action: #selector(openRoom)))
+
+        s.addArrangedSubview(caption("Guestbook"))
+        if p.guestbook.isEmpty { s.addArrangedSubview(label(PrivacyController.visitsOn ? "no visits yet" : "visits are off (Settings)", 11, .regular, .secondaryLabelColor)) }
+        let gf = DateFormatter(); gf.dateStyle = .short; gf.timeStyle = .short
+        for e in p.guestbook.suffix(5).reversed() {
+            let kind = Roster.species(e.species)?.name ?? e.species
+            s.addArrangedSubview(label("\(e.pet), a \(e.stage) \(kind)\(e.outfit.isEmpty ? "" : " in " + e.outfit.joined(separator: ", ")) \u{00B7} \(gf.string(from: e.at))", 11, .regular, .secondaryLabelColor))
+        }
+
+        s.addArrangedSubview(caption("Weekly postcard (Sundays 18:00; saved here, never posted)"))
+        if let pc = privacy.latestPostcard, let img = NSImage(contentsOf: pc) {
+            let iv = NSImageView(image: img)
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            iv.heightAnchor.constraint(equalToConstant: 160).isActive = true
+            s.addArrangedSubview(iv)
+            s.addArrangedSubview(NSStackView(views: [NSButton(title: "Save\u{2026}", target: self, action: #selector(savePostcard)), NSButton(title: "Copy", target: self, action: #selector(copyPostcard))]))
+        }
+        s.addArrangedSubview(NSButton(title: "Make this week's postcard now", target: self, action: #selector(makePostcardNow)))
 
         s.addArrangedSubview(caption("Stars ledger"))
         if p.ledger.isEmpty { s.addArrangedSubview(label("nothing yet", 11, .regular, .secondaryLabelColor)) }
