@@ -57,14 +57,15 @@ func spacesBehavior() -> NSWindow.CollectionBehavior {
 
 enum PetState: String, CaseIterable {
     case greet, walk, idle, sign, flag, celebrate, fail, climb, eat, hover, annoy, backflip, moonwalk
+    case sit, yawn, gaze, grabbed, thrown, land, edgepeek, night, tools, special
     /// The pack row this state draws. Holding the line is the hold row, with the plate overhead.
     var row: Row { self == .sign ? .hold : Row(rawValue: rawValue)! }
 }
 
-let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk]
+let loopingStates: Set<PetState> = [.walk, .climb, .idle, .sign, .flag, .hover, .annoy, .moonwalk, .sit, .gaze, .grabbed, .thrown, .night, .tools]
 
 // Where the pet is, separate from what it is doing.
-enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering }
+enum Path: String { case home, falling, floor, toWall, climbing, ceiling, entering, held, airborne }
 
 // A species pack (NotchiCore) prepared for drawing. See assets/pets/<id>/pet.json and docs/design/1.0.
 struct Strip {
@@ -339,6 +340,28 @@ final class Pet {
     // Tricks: the backflip's jump arc lifts the whole window; the moonwalk slides against the facing.
     var trickStart = Date.distantPast
     var liftY: CGFloat = 0
+    // Pets alive (Alive+Pet.swift)
+    var scheduler = IdleScheduler(now: Date(), seed: SeededRNG.daySeed(Date()))
+    var schedulerDay = SeededRNG.daySeed(Date())
+    var lastAgentEvent = Date()
+    var napping = false
+    var night = Context.isNight(Date())
+    var gaze = Gaze()
+    var gazeFrame = 2
+    var beforeGaze: PetState?
+    var lastMouse = NSPoint.zero
+    var lastMouseMove = Date.distantPast
+    var grabOffset = CGPoint.zero
+    var dragSamples: [(Date, NSPoint)] = []
+    var body: Physics.Body?
+    var dizzy = false
+    var throws_: [Date] = []
+    var power = Context.Power.normal
+    var offline = false
+    let network = NWPathMonitor()
+    var currentProp: Prop?
+    var pendingSignature = false
+    var onContextChange: (() -> Void)?
 
     var floorY: CGFloat { mainScreen.visibleFrame.minY - skin.footPadding }
     var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
@@ -355,10 +378,13 @@ final class Pet {
         sprite.minificationFilter = .nearest
         sprite.contentsGravity = .resizeAspect
         panel.contentView?.layer?.addSublayer(sprite)
-        let click = ClickView(frame: CGRect(origin: .zero, size: skin.size))
-        click.autoresizingMask = [.width, .height]
-        click.onClick = { [weak self] in self?.poke() }
-        panel.contentView?.addSubview(click)
+        let grab = GrabView(frame: CGRect(origin: .zero, size: skin.size))
+        grab.autoresizingMask = [.width, .height]
+        grab.onClick = { [weak self] in self?.poke() }
+        grab.onGrab = { [weak self] in self?.beginGrab(at: $0) }
+        grab.onDrag = { [weak self] in self?.drag(to: $0) }
+        grab.onRelease = { [weak self] in self?.release(at: $0) }
+        panel.contentView?.addSubview(grab)
         // The plate opens the brand's link; it only takes clicks while the cursor is on it (see updateCursor).
         signClick.autoresizingMask = [.width, .height]
         signClick.onClick = { [weak self] in self?.onSignClick?() }
@@ -378,6 +404,7 @@ final class Pet {
         bubbleLabel.backgroundColor = .white
         bubblePanel.contentView?.addSubview(bubbleLabel)
         Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() }
+        startContextMonitors()
     }
 
     func go(_ p: Path) {
@@ -421,6 +448,8 @@ final class Pet {
             door.close(lock: false)
         case .toWall, .climbing, .ceiling:
             break
+        case .held, .airborne:
+            return  // in the user's hand or in the air: it lands first
         }
         lockWhenHome = false
         shrink = 1
@@ -472,6 +501,15 @@ final class Pet {
             if state == .walk || state == .idle, Date().timeIntervalSince(lastActive) > homeAfter {
                 goHome(lock: false)
             }
+            aliveTick(now: Date())
+            if pendingSignature && [.walk, .idle, .sign, .tools].contains(state) && !waiting {
+                pendingSignature = false
+                set(.special, then: state)
+            }
+        case .held:
+            break  // follows the cursor (drag)
+        case .airborne:
+            airborneTick(dt: dt)
         case .toWall:
             pos.x += 140 * dt
             if pos.x >= rightX { pos.x = rightX; set(.climb); go(.climbing) }
@@ -496,7 +534,7 @@ final class Pet {
                 return
             }
         }
-        animClock += (Rates.fps(strip.row, mood: mood) ?? 8) * dt
+        animClock += (Rates.fps(strip.row, mood: mood) ?? 8) * Context.frameRateFactor(power) * dt
         while animClock >= 1 {
             animClock -= 1
             advanceFrame()
@@ -538,7 +576,8 @@ final class Pet {
     // The overlay stays click-through except while the cursor is over a visible pixel of the pet.
     func updateCursor() {
         let mouse = NSEvent.mouseLocation
-        let inside = path == .floor && onHomeSpace && panel.isVisible && opaque(at: mouse)
+        let inside = (path == .floor || path == .held) && onHomeSpace && panel.isVisible && opaque(at: mouse)
+        updateGaze(mouse: mouse, inside: inside)
         let overSign = signPanel.isVisible && signPanel.frame.contains(mouse)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         // the sign is clickable only under the cursor, and never while the agent waits for approval
@@ -588,7 +627,7 @@ final class Pet {
 
     // Frame order, with annoyance picking its part of the annoy row: 1-2 frown, 3-4 arms out, 5+ puffed and stomping.
     // Frame indices within the strip's row: a fallback subset, or the spec's sequence (idle by mood, annoy by clicks).
-    var seq: [Int] { strip.subset ?? Sequence.frames(strip.row, count: strip.frames.count, mood: mood, clicks: annoyance) }
+    var seq: [Int] { strip.subset ?? pickedFrames() ?? Sequence.frames(strip.row, count: strip.frames.count, mood: mood, clicks: annoyance) }
     /// The sheet frame on screen now, for anchors.
     var sheetFrame: Int { seq[min(frame, seq.count - 1)] }
 
@@ -772,7 +811,8 @@ final class Pet {
     }
 
     // Maps a Claude Code hook event to the pet. See CLAUDE.md, "Pet state machine".
-    func handle(event: String, notification: String?) {
+    func handle(event: String, notification: String?, tool: String? = nil, command: String? = nil) {
+        agentEvent(event, tool: tool, command: command)
         switch event {
         case "SessionStart":
             sessionLive = true
@@ -785,9 +825,10 @@ final class Pet {
             lastActive = Date()
             waiting = false
             working = true
-            if path != .floor { comeOut(then: .sign) }
-            else if state == .greet { next = .sign }
-            else if state != .sign { set(.sign) }
+            let w = workingState()
+            if path != .floor { comeOut(then: w) }
+            else if state == .greet { next = w }
+            else if state != w && state != .special { set(w) }
         case "PermissionRequest":
             askApproval()
         case "Notification":
@@ -1085,6 +1126,7 @@ final class Backend: NSObject {
     init(pet: Pet) {
         self.pet = pet
         super.init()
+        pet.onContextChange = { [weak self] in self?.shown = ""; self?.render() }
         // A sign click goes through the server, which counts it once per window and redirects to the brand.
         pet.onSignClick = { [weak self] in
             guard let self, let c = self.campaign, c.url != nil else { return }
@@ -1212,7 +1254,7 @@ final class Backend: NSObject {
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
     func think(_ hook: [String: Any]) {
-        guard !thinking, !demoMode else { return } // no AI spend while demoing
+        guard !thinking, !demoMode, !pet.offline else { return } // no AI spend while demoing or offline
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
@@ -1240,7 +1282,11 @@ final class Backend: NSObject {
             pet.signLinks = showHooks && campaign?.url != nil
             pet.setSign(showHooks && !hooks.isEmpty ? hooks[currentHook] + tag : nil, brand: campaign?.brand ?? "")
         }
-        if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
+        if pet.offline && !demoMode {
+            // offline: sleeps, no lines, no meals, and says why (spec R2 §6)
+            pet.setSign(nil)
+            pet.setMood("asleep", reason: offlineReason)
+        } else if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
         if showingSettings || showingDemo { return }  // don't rebuild under a dragging slider
         let key = "\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)"
         if key == shown { return }
@@ -1656,7 +1702,9 @@ let backend = Backend(pet: pet)
 let server: HookServer
 do {
     server = try HookServer(port: 47474) { hook in
-        pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String)
+        // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)
+        pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String,
+                   tool: hook["tool_name"] as? String, command: (hook["tool_input"] as? [String: Any])?["command"] as? String)
         backend.waited.handle(hook["hook_event_name"] as! String)
         backend.think(hook)
         backend.reminders.handle(hook)

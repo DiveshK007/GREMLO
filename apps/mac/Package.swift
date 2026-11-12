@@ -8,6 +8,6 @@ let package = Package(
         // Pure logic and offscreen drawing (no AppKit), unit-tested.
         .target(name: "NotchiCore"),
         .executableTarget(name: "Notchi", dependencies: ["NotchiCore"], resources: [.copy("Resources/notchi-hook.sh")]),
-        .testTarget(name: "NotchiCoreTests", dependencies: ["NotchiCore"]),
+        .testTarget(name: "NotchiCoreTests", dependencies: ["NotchiCore"], exclude: ["__Snapshots__"]),
     ]
 )

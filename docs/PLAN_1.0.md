@@ -17,7 +17,7 @@ Decisions (2026-11-13):
 |---|---|---|---|
 | 0 | Import design export, assets, generators; plan; rules | export README | done |
 | 1 | Foundations: Mac package split (NotchiCore library + app + tests); pack loader v3–v6; 8 species with accents; sign plate (nine-slice kit, AD tab, never mirrored); accessory layer; anchors; backflip arc and moonwalk slide; old skins removed | D§1–3, R2§1–2, R3§1, R4§1 | done |
-| 2 | Pets alive: idle scheduler, gaze, sit and perch, edge peek, physics (grab, throw, bounce, dizzy), social meetups, context (night, battery, offline), tool props | R2§3–6 | |
+| 2 | Pets alive: idle scheduler, gaze, sit and perch, edge peek, physics (grab, throw, bounce, dizzy), social meetups, context (night, battery, offline), tool props | R2§3–6 | done (meetups and perching switch on with companions, M5) |
 | 3 | Theme (System/Light/Dark, paper-safe accents, contrast test), sound (four levels, silence gate, voice rate limit), haptics | R2§7–8, HAPTICS | |
 | 4 | Notch Live: 12 states, priority resolver, gestures, approval queue answering with guards, usage and cost readers, soft alerts, done and offline | D§5, R2§9, R3§2 | |
 | 5 | One earner + companions per agent; hatching and eggs; growth stages from meals; Closet with the stars ledger; wardrobe; diary (opt-in); certificate | D§2,6–8, R3§3–4 | |
@@ -34,9 +34,9 @@ Decisions (2026-11-13):
 
 - [x] Plate snapshot at 1× and 2× for all 8 species; loader v3/v4/v5/v6
 - [x] Accessories on all 8 species (idle frame 0)
-- [ ] Idle scheduler weights, quiet rules, day seed; gaze boundaries with hysteresis
-- [ ] Physics: restitution, bounce cap, dizzy threshold, door locked while held, impressions paused while held, Reduce Motion
-- [ ] Social roll and cooldowns; tool-prop matcher table
+- [x] Idle scheduler weights, quiet rules, day seed; gaze boundaries with hysteresis
+- [x] Physics: restitution, bounce cap, dizzy threshold, door locked while held, impressions paused while held, Reduce Motion
+- [x] Social roll and cooldowns; tool-prop matcher table
 - [ ] Contrast ≥ 4.5:1 for every accent on paper; sound silence gate
 - [ ] Notch Live priority resolver table
 - [ ] Closet: no purchase path with money (a test that fails if one appears)
