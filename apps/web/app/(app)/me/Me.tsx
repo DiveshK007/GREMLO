@@ -184,7 +184,7 @@ export default function Me() {
     budget = (
       <div className="panel">
         <div className="budget-top">
-          <span className="lbl">Budget left, against the daily cap</span>
+          <span className="lbl">{pet.purse ? "Left in the purse, against the daily cap" : "Budget left, against the daily cap"}</span>
           <b>{near(c.budget)}</b>
           <span className="mono faint" style={{ fontSize: 12 }}>{say}</span>
           <div className={`meter${pct < 20 ? " hot" : ""}`} role="meter" aria-label="Budget left against the daily cap" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={say}><i style={{ width: `${pct}%` }} /></div>
@@ -238,11 +238,13 @@ export default function Me() {
       </p>
 
       <div className="sub-head">
-        <div><div className="eyebrow">Meals</div><h2>The compute budget</h2></div>
-        <span className="n">{c ? `${c.shareBps / 100}% of every settlement` : "—"}</span>
+        <div><div className="eyebrow">Meals</div><h2>{pet.purse ? "The pet’s purse" : "The compute budget"}</h2></div>
+        <span className="n">{pet.purse ? `at most ${near(pet.purse.perCall)} a thought` : c ? `${c.shareBps / 100}% of every settlement` : "—"}</span>
       </div>
       <p className="muted" style={{ margin: "0 0 20px" }}>
-        A share of every settlement ({c ? `${c.shareBps / 100}%` : "—"}) stays with the pet as its compute budget. Each thought is charged a fixed rate per tier, not the provider’s real bill, and every charge has a receipt and the call’s completion ID below.
+        {pet.purse
+          ? "The pet pays for each thought from its own purse, within caps its owner sets. Nobody else can spend from it, and every payment has a receipt and the call’s completion ID below."
+          : <>A share of every settlement ({c ? `${c.shareBps / 100}%` : "—"}) stays with the pet as its compute budget. Each thought is charged a fixed rate per tier, not the provider’s real bill, and every charge has a receipt and the call’s completion ID below.</>}
       </p>
       {budget}
 
@@ -277,8 +279,9 @@ export default function Me() {
           <dt>Pet account</dt><dd className="mono">{pet.petKey}</dd>
           <dt>Owner</dt><dd><a className="hash" href={addressLink(pet.owner)} target="_blank" rel="noreferrer">{pet.owner}</a></dd>
           <dt>Payout</dt><dd><a className="hash" href={addressLink(pet.payout)} target="_blank" rel="noreferrer">{pet.payout}</a></dd>
+          {pet.purse && <><dt>Purse</dt><dd><a className="hash" href={addressLink(pet.purse.account)} target="_blank" rel="noreferrer">{pet.purse.account}</a></dd></>}
           <dt>Contract</dt><dd>{pet.vault ? <a className="hash" href={addressLink(pet.vault)} target="_blank" rel="noreferrer">{pet.vault}</a> : "—"}</dd>
-          <dt>Thinking</dt><dd>NEAR AI Cloud (private inference). Each call is charged a fixed per-tier rate in NEAR from the pet’s compute budget, with its completion id in the contract’s log.</dd>
+          <dt>Thinking</dt><dd>NEAR AI Cloud (private inference). {pet.purse ? "Each call is paid in NEAR from the pet’s purse with pay_inference, signed by the Mac’s purse key, and checked on chain before it counts." : "Each call is charged a fixed per-tier rate in NEAR from the pet’s compute budget, with its completion id in the contract’s log."}</dd>
         </dl>
       </details>
     </div>

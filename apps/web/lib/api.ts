@@ -121,6 +121,8 @@ export type PetPublic = {
   species?: string | null; stage?: string | null;
   /** a Mac is paired to this pet; views count only from a paired Mac */
   paired?: boolean;
+  /** the pet's own purse, when it has one: each thought is paid from it, within caps its owner sets */
+  purse?: { account: string; perCall: string; daily: string } | null;
   /** one settlement receipt per meal */
   meals?: string[];
   /** the vault's compute budget for this pet; null when the chain couldn't be read */

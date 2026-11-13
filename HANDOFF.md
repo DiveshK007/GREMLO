@@ -68,13 +68,13 @@ Dry run (before the rename, kept under their original names): `notchi.testnet`, 
   `NEAR_OPERATOR_PRIVATE_KEY`, `PORT`, `HOST`, `REQUIRE_SIGNED`, `TRUST_PROXY`, `WORLD_APP_ID`, `RP_ID`,
   `RP_SIGNING_KEY`, `WORLD_API_BASE` (local sandbox only), `NEAR_AI_BASE_URL`, `NEAR_AI_API_KEY`,
   `NEAR_AI_MODEL_SMART`, `NEAR_AI_MODEL_CHEAP`, `COMPUTE_FEE_SMART_YOCTO`, `COMPUTE_FEE_CHEAP_YOCTO`,
-  `STORE_PATH`, `LOG_DIR`, `GALLERY_DIR`, `GALLERY_REVIEW_TOKEN`, `WEB_ORIGIN`, `WORKER`, `WORKER_MINUTES`,
+  `PURSE_PARENT` (where the purse factory runs; empty means no purses), `STORE_PATH`, `LOG_DIR`, `GALLERY_DIR`, `GALLERY_REVIEW_TOKEN`, `WEB_ORIGIN`, `WORKER`, `WORKER_MINUTES`,
   `HOLDBACK_HOURS`, `TRY_DAILY_CAP`, `MAIL_FROM`, `RESEND_API_KEY`, `ARKIV`, `ARKIV_KEY`, `ARKIV_ACCESS_KEY`
 - Web (`apps/web/.env`): `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_WEB_URL`, `NEXT_PUBLIC_NEAR_NETWORK`,
   `NEXT_PUBLIC_NEAR_CONTRACT_ID`, `NEXT_PUBLIC_NEAR_RPC_URL`, `NEXT_PUBLIC_WORLD_APP_ID`,
   `NEXT_PUBLIC_WORLD_RP_ID`, `NEXT_PUBLIC_WORLD_PRESET`, `NEXT_PUBLIC_WORLD_ENV`
 - Mac app and CLI: `GREMLO_SERVER`, `GREMLO_WEB`, `GREMLO_PET`, `GREMLO_SKIN`, `GREMLO_HOME_AFTER`,
-  `GREMLO_RECORD` (tests), `GREMLO_GIT_SINK` (tests). The old `NOTCHI_*` names are read as a fallback for one release.
+  `GREMLO_NEAR_RPC` (where the Mac sends purse payments; testnet fastnear by default), `GREMLO_RECORD` (tests), `GREMLO_GIT_SINK` (tests). The old `NOTCHI_*` names are read as a fallback for one release.
 
 The `.env` files are not in git and were not copied into `~/GREMLO`; each person copies their own.
 

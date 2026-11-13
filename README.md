@@ -85,11 +85,11 @@ Every env var name is listed in [HANDOFF.md](HANDOFF.md). Values live only in yo
 ### Built, not deployed
 | Claim | Evidence |
 |---|---|
-| Readable pet accounts: a factory and a purse contract, with a Mac key limited to `pay_inference` and per-call and daily caps | `contracts-accounts`, 14 tests. Not deployed and not wired into the live flow, which uses the vault's compute budget |
+| The pet's purse: a factory and a purse contract, with a Mac key limited to `pay_inference` and per-call and daily caps. The app side is wired: a pet with a purse pays for each thought from its own account, signed on the Mac, and the server counts a payment only once the chain shows it | `contracts-accounts` (14 tests), `apps/server/src/purse.ts` (tested), `GremloCore/Near.swift` (byte-identical to near-api-js). Not deployed; setup steps in [contracts-accounts/README.md](contracts-accounts/README.md). Pets without a purse use the vault's compute budget |
 
 ### Known limits
 - The final clean loop on the `*.gremlo.testnet` accounts hasn't run yet; the loop proof above is the dry run.
-- Not self-funded beyond the wording above: AI calls are charged against the pet's budget at a fixed per-tier rate, not the real USD bill, and the operator holds the NEAR AI credits.
+- Not self-funded beyond the wording above: AI calls are charged against the pet's budget (or paid from its purse, once deployed) at a fixed per-tier rate, not the real USD bill, and the operator holds the NEAR AI credits.
 - The platform fee isn't published, so it shows as `—`.
 - A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom/system recording are).
 - Shortcuts lists the App Intents only from an Xcode-built bundle; `gremlo://` links and the `gremlo` CLI work now.
