@@ -8,6 +8,7 @@ import { connectWallet } from "@/lib/chain";
 import { txLink, WORLD_APP_ID, WORLD_ENV, WORLD_PRESET, WORLD_RP_ID } from "@/lib/config";
 import { Pet } from "@/components/Pet";
 import { toast, useNotch } from "@/components/Shell";
+import { cleanPetName, nameCandidates, validPetName } from "@/lib/petname";
 import "./pet.css";
 
 type Phase =
@@ -19,7 +20,6 @@ type Phase =
   | { kind: "error"; title: string; message: string };
 
 const ACTION = "register-pet";
-const NAME = /^[a-z0-9-]{2,24}$/; // one pet-name rule everywhere (APP_PAGES_REDESIGN §2)
 const SCAN_MS = 180_000; // how long IDKit waits for the phone
 // NEAR account id rules: 2-64 chars, lowercase parts joined by "." with "-" or "_" inside a part
 const isAccountId = (v: string) => v.length >= 2 && v.length <= 64 && /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(v);
@@ -84,7 +84,7 @@ export default function GetYourPet() {
 
   function validate(): string {
     if (!owner) return "Connect your wallet first.";
-    if (!NAME.test(name)) return "Name: 2-24 letters, numbers or dashes.";
+    if (!validPetName(name)) return "Name: 2-24 letters, numbers or dashes.";
     if (!isAccountId(payout.trim())) return "Payout must be an account id, like mochi.testnet.";
     if (!WORLD_APP_ID || !WORLD_RP_ID) return "World app ID / RP ID missing in .env.";
     return "";
@@ -93,8 +93,8 @@ export default function GetYourPet() {
   /** The next two free numeric suffixes (mochi-2, mochi-3…). Names are free and never auctioned (R4 §18). */
   async function suggestions(base: string) {
     const out: string[] = [];
-    for (let n = 2; n < 20 && out.length < 2; n++) {
-      const s = `${base.slice(0, 21)}-${n}`;
+    for (const s of nameCandidates(base)) {
+      if (out.length >= 2) break;
       if (await nameFree(s).catch(() => false)) out.push(s);
     }
     return out;
@@ -173,7 +173,7 @@ export default function GetYourPet() {
           <div className="field" data-invalid={bad || undefined}>
             <label htmlFor="nm">Pet name</label>
             <input id="nm" className="big" value={name} autoComplete="off" spellCheck={false} maxLength={24} aria-describedby="nmh" aria-invalid={bad || undefined}
-              onChange={(e) => { setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")); setTaken(null); }} />
+              onChange={(e) => { setName(cleanPetName(e.target.value)); setTaken(null); }} />
             <span className="echo" aria-hidden="true">{name}</span>
             {taken ? (
               <>

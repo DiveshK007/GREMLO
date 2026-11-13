@@ -27,6 +27,10 @@ export const WORLD_ACTIONS = new Set(["register-pet", "approve-spend"]);
 const REGISTER_ACTION = "register-pet";
 
 export type Verdict = { ok: true; nullifier: string } | { ok: false; code: string };
+/** One pet-name rule everywhere (web /pet, server, Mac): 2-24 of a-z, 0-9 and dashes. */
+export const PET_NAME = /^[a-z0-9-]{2,24}$/;
+export const validPetName = (n: unknown): n is string => typeof n === "string" && PET_NAME.test(n);
+
 export type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string; verifyTx?: string; devices?: string[]; species?: string; stage?: string }; // petKey = name = the vault pet_id; owner/payout are NEAR accounts; devices: paired Secure Enclave keys (X9.63, base64url)
 
 /** Same number whether it arrives as decimal (IDKit) or 0x hex (Developer Portal). */
@@ -102,7 +106,7 @@ export function makeRegister(deps: {
     const owner = accountId(body.owner, "owner");
     const payout = accountId(body.payout ?? owner, "payout");
     const name = body.name;
-    if (typeof name !== "string" || !/^[a-z0-9.-]{2,64}$/.test(name)) throw bad("name must be 2-64 characters of a-z, 0-9, . or -");
+    if (!validPetName(name)) throw bad("name must be 2-24 characters of a-z, 0-9 or -");
     const petKey = name; // the vault's pet_id
     const proof = body.worldProof;
     // shape is the portal's call, not ours; we only need something to forward
