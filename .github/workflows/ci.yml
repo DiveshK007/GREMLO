@@ -35,7 +35,7 @@ jobs:
         with: { targets: wasm32-unknown-unknown }
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: contracts-accounts }
-      # unit tests only; the factory embeds res/notchi_purse.wasm (built by build.sh, committed)
+      # unit tests only; the factory embeds res/gremlo_purse.wasm (built by build.sh, committed)
       - run: cargo test
         working-directory: contracts-accounts
 
@@ -82,6 +82,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f apps/server/Dockerfile -t notchi-api .
+      - run: docker build -f apps/server/Dockerfile -t gremlo-api .
       # secrets and data must never be baked into the image
-      - run: docker run --rm --entrypoint sh notchi-api -c '! test -e /app/apps/server/.env && ! test -e /app/apps/server/data.json'
+      - run: docker run --rm --entrypoint sh gremlo-api -c '! test -e /app/apps/server/.env && ! test -e /app/apps/server/data.json'

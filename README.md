@@ -1,20 +1,24 @@
-# Notchi
+# Gremlo
 
-**Your coding agent makes you wait. Notchi makes that wait pay for itself.**
+**Your coding agent makes you wait. Gremlo makes that wait pay for itself.**
 
-Notchi is a tiny desktop pet that lives behind a door in your MacBook notch. When Claude Code starts working, the door opens, the pet drops out and holds up one short sponsored line while the agent thinks. Brands pay per real impression. The pet's brain runs on 0G, and every decision it makes has a 0G request ID.
+Gremlo is a tiny desktop pet that lives behind a door in your MacBook notch. When Claude Code starts working, the door opens, the pet drops out and holds up one short sponsored line while the agent thinks. Brands pay per real impression. The pet's brain runs on 0G, and every decision it makes has a 0G request ID.
 
 Built from scratch at ETHGlobal Mumbai 2026.
 
-## Notchi 1.0 (branch `notchi-1.0`)
+Prior art: sk-ruban/notchi is an open-source notch companion for Claude Code. Gremlo differs by its sponsored-impression economy, onchain settlement and a compute budget the pet pays its own thinking from.
+
+Gremlo was called Notchi until the 1.0 rename. The dry-run testnet accounts (`vault.notchi.testnet` and its siblings in PROOF.md) keep their original names; the final run uses new `*.gremlo.testnet` accounts, set only through env (`NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT_ID`, `NEXT_PUBLIC_NEAR_CONTRACT_ID`).
+
+## Gremlo 1.0 (branch `notchi-1.0`)
 
 1.0 implements the design export in `docs/design/1.0/`. Milestones and what is still open: `docs/PLAN_1.0.md`.
 The sections below this one describe the earlier hackathon builds.
 
 | Part | Where | Build and test |
 |---|---|---|
-| Mac app: eight species, the plate, Notch Live, approvals from the notch, growth and the Closet, bug hunt, git moods, room, focus, privacy rules, stream mode, postcard, team and park | `apps/mac` | `swift build && swift test` (NotchiCore holds the rules; 86 tests) |
-| `notchi` CLI, `notchi://` links, Shortcuts | `apps/mac/Sources/NotchiCLI` | `swift run NotchiCLI --help` |
+| Mac app: eight species, the plate, Notch Live, approvals from the notch, growth and the Closet, bug hunt, git moods, room, focus, privacy rules, stream mode, postcard, team and park | `apps/mac` | `swift build && swift test` (GremloCore holds the rules; 86 tests) |
+| `gremlo` CLI, `gremlo://` links, Shortcuts | `apps/mac/Sources/GremloCLI` | `swift run GremloCLI --help` |
 | Server: campaigns, signed sightings with a public log, A/B, moments, reports, park, relay, gallery, phone mailbox | `apps/server` | `npm test` |
 | Web: the 1.0 site at `/`, get your pet, your pet, brand console, park, gallery, money | `apps/web` | `npm test`; build in a copy |
 | VS Code and Cursor extension | `apps/vscode` | `npm run compile` |
@@ -23,15 +27,15 @@ The sections below this one describe the earlier hackathon builds.
 | Vault (campaigns, compute budget) | `contracts-near` | `cargo test` |
 | Readable pet accounts: factory and purse (optional, not deployed) | `contracts-accounts` | `./build.sh && cargo test` |
 
-`notchi verify <campaign>` replays a campaign's public log: every counted sighting must be a signed report from a
+`gremlo verify <campaign>` replays a campaign's public log: every counted sighting must be a signed report from a
 paired Mac, the hash chain must be unbroken, and the total must match the bill.
 
-> On one laptop, during this hackathon, we spent 1.6 hours waiting on Claude Code (1,589 agent events), measured by Notchi's own hook log.
+> On one laptop, during this hackathon, we spent 1.6 hours waiting on Claude Code (1,589 agent events), measured by Gremlo's own hook log.
 
 ## What it does
 
 1. **A developer gets a pet.** They prove they are a unique human with World ID. One person, one pet, so brands only pay real screens. The pet is registered onchain with a payout address only the owner can change.
-2. **A brand funds a campaign.** The brand picks a tone (bold, calm or dev-meme) and Notchi writes three hooks of up to 40 characters on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
+2. **A brand funds a campaign.** The brand picks a tone (bold, calm or dev-meme) and Gremlo writes three hooks of up to 40 characters on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
 3. **The pet works.** Claude Code hooks tell the pet what the agent is doing: working, waiting for permission, idle, done, failed. While the agent works, the pet holds the brand's line. Each event asks the pet's 0G brain what to do next.
 4. **The pet gets paid.** Impressions are settled onchain to the pet's payout address. The pet's mood comes from its real balance: thriving, stable, hungry or asleep.
 
@@ -52,9 +56,9 @@ paired Mac, the hash chain must be unbroken, and the total must match the bill.
 - **Hidden door.** The notch looks like stock hardware. The door only appears while the pet crosses it: it fades in, glows, swings open, closes and fades out.
 - **Ticker sign.** While the agent works the pet walks slowly holding the sponsored line. Lines that don't fit scroll like a news ticker and pause when your cursor is on the pet.
 - **Walks every edge.** It walks the bottom, climbs the side wall and walks the top edge upside down on its way home. The sign and bubbles stay upright.
-- **Three avatars.** Notchi, Notchi Ink and Notchi Signal, switched live from the menu-bar popover.
+- **Three avatars.** Gremlo, Gremlo Ink and Gremlo Signal, switched live from the menu-bar popover.
 - **Settings.** Sounds, sponsored lines on/off, ticker, walk speed, how long before it goes home, and a "Send pet home" button.
-- **Reminders.** After the agent stops or asks for approval, Notchi reminds you every 2, 5 or 10 minutes (or never) until your next prompt.
+- **Reminders.** After the agent stops or asks for approval, Gremlo reminds you every 2, 5 or 10 minutes (or never) until your next prompt.
 - **Stays out of full-screen apps.** The pet shows on every normal desktop but never covers full-screen apps; a setting shows it there too. Impressions only count while the sign is actually on screen.
 - **Reacts to you.** Hover and it turns to smile; click it repeatedly and it gets annoyed, then calms down after 6 seconds. It never interrupts work, approvals or what its 0G brain says.
 

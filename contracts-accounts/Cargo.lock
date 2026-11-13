@@ -830,6 +830,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "gremlo-factory"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+]
+
+[[package]]
+name = "gremlo-purse"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1522,20 +1536,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "zeropool-bn",
-]
-
-[[package]]
-name = "notchi-factory"
-version = "0.1.0"
-dependencies = [
- "near-sdk",
-]
-
-[[package]]
-name = "notchi-purse"
-version = "0.1.0"
-dependencies = [
- "near-sdk",
 ]
 
 [[package]]

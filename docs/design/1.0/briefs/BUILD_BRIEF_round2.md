@@ -1,6 +1,6 @@
-# Build brief for Claude Code: Notchi 1.0, round 2
+# Build brief for Claude Code: Gremlo 1.0, round 2
 
-Paste this into Claude Code at the repo root together with the rest of this folder. Read `NOTCHI_1.0_ROUND2.md` first; it is the contract. The canvas page "1.0 · round 2" is the visual reference.
+Paste this into Claude Code at the repo root together with the rest of this folder. Read `GREMLO_1.0_ROUND2.md` first; it is the contract. The canvas page "1.0 · round 2" is the visual reference.
 
 ## Ground rules
 - **Never fake.** Every number on the design boards is seeded. Ship none of them. Unknown values show "—".
@@ -11,7 +11,7 @@ Paste this into Claude Code at the repo root together with the rest of this fold
 
 ## Milestone 1: assets and the sign (do first)
 1. Replace `assets/pets/*` with this folder's packs. The sheets are now 29 rows (1536 × 6032).
-2. Update the pet loader to read `notchi.rows`, `plateAnchor`, `signKit` and `anchors` from `pet.json`. Keep a fallback for v3, 15-row packs: missing rows fall back as in spec §13.
+2. Update the pet loader to read `gremlo.rows`, `plateAnchor`, `signKit` and `anchors` from `pet.json`. Keep a fallback for v3, 15-row packs: missing rows fall back as in spec §13.
 3. Respect anchors when drawing: `edgepeek` is left-anchored, `thrown` is centred, `peek` is top-anchored, everything else sits on the feet.
 4. **Mac:** add a `SignPlateView`, an NSView that draws a nine-slice `NSImage` from `signkit.png` with nearest-neighbour scaling and an integer kit pixel equal to `max(3, round(7 × scale))`. Set the text in Inter 600 at 3.7 kit px. Position its bottom-centre at `plateAnchor[frame] × scale`. It never flips with the sprite and carries the AD tab. Delete the old text overlay.
 5. **Web:** use `.held`, `.pet` and `.sign` from `tokens.css` on the website hero and the brand console preview.
@@ -59,11 +59,11 @@ Paste this into Claude Code at the repo root together with the rest of this fold
    - Detect answers given in the terminal and grey out the row.
 
 ## Milestone 5: CLI, Shortcuts, Raycast
-1. A `notchi` CLI in Swift (or in the Rust core). JSON-RPC over the Unix socket. Commands as in spec §10.
+1. A `gremlo` CLI in Swift (or in the Rust core). JSON-RPC over the Unix socket. Commands as in spec §10.
 2. **Guards:** no command touches money or approves risky commands. `say` is limited to 80 characters and one call per 10 s.
 3. User bubbles are outlined and tagged "you"; model bubbles are filled and keep their request ID.
 4. App Intents for Shortcuts. A Raycast extension in its own repo folder.
-5. The `notchi://` URL scheme.
+5. The `gremlo://` URL scheme.
 
 ## Milestone 6: focus and team mode
 1. **Focus** (spec §12): the timer ring in Notch Live, lines off with the menu bar saying so, the end card. No streak storage.
@@ -73,7 +73,7 @@ Paste this into Claude Code at the repo root together with the rest of this fold
    - The visit is always a companion. Rate limits as in the spec.
 
 ## Milestone 7: creators and the gallery
-1. `notchi new | validate | preview | submit`. The validator rules are in spec §13; run them in CI on the pets repo.
+1. `gremlo new | validate | preview | submit`. The validator rules are in spec §13; run them in CI on the pets repo.
 2. **Codex import** via drag and drop on the menu bar. Imports are local companions only.
 3. **Web gallery:** credit for the creator, an install button, and a report button. Nothing is for sale.
 
@@ -91,8 +91,8 @@ Paste this into Claude Code at the repo root together with the rest of this fold
 4. **Signed hourly batches:**
    - Device key in the Keychain; ed25519 over a canonical JSON with a `prev` hash.
    - The server verifies, rate-limits and appends to a public per-campaign log.
-   - `notchi verify <campaign>`.
-5. Split the repos and license them MIT: `notchi-hook`, `-matcher`, `-budget`, `-relay`, `-pets`. Set up reproducible builds and show the hash in Settings → About.
+   - `gremlo verify <campaign>`.
+5. Split the repos and license them MIT: `gremlo-hook`, `-matcher`, `-budget`, `-relay`, `-pets`. Set up reproducible builds and show the hash in Settings → About.
 6. **Money page:** the fee shows "—" until it is set. Unspent budget is refunded when a campaign ends.
 
 ## Milestone 9: Windows and Linux (after the Mac ships)

@@ -22,8 +22,8 @@ After installing, run `/skills` and check that the off list matches real names; 
 ```
 bash scripts/install-hooks.sh
 ```
-This copies the hook to `~/.notchi/`, backs up `~/.claude/settings.json`, and adds the 9 hooks next to any you already have. Don't use `jq '.[0] * .[1]'`: it replaces arrays, so it would delete your existing hooks for the same events. Then open `claude`, run `/hooks` to confirm, send one prompt, and check `tail -n 3 ~/.notchi/events.log`.
-- Every event is logged to `~/.notchi/events.log` as metadata only: time, event, session ID, tool name, notification type. No prompts, commands or file contents. Needs `jq` or `python3`. That's the wait-time data for the pitch. Turn it on now, even before the pet app exists.
+This copies the hook to `~/.gremlo/`, backs up `~/.claude/settings.json`, and adds the 9 hooks next to any you already have. Don't use `jq '.[0] * .[1]'`: it replaces arrays, so it would delete your existing hooks for the same events. Then open `claude`, run `/hooks` to confirm, send one prompt, and check `tail -n 3 ~/.gremlo/events.log`.
+- Every event is logged to `~/.gremlo/events.log` as metadata only: time, event, session ID, tool name, notification type. No prompts, commands or file contents. Needs `jq` or `python3`. That's the wait-time data for the pitch. Turn it on now, even before the pet app exists.
 - Then it POSTs to the pet on `127.0.0.1:47474`. `curl -m 1 ... || true` means a closed pet app never slows or breaks Claude Code.
 - It never returns a decision, so permissions behave exactly as normal.
 

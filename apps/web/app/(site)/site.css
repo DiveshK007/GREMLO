@@ -1,4 +1,4 @@
-/* Ported from docs/design/1.0/web/notchi.html (the 1.0 website). */
+/* Ported from docs/design/1.0/web/gremlo.html (the 1.0 website). */
 /* Layout: one dark desk, a real notch fixed at the top that performs as you scroll, pinned scenes for Notch Live, the hatch and the eight pets. */
 @property --accent { syntax: '<color>'; inherits: true; initial-value: #FF5A3C; }
 :root {

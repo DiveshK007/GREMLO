@@ -8,7 +8,7 @@ import { privateKeyToAccount } from "viem/accounts";
 // Public, self-expiring mirror of campaign data on Arkiv. The server's own store stays the source of truth;
 // briefs, proof points and anything about a person never go here. Off unless ARKIV_ACCESS_KEY and ARKIV_KEY are set.
 
-export const CampaignCard = defineSchema("notchi.campaign", {
+export const CampaignCard = defineSchema("gremlo.campaign", {
   campaignId: u64().indexed(),
   brand: addr().indexed(),
   hooks: str(), // the picked hooks, one per line
@@ -19,7 +19,7 @@ export const CampaignCard = defineSchema("notchi.campaign", {
   fundingTx: str(),
 });
 
-export const Receipt = defineSchema("notchi.receipt", {
+export const Receipt = defineSchema("gremlo.receipt", {
   campaignId: u64().indexed(),
   pet: addr().indexed(),
   views: u64(),

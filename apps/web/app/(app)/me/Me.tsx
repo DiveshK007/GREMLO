@@ -5,7 +5,7 @@ import { getPet, type PetPublic } from "@/lib/api";
 import { PetSmall } from "@/components/PetArt";
 import { addressLink, formatNear, formatWhen, PRODUCT, txLink } from "@/lib/config";
 
-const KEY = "notchi.pet";
+const KEY = "gremlo.pet";
 const near = (yocto: string | null) => (yocto === null ? "unknown" : formatNear(BigInt(yocto)));
 
 export default function Me() {

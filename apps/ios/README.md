@@ -1,6 +1,6 @@
-# Notchi for iPhone and Apple Watch
+# Gremlo for iPhone and Apple Watch
 
-Pairs with the Mac app by QR code (or a pasted `notchi-pair:` code). The Mac seals its state with a key only it and
+Pairs with the Mac app by QR code (or a pasted `gremlo-pair:` code). The Mac seals its state with a key only it and
 this phone have; the server relays sealed boxes it can't read.
 
 - iPhone: the pet, the current run, waiting approvals with Allow once (Face ID) and Deny; risky commands say
@@ -14,7 +14,7 @@ Build (simulator):
 
     brew install xcodegen
     xcodegen generate
-    xcodebuild -project NotchiPhone.xcodeproj -scheme Notchi -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+    xcodebuild -project GremloPhone.xcodeproj -scheme Gremlo -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 
-`simctl launch <device> dev.notchi.phone -pairCode <code>` pairs without a tap. The shared crypto and types are
-`apps/mac/Sources/NotchiCore/PhoneLink.swift`, tested in the Mac package.
+`simctl launch <device> dev.gremlo.phone -pairCode <code>` pairs without a tap. The shared crypto and types are
+`apps/mac/Sources/GremloCore/PhoneLink.swift`, tested in the Mac package.

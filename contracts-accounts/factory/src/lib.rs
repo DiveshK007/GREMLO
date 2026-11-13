@@ -1,5 +1,5 @@
-// The pet account factory (1.0 design, R4 §18), deployed to the parent account (`notchi.near`). Only a parent
-// can create its sub-accounts, so this creates `<pet>.notchi.near` at hatching and deploys the purse to it. The
+// The pet account factory (1.0 design, R4 §18), deployed to the parent account (`gremlo.near`). Only a parent
+// can create its sub-accounts, so this creates `<pet>.gremlo.near` at hatching and deploys the purse to it. The
 // owner's wallet gets the full-access key; the Mac gets a function-call key that can only call `pay_inference` on
 // the purse. The factory keeps no key on the new account. No auctions, no paid names: a taken name is refunded
 // with a suggestion.
@@ -8,7 +8,7 @@ use near_sdk::serde_json::json;
 use near_sdk::{env, near, require, AccountId, Allowance, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PublicKey};
 
 #[cfg(not(test))]
-const PURSE_WASM: &[u8] = include_bytes!("../../res/notchi_purse.wasm");
+const PURSE_WASM: &[u8] = include_bytes!("../../res/gremlo_purse.wasm");
 #[cfg(test)]
 const PURSE_WASM: &[u8] = b"\0asm-test-purse";
 
@@ -83,7 +83,7 @@ mod tests {
     fn acc(s: &str) -> AccountId { s.parse().unwrap() }
     fn key(n: u8) -> PublicKey { format!("ed25519:{}", near_sdk::bs58::encode([n; 32]).into_string()).parse().unwrap() }
     fn ctx(deposit: u128) {
-        testing_env!(VMContextBuilder::new().current_account_id(acc("notchi.near")).predecessor_account_id(acc("owner.near"))
+        testing_env!(VMContextBuilder::new().current_account_id(acc("gremlo.near")).predecessor_account_id(acc("owner.near"))
             .attached_deposit(NearToken::from_yoctonear(deposit)).build());
     }
     fn factory() -> Factory { ctx(0); Factory::new(vec![acc("ai.provider.near")], U128(10), U128(100)) }
@@ -100,7 +100,7 @@ mod tests {
         ctx(MIN_DEPOSIT);
         f.create_pet("mochi".into(), acc("owner.near"), key(1), key(2)).detach();
         let r = get_created_receipts();
-        let pet = r.iter().find(|r| r.receiver_id == acc("mochi.notchi.near")).expect("a receipt for the new account");
+        let pet = r.iter().find(|r| r.receiver_id == acc("mochi.gremlo.near")).expect("a receipt for the new account");
         let mut fc = None;
         let mut full = 0;
         for a in &pet.actions {
@@ -111,7 +111,7 @@ mod tests {
             }
         }
         let (receiver, methods, allowance) = fc.expect("the Mac's function-call key");
-        assert_eq!(receiver, acc("mochi.notchi.near"));
+        assert_eq!(receiver, acc("mochi.gremlo.near"));
         assert_eq!(methods, vec!["pay_inference".to_string()]);
         assert_eq!(allowance, Some(NearToken::from_yoctonear(MAC_KEY_ALLOWANCE)));
         assert_eq!(full, 1, "exactly one full-access key: the owner's; the factory keeps none");

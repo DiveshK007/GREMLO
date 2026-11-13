@@ -1,16 +1,16 @@
-# Notchi 101 + Build Guide (final lineup)
+# Gremlo 101 + Build Guide (final lineup)
 
 Read this first, then `CLAUDE.md` (rules for Claude Code) and `SETUP.md` (laptop setup).
 
 ETHGlobal Mumbai 2026, Classic track. Submission: Sat 7 Nov, 09:00 IST. Judging: 09:30. Feature freeze: midnight Fri.
 
-**Decision is final: Notchi, simple version, sponsors 0G + World + ENS. No more idea debates.**
+**Decision is final: Gremlo, simple version, sponsors 0G + World + ENS. No more idea debates.**
 
 ---
 
 ## 1. The idea in one breath
 
-Notchi is a desktop AI pet that has to earn its own food.
+Gremlo is a desktop AI pet that has to earn its own food.
 
 It lives in a little home behind a hidden door in the MacBook notch. When you send Claude Code a prompt, the door opens and the pet drops out. It reacts live to what the agent is doing: working, waiting for your approval, waiting for input, done, failed. While the agent works, the pet holds up a small sign with one sponsored line. Brands pay for that line on 0G's chain, and the pet gets paid per impression. The pet then pays for its own thoughts, 0G inference, from that money.
 
@@ -18,7 +18,7 @@ It lives in a little home behind a hidden door in the MacBook notch. When you se
 - Broke pet: thin, slow, uses the cheap model.
 - Totally broke: it can't leave the notch.
 
-**Pitch line:** "Your coding agent makes you wait. Notchi makes that wait pay for itself."
+**Pitch line:** "Your coding agent makes you wait. Gremlo makes that wait pay for itself."
 
 **Judge line:** "Every pet belongs to a real human (World), thinks and eats on 0G, and can't touch its own wallet (ENS)."
 
@@ -33,7 +33,7 @@ Cut, no guilt: creator contest, voting, Whitechain, Codex, Physical AI track.
 
 ## 3. The core loop (this is the demo)
 
-1. **Register:** the dev verifies with World ID, the pet gets a wallet and an ENS name (`mochi.notchi.eth`). One human, one pet.
+1. **Register:** the dev verifies with World ID, the pet gets a wallet and an ENS name (`mochi.gremlo.eth`). One human, one pet.
 2. **Brand pays:** the brand funds a campaign contract on 0G's chain and picks one of the 3 lines the pet suggested through 0G.
 3. **Pet works:** Claude Code runs, and the pet holds the line on its sign. Impressions are counted.
 4. **Pet gets paid:** the backend settles impressions, and the contract pays the pet's wallet. It pays only to the address in the pet's ENS record, which only the owner can change.
@@ -72,11 +72,11 @@ If time runs short, cut ENS, never World.
 - [ ] The staging simulator is fine for the demo.
 
 ### 4.3 ENS checklist (stretch)
-- [ ] Parent name on Sepolia (`notchi.eth` or whatever is available), and a subname per pet.
+- [ ] Parent name on Sepolia (`gremlo.eth` or whatever is available), and a subname per pet.
 - [ ] ENSv2 per-record permissions: the pet's key can write text records `status` and `mood` only; only the owner can write `addr` (the payout address).
 - [ ] The contract reads the payout address from the pet's ENS name, so changing it needs the owner.
 - [ ] Demo the denied path: the pet's key tries to change `addr` and is rejected.
-- [ ] Public status: anyone can resolve `mochi.notchi.eth` and see whether that dev's agent is working, hungry or asleep.
+- [ ] Public status: anyone can resolve `mochi.gremlo.eth` and see whether that dev's agent is working, hungry or asleep.
 - [ ] If ENSv2 per-record permissions aren't usable on Sepolia yet, ask the ENS booth for the closest supported setup. Don't fake it.
 
 ## 5. Architecture
@@ -253,7 +253,7 @@ Commit every 30-60 min.
 
 ## 16. Demo script (target 2:45)
 1. **0:00-0:20 Pain.** "Our team waited X hours on Claude Code this weekend." Type a prompt, the notch door opens and the pet drops out.
-2. **0:20-0:45 Register.** Verify with World and the pet gets `mochi.notchi.eth`. Try a second pet with the same human and it's denied.
+2. **0:20-0:45 Register.** Verify with World and the pet gets `mochi.gremlo.eth`. Try a second pet with the same human and it's denied.
 3. **0:45-1:10 Brand.** The pet suggests 3 lines (request IDs visible). The brand picks one and pays on 0G.
 4. **1:10-1:40 Work.** Claude Code runs and the pet holds the line. A permission prompt makes the pet wave its flag. Done, the pet celebrates. Settle, and the pet's wallet goes up.
 5. **1:40-2:10 Eat.** The pet auto-deposits into its 0G compute account (tx hash) and the next thought is paid from it (request ID). It wants the best model, so it asks for approval and the owner approves with World.
@@ -291,4 +291,4 @@ Commit every 30-60 min.
 - 0G pets (Devot, Zerogochi): Tamagotchis fed by their owner. Ours earns its own food and lives inside your real coding agent.
 - Wait-time ad tools (Kickbacks.ai, Meanwhile and others): banners that pay the human. Ours is a character with a verified-human anti-fraud rule and an AI that can't touch its own payout.
 - Desktop pets and notch apps (vscode-pets, RunCat, boring.notch): no money, no AI decisions.
-- Full list: the "Notchi & Shark Tank: Reference Projects" doc.
+- Full list: the "Gremlo & Shark Tank: Reference Projects" doc.

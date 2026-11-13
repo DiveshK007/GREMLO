@@ -52,10 +52,10 @@ export function checkUrl(u: unknown) {
   return url.toString();
 }
 
-/** Where a sign click goes: the brand's URL with UTM tags so they can see Notchi traffic. */
+/** Where a sign click goes: the brand's URL with UTM tags so they can see Gremlo traffic. */
 export function clickTarget(url: string, campaignId: string, hook: number) {
   const u = new URL(url);
-  u.searchParams.set("utm_source", "notchi");
+  u.searchParams.set("utm_source", "gremlo");
   u.searchParams.set("utm_medium", "pet");
   u.searchParams.set("utm_campaign", campaignId);
   u.searchParams.set("utm_content", `hook${hook}`);

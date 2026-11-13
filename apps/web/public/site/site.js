@@ -1,10 +1,10 @@
-// The 1.0 website script, ported from docs/design/1.0/web/notchi.html. Waits for GSAP, ScrollTrigger and Lenis
+// The 1.0 website script, ported from docs/design/1.0/web/gremlo.html. Waits for GSAP, ScrollTrigger and Lenis
 // (loaded by app/(site)/page.tsx), then runs unchanged. Every section still reads with no motion.
 // System · Light · Dark (R2 §7). The choice is a per-viewer convenience, so browser storage is enough.
 (function theme() {
   const order = ['system', 'light', 'dark'];
   let pick = 'system';
-  try { pick = localStorage.getItem('notchi.theme') || 'system'; } catch (e) {}
+  try { pick = localStorage.getItem('gremlo.theme') || 'system'; } catch (e) {}
   const mq = matchMedia('(prefers-color-scheme: light)');
   const apply = () => {
     const light = pick === 'light' || (pick === 'system' && mq.matches);
@@ -16,7 +16,7 @@
   document.addEventListener('click', (e) => {
     if (!e.target || e.target.id !== 'themeBtn') return;
     pick = order[(order.indexOf(pick) + 1) % order.length];
-    try { localStorage.setItem('notchi.theme', pick); } catch (err) {}
+    try { localStorage.setItem('gremlo.theme', pick); } catch (err) {}
     apply();
   });
   apply();
@@ -35,7 +35,7 @@ const PROP = { bug:[8,22,15,10], squash:[136,26,15,6], paw:[108,121,7,7],
   rug:[67,89,26,7], lamp:[106,80,11,16], plant:[137,82,13,14], shelf:[168,80,16,16], beanbag:[200,86,16,10], poster:[234,83,12,13], fishbowl:[9,117,13,11], lights:[32,121,31,7], records:[73,116,14,12] };
 function propStyle(el, id, z) { const [x, y, w, h] = PROP[id]; Object.assign(el.style, { width: w * z + 'px', height: h * z + 'px', backgroundSize: 256 * z + 'px ' + 128 * z + 'px', backgroundPosition: (-x * z) + 'px ' + (-y * z) + 'px' }); return el; }
 const SPECIES = [
-  { id:'notchi', name:'Notchi', kind:'bean', c:'#FF5A3C', voice:'on it.', unlock:'Starter', move:'Big stretch after a long run', head:[[96,33],[96,33],[96,33],[96,33]], u:7, plate:26 },
+  { id:'gremlo', name:'Gremlo', kind:'bean', c:'#FF5A3C', voice:'on it.', unlock:'Starter', move:'Big stretch after a long run', head:[[96,33],[96,33],[96,33],[96,33]], u:7, plate:26 },
   { id:'pip', name:'Pip', kind:'bird', c:'#FFC93C', voice:'tests passed!', unlock:'Starter', move:'Chirps when tests pass', head:[[96,54],[96,54],[96,54],[96,54]], u:7, plate:47 },
   { id:'moss', name:'Moss', kind:'sprout', c:'#8FD14F', voice:'slow and steady.', unlock:'Starter', move:'Blooms every tenth meal', head:[[96,54],[96,54],[96,54],[96,54]], u:7, plate:47 },
   { id:'gloop', name:'Gloop', kind:'slime', c:'#2ED3B7', voice:'mhm. still here.', unlock:'A session over an hour', move:'Splits in two on a clean run', head:[[96,110],[96,110],[96,110],[96,110]], u:6, plate:104 },
@@ -95,10 +95,10 @@ function makeNotch(host, eyesScale) {
   const n = document.getElementById('notchTpl').content.firstElementChild.cloneNode(true);
   host.appendChild(n);
   const pets = [];
-  n.querySelectorAll('[data-eyes]').forEach(h => { const cv = document.createElement('canvas'); h.appendChild(cv); pets.push(new Pet(cv, 'notchi', eyesScale).play(R.peek, { fps: 2 })); });
-  const sh = n.querySelector('[data-sleep]'); const scv = document.createElement('canvas'); sh.appendChild(scv); pets.push(new Pet(scv, 'notchi', eyesScale).show(R.peek, 2));
+  n.querySelectorAll('[data-eyes]').forEach(h => { const cv = document.createElement('canvas'); h.appendChild(cv); pets.push(new Pet(cv, 'gremlo', eyesScale).play(R.peek, { fps: 2 })); });
+  const sh = n.querySelector('[data-sleep]'); const scv = document.createElement('canvas'); sh.appendChild(scv); pets.push(new Pet(scv, 'gremlo', eyesScale).show(R.peek, 2));
   const eh = n.querySelector('[data-egg]'); const ecv = document.createElement('canvas'); eh.appendChild(ecv); const egg = new Pet(ecv, 'moss', .14).play(R.hatch, { frames:[0,1,0,2], fps: 4 });
-  const rh = n.querySelector('[data-room]'); const rcv = document.createElement('canvas'); rh.appendChild(rcv); pets.push(new Pet(rcv, 'notchi', .55).play(R.sit, { fps: 3 }));
+  const rh = n.querySelector('[data-room]'); const rcv = document.createElement('canvas'); rh.appendChild(rcv); pets.push(new Pet(rcv, 'gremlo', .55).play(R.sit, { fps: 3 }));
   const obj = { el: n, pets, egg, state: 'rest' };
   NOTCHES.push(obj);
   return obj;
@@ -131,7 +131,7 @@ async function init() {
     KIT[s.id] = '/site/sprites/' + s.id + '-kit.png';
     // anchors come from each pack's pet.json (the inline values above are the fallback if it can't load)
     try {
-      const n = (await (await fetch('/site/sprites/' + s.id + '.json')).json()).notchi;
+      const n = (await (await fetch('/site/sprites/' + s.id + '.json')).json()).gremlo;
       const idle = n.headAnchor && n.headAnchor[R.idle];
       if (idle) { s.head = idle.slice(0, 4).map((a, i) => a ? [a[0], a[1]] : s.head[i]); if (idle[0]) s.u = idle[0][2]; }
       if (n.plateAnchor && n.plateAnchor[0]) s.plate = n.plateAnchor[0][1];
@@ -235,8 +235,8 @@ async function init() {
   if (hasGsap) ScrollTrigger.create({ trigger: '#hatchScene', start: 'top top', end: '+=360%', pin: true, scrub: true, onUpdate: self => hatchUpdate(self.progress) });
 
   /* ---------- certificate ---------- */
-  const certPet = new Pet(document.getElementById('certCv'), 'notchi', .75).show(R.evolve, 3);
-  const starters = ['notchi', 'pip', 'moss']; let starter = 'notchi';
+  const certPet = new Pet(document.getElementById('certCv'), 'gremlo', .75).show(R.evolve, 3);
+  const starters = ['gremlo', 'pip', 'moss']; let starter = 'gremlo';
   const stBox = document.getElementById('starter');
   starters.forEach(id => { const b = document.createElement('button'); b.type = 'button'; b.textContent = SP[id].name; b.setAttribute('aria-pressed', id === starter); b.onclick = () => { starter = id; [...stBox.children].forEach(x => x.setAttribute('aria-pressed', x === b)); certPet.setSpecies(id); document.getElementById('certSp').textContent = SP[id].name; accentTo(SP[id].c); }; stBox.appendChild(b); });
   const nameIn = document.getElementById('petName');
@@ -250,10 +250,10 @@ async function init() {
   const eggsBox = document.getElementById('eggs');
   SPECIES.forEach(s => { const d = document.createElement('div'); d.className = 'egg'; const cv = document.createElement('canvas'); d.appendChild(cv); d.insertAdjacentHTML('beforeend', '<b>' + s.name + '</b><small>' + s.unlock + '</small>'); eggsBox.appendChild(d); const p = new Pet(cv, s.id, .42).show(R.hatch, 0); d.addEventListener('mouseenter', () => p.play(R.hatch, { frames: [1, 2, 1, 2, 0], fps: 8, loop: false })); });
   const gs = document.querySelectorAll('#grow canvas');
-  new Pet(gs[0], 'notchi', .55).play(R.hatch, { frames: [0, 1, 0, 2], fps: 3 });
-  new Pet(gs[1], 'notchi', .55).play(R.evolve, { frames: [3, 4], fps: 1.5 });
-  new Pet(gs[2], 'notchi', .55);
-  new Pet(gs[3], 'notchi', .55).show(R.evolve, 5);
+  new Pet(gs[0], 'gremlo', .55).play(R.hatch, { frames: [0, 1, 0, 2], fps: 3 });
+  new Pet(gs[1], 'gremlo', .55).play(R.evolve, { frames: [3, 4], fps: 1.5 });
+  new Pet(gs[2], 'gremlo', .55);
+  new Pet(gs[3], 'gremlo', .55).show(R.evolve, 5);
   if (hasGsap) gsap.fromTo('#mealsBar', { scaleX: .12 }, { scaleX: 1, ease: 'none', scrollTrigger: { trigger: '#grow', start: 'top 85%', end: 'bottom 60%', scrub: true } });
 
   /* ---------- pets rail ---------- */
@@ -274,7 +274,7 @@ async function init() {
     const dist = () => Math.max(0, rail.scrollWidth - innerWidth + 40);
     gsap.to(rail, { x: () => -dist(), ease: 'none', scrollTrigger: { trigger: '#railScene', start: 'top top', end: () => '+=' + dist(), pin: true, scrub: true, invalidateOnRefresh: true,
       onUpdate: self => { const i = Math.min(7, Math.round(self.progress * 7)); railIdx.textContent = String(i + 1).padStart(2, '0') + ' / 08'; accentTo(SPECIES[i].c); setNotchPet(SPECIES[i].id); },
-      onLeave: () => setNotchPet('notchi'), onLeaveBack: () => setNotchPet('notchi') } });
+      onLeave: () => setNotchPet('gremlo'), onLeaveBack: () => setNotchPet('gremlo') } });
   }
 
   /* ---------- closet ---------- */
@@ -287,7 +287,7 @@ async function init() {
   parkInit();
 
   /* ---------- money parade ---------- */
-  const lines = [['notchi','Ship faster with Acme CI'],['pip','Tests in three seconds'],['byte','Logs you can read'],['tako','Ship it'],['moss','Deploys on push'],['puff','Fewer flaky tests'],['wisp','Docs that keep up'],['gloop','Errors, explained']];
+  const lines = [['gremlo','Ship faster with Acme CI'],['pip','Tests in three seconds'],['byte','Logs you can read'],['tako','Ship it'],['moss','Deploys on push'],['puff','Fewer flaky tests'],['wisp','Docs that keep up'],['gloop','Errors, explained']];
   const prow = document.getElementById('paradeRow');
   lines.concat(lines).forEach(([id, t]) => {
     const s = SP[id]; const h = document.createElement('span'); h.className = 'held'; const sc = .5714;
@@ -308,7 +308,7 @@ async function init() {
   } else words.querySelectorAll('.w').forEach(w => w.style.opacity = 1);
 
   /* ---------- end ---------- */
-  new Pet(document.getElementById('endCv'), 'notchi', .9).play(R.hatch, { frames: [0, 0, 1, 2, 0], fps: 3 });
+  new Pet(document.getElementById('endCv'), 'gremlo', .9).play(R.hatch, { frames: [0, 0, 1, 2, 0], fps: 3 });
   if (hasGsap) {
     // created last, so their positions include every pinned scene above them
     document.querySelectorAll('section[data-accent]').forEach(s => ScrollTrigger.create({ trigger: s, start: 'top 55%', end: 'bottom 55%', onToggle: self => { if (self.isActive) accentTo(s.dataset.accent); } }));
@@ -324,7 +324,7 @@ let H = null;
 function heroInit(topNotch) {
   const yard = document.getElementById('yard'), hp = document.getElementById('hp'), cv = document.getElementById('heroCv'), bub = document.getElementById('bub');
   const sc = innerWidth < 600 ? .62 : .8;
-  const pet = new Pet(cv, 'notchi', sc);
+  const pet = new Pet(cv, 'gremlo', sc);
   const W = () => yard.clientWidth, PW = 192 * sc;
   H = { yard, hp, cv, bub, pet, sc, W, PW, x: Math.min(W() * .5, W() - PW), y: RM ? 0 : yard.clientHeight + 120, vx: 0, vy: 0, mode: RM ? 'idle' : 'fall', dir: 1, bounces: 0, peak: 0, clicks: 0, lastClick: 0, until: 0, last: performance.now(), mx: -1e4, my: -1e4, top: topNotch };
   const drop = () => { if (H.mode !== 'wait') return; H.mode = 'fall'; H.hp.style.visibility = ''; setNotch(topNotch, 'door'); pet.play(R.thrown, { fps: 12 }); setTimeout(() => setNotch(topNotch, 'peek'), 1400); };
@@ -522,13 +522,13 @@ function closetInit(accentTo) {
     { id: 'crown', name: 'Crown', slot: 'head', lock: '100 meals', have: 34, need: 100 },
     { id: 'wizard', name: 'Wizard hat', slot: 'head', lock: 'Reach Elder', have: 34, need: 50 }
   ];
-  let stars = 34, sp = 'notchi';
+  let stars = 34, sp = 'gremlo';
   const eq = { head: 'beanie', face: null, neck: null };
   const cv = document.getElementById('closetCv');
   const pet = new Pet(cv, sp, 1.45);
   const shelf = document.getElementById('shelf'), slots = document.getElementById('slots'), starsEl = document.getElementById('stars'), toast = document.getElementById('toast');
   const spBox = document.getElementById('closetSp');
-  ['notchi', 'pip', 'moss', 'gloop', 'byte', 'puff', 'wisp', 'tako'].forEach(id => { const b = document.createElement('button'); b.type = 'button'; b.textContent = SP[id].name; b.setAttribute('aria-pressed', id === sp); b.onclick = () => { sp = id; [...spBox.children].forEach(x => x.setAttribute('aria-pressed', x === b)); pet.setSpecies(id); icons(); accentTo(SP[id].c); }; spBox.appendChild(b); });
+  ['gremlo', 'pip', 'moss', 'gloop', 'byte', 'puff', 'wisp', 'tako'].forEach(id => { const b = document.createElement('button'); b.type = 'button'; b.textContent = SP[id].name; b.setAttribute('aria-pressed', id === sp); b.onclick = () => { sp = id; [...spBox.children].forEach(x => x.setAttribute('aria-pressed', x === b)); pet.setSpecies(id); icons(); accentTo(SP[id].c); }; spBox.appendChild(b); });
   const icCvs = [];
   ITEMS.forEach(it => {
     const b = document.createElement('div'); b.className = 'item'; b.dataset.id = it.id; b.setAttribute('role', 'button'); b.tabIndex = 0;
@@ -595,7 +595,7 @@ function roomInit() {
   F.forEach(f => { const w = document.createElement('span'); w.className = 'fx'; const p = document.createElement('span'); p.className = 'prop'; w.appendChild(p); box.appendChild(w); fx[f[0]] = { w, p }; });
   const at = document.createElement('span'); at.className = 'pet-at'; const cv = document.createElement('canvas'); at.appendChild(cv); box.appendChild(at);
   let z = 4;
-  const pet = new Pet(cv, 'notchi', z * .1);
+  const pet = new Pet(cv, 'gremlo', z * .1);
   // where the pet goes to use each piece: [left, top] in units, row, options
   const SPOT = { home: [80.4, 74.4], beanbag: [110.4, 70.5], fishbowl: [118, 74.4], records: [64, 74.4] };
   let spot = 'home', moving = false;
@@ -664,7 +664,7 @@ function roomInit() {
   /* dreams */
   const D = [['d-wrench', 'edits'], ['d-flask', 'tests'], ['d-bug', 'a bug'], ['d-merge', 'a merge'], ['d-check', 'a pass'], ['d-star', 'a party'], ['d-heart', 'you said thanks'], ['d-moon', 'bedtime']];
   const tl = document.getElementById('dreamTl'), ic = document.getElementById('dreamIc');
-  new Pet(document.getElementById('dreamCv'), 'notchi', .19).show(R.peek, 2);
+  new Pet(document.getElementById('dreamCv'), 'gremlo', .19).show(R.peek, 2);
   D.forEach(([id, label]) => { const s = document.createElement('span'); const p = document.createElement('i'); p.className = 'prop'; propStyle(p, id, 1.5); s.appendChild(p); s.appendChild(document.createTextNode(label)); tl.appendChild(s); });
   let di = 0;
   const showDream = i => { propStyle(ic, D[i][0], 6); [...tl.children].forEach((s, k) => s.classList.toggle('on', k === i)); };
@@ -678,7 +678,7 @@ function parkInit() {
   const el = document.getElementById('parkYard');
   [[5, 1], [33, 1.3], [64, .9], [86, 1.15]].forEach(([l, s]) => { const t = document.createElement('i'); t.className = 'tree'; t.style.left = l + '%'; t.style.transform = 'scale(' + s + ')'; el.appendChild(t); });
   for (let i = 0; i < 24; i++) { const s = document.createElement('i'); s.className = 'star'; s.style.left = ((i * 37) % 100) + '%'; s.style.top = ((i * 17) % 46) + '%'; el.appendChild(s); }
-  const SAMPLE = [['Mochi', 'notchi', 'teen'], ['Biscuit', 'pip', 'adult'], ['Jelly', 'gloop', 'baby'], ['Fog', 'wisp', 'elder'], ['Bolt', 'byte', 'teen'], ['Inky', 'tako', 'adult'], ['Sprig', 'moss', 'baby'], ['Nimbus', 'puff', 'teen']];
+  const SAMPLE = [['Mochi', 'gremlo', 'teen'], ['Biscuit', 'pip', 'adult'], ['Jelly', 'gloop', 'baby'], ['Fog', 'wisp', 'elder'], ['Bolt', 'byte', 'teen'], ['Inky', 'tako', 'adult'], ['Sprig', 'moss', 'baby'], ['Nimbus', 'puff', 'teen']];
   const lanes = [.30, .06, .22, .0, .16, .11, .26, .03];
   const sc = innerWidth < 600 ? .34 : .44;
   const W = () => el.clientWidth;

@@ -33,7 +33,7 @@ export default function Money() {
       </section>
       <section className="card">
         <h2>A sighting counts only when</h2>
-        <p className="muted">the plate is fully visible for 2 seconds or more, the screen is unlocked, not shared and not recorded, someone used the Mac in the last minute, and the pet is under 12 lines an hour. Every counted sighting is a signed report in the campaign&apos;s public log; <code>notchi verify &lt;campaign&gt;</code> checks it against the bill.</p>
+        <p className="muted">the plate is fully visible for 2 seconds or more, the screen is unlocked, not shared and not recorded, someone used the Mac in the last minute, and the pet is under 12 lines an hour. Every counted sighting is a signed report in the campaign&apos;s public log; <code>gremlo verify &lt;campaign&gt;</code> checks it against the bill.</p>
       </section>
     </main>
   );

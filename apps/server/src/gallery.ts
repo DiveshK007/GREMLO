@@ -20,8 +20,8 @@ export function checkSubmission(files: Record<string, string>) {
   const total = Object.values(files).reduce((n, f) => n + Buffer.byteLength(f, "base64"), 0);
   if (total > MAX_BYTES) throw bad("a pack is at most 8 MB");
   let meta: any;
-  try { meta = JSON.parse(Buffer.from(json, "base64").toString("utf8")).notchi; } catch { throw bad("pet.json doesn't parse"); }
-  if (!meta?.rows || !Array.isArray(meta.cell) || !meta.columns) throw bad("pet.json needs notchi.rows, cell and columns");
+  try { meta = JSON.parse(Buffer.from(json, "base64").toString("utf8")).gremlo; } catch { throw bad("pet.json doesn't parse"); }
+  if (!meta?.rows || !Array.isArray(meta.cell) || !meta.columns) throw bad("pet.json needs gremlo.rows, cell and columns");
   const rows = Object.keys(meta.rows).length;
   const size = pngSize(Buffer.from(sheet, "base64"));
   if (!size) throw bad("spritesheet.png isn't a PNG");

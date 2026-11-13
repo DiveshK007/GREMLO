@@ -544,7 +544,7 @@ export default function FundCampaign() {
             {stats?.paused && stats.paused.length > 0 && <p className="muted">Paused by reports: line {stats.paused.map((i) => i + 1).join(", ")}.</p>}
             {stats && (
               <p className="muted">
-                Every counted view is a signed report from a pet. <a href={`${SERVER_URL}/campaigns/${stats.campaignId}/log`}>Public log</a> · check it yourself with <code>notchi verify {stats.campaignId}</code>
+                Every counted view is a signed report from a pet. <a href={`${SERVER_URL}/campaigns/${stats.campaignId}/log`}>Public log</a> · check it yourself with <code>gremlo verify {stats.campaignId}</code>
               </p>
             )}
             {!lookup.closed && lookup.endTime + 3600n <= nowSec && (

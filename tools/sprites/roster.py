@@ -1,4 +1,4 @@
-"""Notchi 1.0 — species engine.
+"""Gremlo 1.0 — species engine.
 
 Eight original creatures, one pose vocabulary. Each species defines a silhouette,
 limb style, decor and palette; the pose library is shared so every pet can do
@@ -29,8 +29,8 @@ COMMON = {
 # ---------------------------------------------------------------- species --
 
 SPECIES = {
-    'notchi': dict(
-        name='Notchi', kind='bean', accent='FF5A3C',
+    'gremlo': dict(
+        name='Gremlo', kind='bean', accent='FF5A3C',
         line='The original. Lives in the notch, holds the sign, pays its way.',
         profile=[2, 4, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 7, 6, 6],
         legs='stub', arms='stub', belly='patch',
@@ -95,7 +95,7 @@ SPECIES = {
                  a='FFB0D2', b='E25A97', h='FFFFFF')),
 }
 
-ORDER = ['notchi', 'pip', 'moss', 'gloop', 'byte', 'puff', 'wisp', 'tako']
+ORDER = ['gremlo', 'pip', 'moss', 'gloop', 'byte', 'puff', 'wisp', 'tako']
 
 
 def palette(sp):
@@ -789,7 +789,7 @@ def rows_for(key):
     sp = SPECIES[key]
     flo = sp['legs'] in ('none_float',)
     special = {
-        'notchi': [dict(arm='up', eye='closed', mo='yawn'), dict(top=4, rows=21, arm='up', eye='closed', mo='yawn'),
+        'gremlo': [dict(arm='up', eye='closed', mo='yawn'), dict(top=4, rows=21, arm='up', eye='closed', mo='yawn'),
                    dict(top=5, arm='up', eye='happy', mo='open'), dict(arm='out', eye='happy', mo='smile', cheek=True)],
         'pip': [dict(beak_open=True, notes=0, eye='happy'), dict(top=5, beak_open=True, notes=1, eye='happy', arm='up'),
                 dict(beak_open=True, notes=2, eye='closed', arm='out'), dict(eye='happy', cheek=True)],
@@ -931,7 +931,7 @@ def render(key, outdir):
     for r, row in enumerate(frames):
         for c, (g, lift) in enumerate(row):
             paste(img, g, c, r, pal, lift, anchor='top' if r == 14 else 'feet')
-    d = os.path.join(outdir, f'notchi-{key}' if key != 'notchi' else 'notchi')
+    d = os.path.join(outdir, f'gremlo-{key}' if key != 'gremlo' else 'gremlo')
     os.makedirs(d, exist_ok=True)
     img.save(os.path.join(d, 'spritesheet.webp'), 'WEBP', lossless=True, quality=100)
     img.save(os.path.join(d, 'spritesheet.png'), 'PNG')
@@ -940,7 +940,7 @@ def render(key, outdir):
         'id': os.path.basename(d), 'displayName': sp['name'],
         'description': sp['line'], 'spriteVersionNumber': 3,
         'spritesheetPath': 'spritesheet.webp',
-        'notchi': {'species': key, 'accent': '#' + sp['accent'],
+        'gremlo': {'species': key, 'accent': '#' + sp['accent'],
                    'rows': {n: {'row': i, 'frames': len(frames[i])} for i, n in enumerate(ROW_NAMES)}}
     }, open(os.path.join(d, 'pet.json'), 'w'), indent=2)
     return img

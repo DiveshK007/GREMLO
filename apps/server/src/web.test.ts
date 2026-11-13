@@ -45,7 +45,7 @@ test("brand URLs must be public https; clicks get UTM tags", () => {
   const t = new URL(clickTarget("https://acme.dev/pricing?ref=x", "7", 2));
   assert.equal(t.origin + t.pathname, "https://acme.dev/pricing");
   assert.equal(t.searchParams.get("ref"), "x");
-  assert.equal(t.searchParams.get("utm_source"), "notchi");
+  assert.equal(t.searchParams.get("utm_source"), "gremlo");
   assert.equal(t.searchParams.get("utm_campaign"), "7");
   assert.equal(t.searchParams.get("utm_content"), "hook2");
 });

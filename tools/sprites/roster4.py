@@ -1,4 +1,4 @@
-"""Notchi 1.0, round four: bugs, git moods, tricks, the room.
+"""Gremlo 1.0, round four: bugs, git moods, tricks, the room.
 
 Builds on roster3.py. New pet rows 31-38 and a shared props sheet.
   31 chase      6  run after the bug, pounce
@@ -215,7 +215,7 @@ def render(key, outdir):
             ht = R3.headtop_of(g) if r not in R3.NO_HATS | {33, 34, 35, 37} else None
             hr.append([place[0] + ht[1] * place[2] + place[2] // 2, place[1] + ht[0] * place[2], place[2]] if (ht and place) else None)
         heads.append(hr)
-    d = os.path.join(outdir, 'notchi' if key == 'notchi' else f'notchi-{key}')
+    d = os.path.join(outdir, 'gremlo' if key == 'gremlo' else f'gremlo-{key}')
     os.makedirs(d, exist_ok=True)
     full.save(os.path.join(d, 'spritesheet.webp'), 'WEBP', lossless=True, quality=100)
     full.save(os.path.join(d, 'spritesheet.png'))
@@ -226,7 +226,7 @@ def render(key, outdir):
     json.dump({
         'id': os.path.basename(d), 'displayName': sp['name'], 'description': sp['line'],
         'spriteVersionNumber': 6, 'spritesheetPath': 'spritesheet.webp',
-        'notchi': {
+        'gremlo': {
             'species': key, 'accent': '#' + sp['accent'], 'cell': [CW, CH], 'columns': COLS,
             'rows': {n: {'row': i, 'frames': len(rows[i])} for i, n in enumerate(NAMES)},
             'signRect': sign, 'plateAnchor': plate,

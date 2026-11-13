@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }
@@ -85,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.notchi/notchi-hook.sh"
+            "command": "bash ~/.gremlo/gremlo-hook.sh"
           }
         ]
       }

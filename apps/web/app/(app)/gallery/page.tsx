@@ -25,10 +25,10 @@ export default function Gallery() {
       </ul>
       <section className="card">
         <h2>Make one</h2>
-        <pre className="mono">{`notchi new my-pet
-notchi validate my-pet
-notchi preview my-pet
-notchi submit my-pet --creator "your name"`}</pre>
+        <pre className="mono">{`gremlo new my-pet
+gremlo validate my-pet
+gremlo preview my-pet
+gremlo submit my-pet --creator "your name"`}</pre>
         <p className="muted">Only art you made. Imports from other pet apps stay on your Mac as companions.</p>
       </section>
     </main>

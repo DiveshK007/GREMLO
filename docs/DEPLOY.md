@@ -1,4 +1,4 @@
-# Deploying Notchi
+# Deploying Gremlo
 
 Three pieces: the API (Fly.io), the web app (Vercel), the Mac app (signed .dmg). The contract stays on 0G Galileo until audited.
 Secrets live only in each host's secret store. Never commit them, never put them in the image.
@@ -11,7 +11,7 @@ The Dockerfile builds from the repo root because the server imports `packages/br
 fly auth login
 cd apps/server
 fly launch --no-deploy --copy-config --name <your-app-name>   # keep fly.toml; set `app` to your name
-fly volumes create notchi_data --size 1 --region bom             # the JSON store lives here (STORE_PATH=/data/data.json)
+fly volumes create gremlo_data --size 1 --region bom             # the JSON store lives here (STORE_PATH=/data/data.json)
 fly secrets set \
   RP_ID=... RP_SIGNING_KEY=... WORLD_APP_ID=... \
   ZG_API_KEY=... ZG_API_BASE=... ZG_MODEL_SMART=... ZG_MODEL_CHEAP=... \
@@ -54,14 +54,14 @@ Then set `WEB_ORIGIN` on Fly to the Vercel URL (CORS) and redeploy the API.
 
 ## 3. Mac app
 
-Point it at production with `NOTCHI_SERVER=https://<your-app-name>.fly.dev NOTCHI_WEB=https://<your-vercel-domain>`.
-Each user then pairs their Mac once: Notchi menu → Settings → Pair this Mac with my pet (signs with the pet owner's wallet).
+Point it at production with `GREMLO_SERVER=https://<your-app-name>.fly.dev GREMLO_WEB=https://<your-vercel-domain>`.
+Each user then pairs their Mac once: Gremlo menu → Settings → Pair this Mac with my pet (signs with the pet owner's wallet).
 Signed, notarised .dmg + Sparkle auto-update need an Apple Developer account; see PLAN_V2 phase G.
 
 ## Arkiv (optional)
 
 Get an access key at hub.arkiv.network/access-keys and testnet tGLM for the `ARKIV_KEY` account at hub.arkiv.network/faucet.
-With both set, each saved campaign publishes a `notchi.campaign` card and each settlement a `notchi.receipt`, all expiring with the campaign.
+With both set, each saved campaign publishes a `gremlo.campaign` card and each settlement a `gremlo.receipt`, all expiring with the campaign.
 Without them Arkiv is simply off; nothing else changes.
 
 ## Brand emails (optional)
@@ -87,7 +87,7 @@ testnet Router, because campaigns pay in Galileo testnet 0G:
 The owner opts in on /me ("Let it pay for its brain"), which points the pet's payout at its wallet. Every deposit is
 decided by a fixed rule (reserve, daily cap); above the cap the owner signs with their wallet and proves with World ID.
 Create a World action `approve-spend` (unlimited verifications) next to `register-pet`. The owner can withdraw the
-pet wallet at any time. The pet's credit is Notchi's bookkeeping of its share of the router account, kept from the
+pet wallet at any time. The pet's credit is Gremlo's bookkeeping of its share of the router account, kept from the
 deposit tx hashes and the per-call `total_cost` the Router returns; the router account balance itself is onchain.
 
 ## Holdback and fraud rules
@@ -106,10 +106,10 @@ at once, because the contract pays for only one more hour.
 
 ## Mac app: signed, notarized dmg
 
-`scripts/release-mac.sh` builds a universal `Notchi.app` (pets and hook script inside), wraps it in a dmg, and with your Apple Developer account signs, notarizes and staples it. You need:
+`scripts/release-mac.sh` builds a universal `Gremlo.app` (pets and hook script inside), wraps it in a dmg, and with your Apple Developer account signs, notarizes and staples it. You need:
 
 1. An Apple Developer Program membership and a "Developer ID Application" certificate in your keychain. `security find-identity -v -p codesigning` shows its name.
-2. A notarytool profile, made once: `xcrun notarytool store-credentials notchi --apple-id you@example.com --team-id TEAMID --password <app-specific password>`.
-3. `SIGN_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=notchi VERSION=0.2.0 ./scripts/release-mac.sh`
+2. A notarytool profile, made once: `xcrun notarytool store-credentials gremlo --apple-id you@example.com --team-id TEAMID --password <app-specific password>`.
+3. `SIGN_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=gremlo VERSION=0.2.0 ./scripts/release-mac.sh`
 
-Output: `apps/mac/dist/Notchi-<version>.dmg`. Without `SIGN_ID` the script signs ad hoc, so the app runs only on the Mac that built it. CI runs it unsigned to prove the bundle builds. There is no auto-update yet; ship a new dmg per version.
+Output: `apps/mac/dist/Gremlo-<version>.dmg`. Without `SIGN_ID` the script signs ad hoc, so the app runs only on the Mac that built it. CI runs it unsigned to prove the bundle builds. There is no auto-update yet; ship a new dmg per version.

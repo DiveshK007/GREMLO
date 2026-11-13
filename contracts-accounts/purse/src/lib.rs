@@ -54,7 +54,7 @@ impl Purse {
         require!(env::account_balance().as_yoctonear() >= a + Self::locked(), "not enough in the purse");
         self.spent_today += a;
         self.total_paid += a;
-        env::log_str(&format!("EVENT_JSON:{}", json!({"standard": "notchi", "version": "1.0.0", "event": "paid_for_thinking",
+        env::log_str(&format!("EVENT_JSON:{}", json!({"standard": "gremlo", "version": "1.0.0", "event": "paid_for_thinking",
             "data": {"provider": provider, "amount": amount, "request_id": request_id}})));
         Promise::new(provider).transfer(NearToken::from_yoctonear(a))
     }
@@ -103,18 +103,18 @@ mod tests {
     const NEAR: u128 = 1_000_000_000_000_000_000_000_000;
     fn acc(s: &str) -> AccountId { s.parse().unwrap() }
     fn ctx(pred: &str, day: u64) {
-        testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.notchi.near")).predecessor_account_id(acc(pred))
+        testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.gremlo.near")).predecessor_account_id(acc(pred))
             .account_balance(NearToken::from_yoctonear(2 * NEAR)).storage_usage(130_000).block_timestamp(day * DAY_NS + 1).build());
     }
     fn purse() -> Purse {
-        ctx("notchi.near", 1);
+        ctx("gremlo.near", 1);
         Purse::new(acc("owner.near"), vec![acc("ai.provider.near")], U128(NEAR / 100), U128(NEAR / 20))
     }
 
     #[test]
     fn pays_an_allow_listed_provider_within_caps() {
         let mut p = purse();
-        ctx("mochi.notchi.near", 1);
+        ctx("mochi.gremlo.near", 1);
         p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), "req-1".into());
         assert_eq!(p.get_purse().spent_today.0, NEAR / 100);
         assert!(get_created_receipts().iter().any(|r| r.receiver_id == acc("ai.provider.near")));
@@ -126,17 +126,17 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "not on the allow-list")]
-    fn only_allow_listed_providers() { let mut p = purse(); ctx("mochi.notchi.near", 1); p.pay_inference(acc("thief.near"), U128(1), "r".into()); }
+    fn only_allow_listed_providers() { let mut p = purse(); ctx("mochi.gremlo.near", 1); p.pay_inference(acc("thief.near"), U128(1), "r".into()); }
 
     #[test]
     #[should_panic(expected = "over the per-call cap")]
-    fn per_call_cap() { let mut p = purse(); ctx("mochi.notchi.near", 1); p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100 + 1), "r".into()); }
+    fn per_call_cap() { let mut p = purse(); ctx("mochi.gremlo.near", 1); p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100 + 1), "r".into()); }
 
     #[test]
     #[should_panic(expected = "over the daily cap")]
     fn the_call_that_crosses_the_daily_cap_is_rejected() {
         let mut p = purse();
-        ctx("mochi.notchi.near", 1);
+        ctx("mochi.gremlo.near", 1);
         for i in 0..5 { p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), format!("r{i}")); }
         p.pay_inference(acc("ai.provider.near"), U128(1), "r6".into());
     }
@@ -144,9 +144,9 @@ mod tests {
     #[test]
     fn the_daily_cap_resets_the_next_day() {
         let mut p = purse();
-        ctx("mochi.notchi.near", 1);
+        ctx("mochi.gremlo.near", 1);
         for i in 0..5 { p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), format!("r{i}")); }
-        ctx("mochi.notchi.near", 2);
+        ctx("mochi.gremlo.near", 2);
         p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), "next".into());
         assert_eq!(p.get_purse().spent_today.0, NEAR / 100);
     }
@@ -163,12 +163,12 @@ mod tests {
     #[should_panic(expected = "not enough in the purse")]
     fn the_storage_stake_is_never_spent() {
         let mut p = purse();
-        testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.notchi.near")).predecessor_account_id(acc("mochi.notchi.near"))
+        testing_env!(VMContextBuilder::new().current_account_id(acc("mochi.gremlo.near")).predecessor_account_id(acc("mochi.gremlo.near"))
             .account_balance(NearToken::from_yoctonear(18 * NEAR / 10)).storage_usage(130_000).block_timestamp(DAY_NS + 1).build());
         p.pay_inference(acc("ai.provider.near"), U128(NEAR / 100), "r".into()); // 1.3 stake + 0.5 reserve leaves nothing to spend
     }
 
     #[test]
     #[should_panic(expected = "a request id is required")]
-    fn a_payment_needs_a_request_id() { let mut p = purse(); ctx("mochi.notchi.near", 1); p.pay_inference(acc("ai.provider.near"), U128(1), String::new()); }
+    fn a_payment_needs_a_request_id() { let mut p = purse(); ctx("mochi.gremlo.near", 1); p.pay_inference(acc("ai.provider.near"), U128(1), String::new()); }
 }

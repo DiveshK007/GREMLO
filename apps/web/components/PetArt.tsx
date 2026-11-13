@@ -1,4 +1,4 @@
-// The Ink avatar from the v2 sprite pack (assets/pets/notchi-ink). Cells are 192x208, 8 per row.
+// The Ink avatar from the v2 sprite pack (assets/pets/gremlo-ink). Cells are 192x208, 8 per row.
 const CELL_W = 192, CELL_H = 208, SHEET_W = 1536, SHEET_H = 2288;
 
 /** One sprite row; animates through `frames` cells at 8 fps when frames > 1. Decorative. */

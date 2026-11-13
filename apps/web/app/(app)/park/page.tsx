@@ -29,7 +29,7 @@ export default function Park() {
             <SpeciesSprite species={p.species} row={tapped === p.id ? ROWS.greet : ROWS.idle} frames={tapped === p.id ? 8 : 1} scale={0.5} />
             <strong>{p.name}</strong>
             <small className="muted">{p.stage}{p.outfit.length ? ` · ${p.outfit.join(", ")}` : ""}</small>
-            {tapped === p.id && <a className="visit" href={`notchi://visit?to=${p.id}`}>Send my pet to visit</a>}
+            {tapped === p.id && <a className="visit" href={`gremlo://visit?to=${p.id}`}>Send my pet to visit</a>}
           </button>
         ))}
       </div>

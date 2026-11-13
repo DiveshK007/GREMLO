@@ -3,7 +3,7 @@
 Two pages for the demo, plus a landing page.
 
 - `/pet` — Get your pet: connect wallet, name the pet, World ID QR, register. A 409 from the server shows the "You already have a pet" screen (the denied path).
-- `/brand` — Fund a campaign: the brand picks a tone (bold / calm / dev-meme), Notchi writes 3 hooks of up to 40 characters on 0G, the brand picks one, pays `createCampaign` on 0G Galileo from their browser wallet, gets a receipt. A lookup box shows budget / spent / left and a "Close and refund" button once the campaign has ended and the 1-hour settle window has passed.
+- `/brand` — Fund a campaign: the brand picks a tone (bold / calm / dev-meme), Gremlo writes 3 hooks of up to 40 characters on 0G, the brand picks one, pays `createCampaign` on 0G Galileo from their browser wallet, gets a receipt. A lookup box shows budget / spent / left and a "Close and refund" button once the campaign has ended and the 1-hour settle window has passed.
 
 ## Run
 

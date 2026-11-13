@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Installs the Notchi hook for every Claude Code session on this laptop.
+# Installs the Gremlo hook for every Claude Code session on this laptop.
 # Appends to existing hooks instead of replacing them, and is safe to run twice.
 # Run from the repo root: bash scripts/install-hooks.sh
 set -euo pipefail
 command -v jq >/dev/null || { echo "Needs jq: brew install jq"; exit 1; }
 
-mkdir -p ~/.notchi
-cp apps/mac/Sources/Notchi/Resources/notchi-hook.sh ~/.notchi/notchi-hook.sh
-chmod +x ~/.notchi/notchi-hook.sh
+mkdir -p ~/.gremlo
+cp apps/mac/Sources/Gremlo/Resources/gremlo-hook.sh ~/.gremlo/gremlo-hook.sh
+chmod +x ~/.gremlo/gremlo-hook.sh
 
 settings=~/.claude/settings.json
 mkdir -p ~/.claude

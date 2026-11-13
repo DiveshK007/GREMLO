@@ -1,5 +1,5 @@
 // The product name, in one place, for every user-facing string in the web app.
-export const PRODUCT = "Notchi";
+export const PRODUCT = "Gremlo";
 
 export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:8787";
 export const WORLD_APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID ?? "";

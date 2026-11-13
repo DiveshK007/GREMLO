@@ -43,10 +43,10 @@ test("public log: signed reports chain, verify, and tampering shows", () => {
 });
 
 test("park keeps exactly five fields, shuffles, and forgets pets that left", () => {
-  const p = parkPet({ id: "a".repeat(24), name: "Mochi", species: "notchi", stage: "buddy", outfit: ["beanie", "rolex"], owner: "x", earnings: 5 });
+  const p = parkPet({ id: "a".repeat(24), name: "Mochi", species: "gremlo", stage: "buddy", outfit: ["beanie", "rolex"], owner: "x", earnings: 5 });
   assert.deepEqual(Object.keys(p).sort(), ["id", "name", "outfit", "species", "stage"]);
   assert.deepEqual(p.outfit, ["beanie"]);
-  assert.throws(() => parkPet({ id: "nope", name: "x", species: "notchi", stage: "buddy" }));
+  assert.throws(() => parkPet({ id: "nope", name: "x", species: "gremlo", stage: "buddy" }));
   const park: Park = { a: { pet: p, seen: 0 }, b: { pet: { ...p, id: "b".repeat(24) }, seen: 1_000_000 } };
   assert.deepEqual(parkList(park, 1_000_001).map((x) => x.id), ["b".repeat(24)]);
 });
@@ -54,7 +54,7 @@ test("park keeps exactly five fields, shuffles, and forgets pets that left", () 
 test("team relay: opt-in on both sides, 3 an hour, 30 minutes to deliver, nothing extra kept", () => {
   const r: Relay = { members: {}, visits: [] };
   const t0 = 1_000_000;
-  const visit = { team: "acme-team", from: "ana", to: "bo", species: "notchi-pip", pr: 482, url: "https://github.com/acme/app/pull/482", secret: "x" };
+  const visit = { team: "acme-team", from: "ana", to: "bo", species: "gremlo-pip", pr: 482, url: "https://github.com/acme/app/pull/482", secret: "x" };
   assert.throws(() => relaySend(r, visit, t0), /join/);
   relayJoin(r, { team: "acme-team", handle: "ana" }, t0);
   relayJoin(r, { team: "acme-team", handle: "bo" }, t0);
@@ -73,7 +73,7 @@ test("gallery: PNG size check and three reports pause a species", () => {
   png.writeUInt32BE(0x89504e47, 0); png.write("IHDR", 12, "ascii"); png.writeUInt32BE(1536, 16); png.writeUInt32BE(39 * 208, 20);
   assert.deepEqual(pngSize(png), { w: 1536, h: 8112 });
   const rows = Object.fromEntries([...Array(39)].map((_, i) => [`r${i}`, { row: i, frames: 8 }]));
-  const json = Buffer.from(JSON.stringify({ notchi: { rows, cell: [192, 208], columns: 8 } })).toString("base64");
+  const json = Buffer.from(JSON.stringify({ gremlo: { rows, cell: [192, 208], columns: 8 } })).toString("base64");
   assert.deepEqual(checkSubmission({ "pet.json": json, "spritesheet.png": png.toString("base64") }), { rows: 39 });
   assert.throws(() => checkSubmission({ "pet.json": json, "spritesheet.png": png.toString("base64"), "run.sh": "eA==" }), /unexpected/);
   const s: Submission = { id: "1", name: "x", creator: "c", status: "listed", reports: 0, at: 0, rows: 39 };

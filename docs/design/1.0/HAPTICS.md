@@ -1,4 +1,4 @@
-# Notchi haptics
+# Gremlo haptics
 
 Canvas board: **Haptics** on the "1.0 · round 3" page.
 

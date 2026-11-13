@@ -1,4 +1,4 @@
-"""Notchi 1.0, round three: the closet and the hatch.
+"""Gremlo 1.0, round three: the closet and the hatch.
 
 Builds on roster2.py (which builds on roster.py) without editing either.
   * six new accessories: bow, flower crown, scarf, shades, cap, star clip
@@ -227,7 +227,7 @@ def render(key, outdir):
             else:
                 hr.append(None)
         heads.append(hr)
-    d = os.path.join(outdir, 'notchi' if key == 'notchi' else f'notchi-{key}')
+    d = os.path.join(outdir, 'gremlo' if key == 'gremlo' else f'gremlo-{key}')
     os.makedirs(d, exist_ok=True)
     full.save(os.path.join(d, 'spritesheet.webp'), 'WEBP', lossless=True, quality=100)
     full.save(os.path.join(d, 'spritesheet.png'))
@@ -238,7 +238,7 @@ def render(key, outdir):
     json.dump({
         'id': os.path.basename(d), 'displayName': sp['name'], 'description': sp['line'],
         'spriteVersionNumber': 5, 'spritesheetPath': 'spritesheet.webp',
-        'notchi': {
+        'gremlo': {
             'species': key, 'accent': '#' + sp['accent'], 'cell': [CW, CH], 'columns': COLS,
             'rows': {n: {'row': i, 'frames': len(rows[i])} for i, n in enumerate(NAMES)},
             'signRect': sign, 'plateAnchor': plate,

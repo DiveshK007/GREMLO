@@ -3,9 +3,9 @@ import Foundation
 // What the app, widgets and Watch share: the pairing and the last state opened from the relay (app group).
 enum Store {
     #if os(watchOS)
-    static let group = UserDefaults(suiteName: "group.dev.notchi.watch") ?? .standard
+    static let group = UserDefaults(suiteName: "group.dev.gremlo.watch") ?? .standard
     #else
-    static let group = UserDefaults(suiteName: "group.dev.notchi") ?? .standard
+    static let group = UserDefaults(suiteName: "group.dev.gremlo") ?? .standard
     #endif
 
     static var pairing: PhonePairing? {

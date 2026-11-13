@@ -20,10 +20,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.notchi.pair</string>
+			<string>dev.gremlo.pair</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>notchi-pair</string>
+				<string>gremlo-pair</string>
 			</array>
 		</dict>
 	</array>

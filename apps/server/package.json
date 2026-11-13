@@ -1,5 +1,5 @@
 {
-  "name": "@notchi/server",
+  "name": "@gremlo/server",
   "private": true,
   "type": "module",
   "scripts": {

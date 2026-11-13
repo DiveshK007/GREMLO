@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "Notchi",
+    name: "Gremlo",
     platforms: [.macOS(.v13)],
     targets: [
         // Pure logic and offscreen drawing (no AppKit), unit-tested.
-        .target(name: "NotchiCore"),
-        .executableTarget(name: "Notchi", dependencies: ["NotchiCore"], resources: [.copy("Resources/notchi-hook.sh"), .copy("Resources/notchi-git-hook.sh")]),
-        .executableTarget(name: "NotchiCLI", dependencies: ["NotchiCore"]),
-        .testTarget(name: "NotchiCoreTests", dependencies: ["NotchiCore"], exclude: ["__Snapshots__"], resources: [.copy("Fixtures")]),
+        .target(name: "GremloCore"),
+        .executableTarget(name: "Gremlo", dependencies: ["GremloCore"], resources: [.copy("Resources/gremlo-hook.sh"), .copy("Resources/gremlo-git-hook.sh")]),
+        .executableTarget(name: "GremloCLI", dependencies: ["GremloCore"]),
+        .testTarget(name: "GremloCoreTests", dependencies: ["GremloCore"], exclude: ["__Snapshots__"], resources: [.copy("Fixtures")]),
     ]
 )

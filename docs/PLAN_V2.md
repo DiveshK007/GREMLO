@@ -1,4 +1,4 @@
-# Notchi v2: implementation plan
+# Gremlo v2: implementation plan
 
 Status: plan only. Work happens on branch `v2` (never commit to `main` directly; merge by PR once CI is green).
 Scope: everything discussed after the ETHGlobal build: the production analysis, the v2 product plan (hook engine, success states, homepage, Arkiv, deploy, quality, retention), and the risks found while building and recording.
@@ -74,7 +74,7 @@ Estimates are working days for one experienced developer with Claude Code; paral
 
 **A3. Signed requests from the Mac app (2 days)**
 - Mac: per-install P-256 key in the Secure Enclave (`SecKeyCreateRandomKey` with `kSecAttrTokenIDSecureEnclave`); public key shown in the popover and registered as `pet_key`.
-- Every Mac → server call carries `X-Notchi-Key`, `X-Notchi-Time`, `X-Notchi-Sig` over `method + path + body hash + time`. Server verifies (P-256 via WebCrypto), rejects > 60 s skew and replays (nonce cache).
+- Every Mac → server call carries `X-Gremlo-Key`, `X-Gremlo-Time`, `X-Gremlo-Sig` over `method + path + body hash + time`. Server verifies (P-256 via WebCrypto), rejects > 60 s skew and replays (nonce cache).
 - Routes that cost money or move money (`/pets/:k/think`, `/impressions`, `/clicks`) require a valid signature from a registered pet. Brand routes require a wallet signature (SIWE) or session.
 - Tests: valid, wrong key, replay, clock skew.
 
@@ -113,7 +113,7 @@ Estimates are working days for one experienced developer with Claude Code; paral
 
 **B4. Clickable sign (Mac + server, 2 days)**
 - Sign window joins the existing per-pixel hit-testing: hover highlights the sign (cursor changes), a deliberate click opens the URL. No click handling while the agent needs approval.
-- The click goes through `GET /c/:campaign/:hook?pet=…&sig=…`: server verifies the signature, logs a click (dedupe: 1 per pet per campaign per 10 min), then 302s to the brand URL with `utm_source=notchi&utm_campaign=<id>`.
+- The click goes through `GET /c/:campaign/:hook?pet=…&sig=…`: server verifies the signature, logs a click (dedupe: 1 per pet per campaign per 10 min), then 302s to the brand URL with `utm_source=gremlo&utm_campaign=<id>`.
 - Clicks are reported to brands; they are not paid per click in v2.0 (CPM only) until click fraud rules from E are live.
 - Tests: signature, dedupe, redirect target exactly the stored URL.
 
@@ -215,7 +215,7 @@ Estimates are working days for one experienced developer with Claude Code; paral
 - **Web:** Vercel; env only in Vercel's encrypted env; preview deploys per PR.
 - **Server:** Fly.io or Railway; Postgres managed; secrets in the provider's secret store; operator key via KMS (no raw key in env in production); health checks; Sentry.
 - **Mac app:** Apple Developer account ($99/yr), Developer ID signing, notarised `.dmg`, Sparkle auto-update with signed appcast, crash reporting.
-- **One-click "Connect Claude Code":** reads `~/.claude/settings.json`, backs it up, merges Notchi's hook entries (never overwrites other hooks), shows the diff, and offers "Disconnect" that removes only Notchi's entries. Same for Codex config.
+- **One-click "Connect Claude Code":** reads `~/.claude/settings.json`, backs it up, merges Gremlo's hook entries (never overwrites other hooks), shows the diff, and offers "Disconnect" that removes only Gremlo's entries. Same for Codex config.
 - **Contract:** stays on Galileo until audit; mainnet afterwards with the multisig.
 - **Observability:** Sentry (web, server), uptime checks, settlement and 0G-failure alerts.
 
@@ -241,7 +241,7 @@ Estimates are working days for one experienced developer with Claude Code; paral
 - Team pets and workplace controls (MDM-friendly off switch, org dashboards); "your office pet pays for the team's AI".
 - Card payments for brands (Stripe → vault funding), stablecoin payouts.
 - Legal: terms, privacy policy, ad disclosure, GDPR/CCPA, sanctions screening on payouts, tax reporting where required. No token.
-- ENS identities on ENSv2 once registration is documented: `name.notchi.eth` with live mood/status records.
+- ENS identities on ENSv2 once registration is documented: `name.gremlo.eth` with live mood/status records.
 - SDK for other wait surfaces (terminal status line, IDE status bar, CI dashboards).
 
 ---

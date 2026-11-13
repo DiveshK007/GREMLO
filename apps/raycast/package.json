@@ -1,10 +1,10 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "notchi",
-  "title": "Notchi",
+  "name": "gremlo",
+  "title": "Gremlo",
   "description": "Pause the pets, start a focus session, make the pet say something, check status, answer the next ordinary approval.",
   "icon": "icon.png",
-  "author": "notchi",
+  "author": "gremlo",
   "license": "MIT",
   "commands": [
     { "name": "pause", "title": "Pause Pets", "mode": "no-view", "arguments": [{ "name": "minutes", "placeholder": "30", "type": "text", "required": false }] },

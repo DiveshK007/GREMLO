@@ -72,7 +72,7 @@ button + p { margin-top: var(--s-2); }
 .denied { border-top: 2px solid var(--ink); }
 
 /* sprite pack: 192x208 cells, nearest-neighbour so pixels stay square */
-.sprite { display: inline-block; background-image: url(/pets/notchi-ink.webp); background-repeat: no-repeat; background-position-x: 0; image-rendering: pixelated; }
+.sprite { display: inline-block; background-image: url(/pets/gremlo-ink.webp); background-repeat: no-repeat; background-position-x: 0; image-rendering: pixelated; }
 .sprite.animated { animation: sprite-frames calc(var(--frames) * 0.125s) steps(var(--frames)) infinite; }
 @keyframes sprite-frames { to { background-position-x: var(--sx); } }
 .pet-small { display: block; margin: 0 0 var(--s-2); }

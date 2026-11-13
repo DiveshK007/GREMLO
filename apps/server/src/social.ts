@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 // R2 §11 team relay, R4 §12 guestbook visits, R4 §14 pet park. Each keeps exactly the fields the spec lists.
 
-const SPECIES = ["notchi", "notchi-pip", "notchi-moss", "notchi-gloop", "notchi-byte", "notchi-puff", "notchi-wisp", "notchi-tako"];
+const SPECIES = ["gremlo", "gremlo-pip", "gremlo-moss", "gremlo-gloop", "gremlo-byte", "gremlo-puff", "gremlo-wisp", "gremlo-tako"];
 const STAGES = ["hatchling", "buddy", "elder"];
 const ITEMS = ["party", "beanie", "scarf", "star", "bow", "cap", "glasses", "headphones", "flower", "shades", "crown", "wizard"];
 import { HttpError } from "./register.ts";

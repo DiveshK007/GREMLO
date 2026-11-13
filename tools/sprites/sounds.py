@@ -1,4 +1,4 @@
-"""Notchi sound kit. Every sound is synthesised here, so it is ours to ship.
+"""Gremlo sound kit. Every sound is synthesised here, so it is ours to ship.
 
 Rules: short (under 0.9 s), soft attack, nothing above -6 dBFS peak, nothing
 harsh above 6 kHz. Sounds are off by default for sponsored moments; the line
@@ -94,11 +94,11 @@ def save(name, y, peak_db=-6):
 
 # -------------------------------------------------------------- voices ----
 # One "say" blip per species, plus a happy and a grumpy variant. Pitch and
-# timbre follow the species: Notchi is a plain mid hum, Pip a chirp, Byte a
+# timbre follow the species: Gremlo is a plain mid hum, Pip a chirp, Byte a
 # square beep, Puff a breathy low, Wisp a soft bell, Tako a bubbly wobble.
 
 VOICES = {
-    'notchi': dict(f=440, shape='tri', d=.09, n=2, step=1.12),
+    'gremlo': dict(f=440, shape='tri', d=.09, n=2, step=1.12),
     'pip':    dict(f=1320, shape='sine', d=.05, n=3, step=1.26, glide=1.4),
     'moss':   dict(f=330, shape='sine', d=.14, n=2, step=1.06),
     'gloop':  dict(f=220, shape='sine', d=.16, n=2, step=.94, vib=.04),

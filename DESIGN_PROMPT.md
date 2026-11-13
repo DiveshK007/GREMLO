@@ -1,4 +1,4 @@
-# Notchi: Claude Design prompt
+# Gremlo: Claude Design prompt
 
 Paste each prompt into Claude Design. Start with the first one (the hero: notch + pet). Do the rest in order once the look is right. Keep everything in one design file so the style stays consistent.
 
@@ -6,7 +6,7 @@ Paste each prompt into Claude Design. Start with the first one (the hero: notch 
 
 ## Prompt 0: style and character (paste first)
 
-Design system for **Notchi**, a desktop AI pet for macOS that lives behind a tiny door in the MacBook notch and reacts to AI coding agents like Claude Code. It has to earn its own food: brands pay to put one short line on a sign the pet holds while the agent works, and that money pays for the pet's AI brain.
+Design system for **Gremlo**, a desktop AI pet for macOS that lives behind a tiny door in the MacBook notch and reacts to AI coding agents like Claude Code. It has to earn its own food: brands pay to put one short line on a sign the pet holds while the agent works, and that money pays for the pet's AI brain.
 
 Character (original, not based on any existing character):
 - A small round creature about 48 px tall on screen, with a soft bean-shaped body, two stubby legs, big dark eyes and a small mouth that shows its mood.
@@ -55,10 +55,10 @@ Show a storyboard row of the main sequence: door glows, door opens, pet drops ou
 
 ## Prompt 2: menu-bar popover
 
-A macOS menu-bar popover, 320 px wide, opened from a small Notchi head icon in the menu bar. Light and dark.
+A macOS menu-bar popover, 320 px wide, opened from a small Gremlo head icon in the menu bar. Light and dark.
 
 Contents, top to bottom:
-- The pet avatar with its name `mochi.notchi.eth` and a mood chip (Thriving / Stable / Hungry / Asleep).
+- The pet avatar with its name `mochi.gremlo.eth` and a mood chip (Thriving / Stable / Hungry / Asleep).
 - Two balances side by side: "Earned" (pet wallet) and "Food" (AI credit left), each with a small bar.
 - "Now showing": the current ad line in the sign style, and the brand name.
 - "Today": impressions count and earnings today.
@@ -78,10 +78,10 @@ A small web app for brands (developer-tool companies). Desktop 1280 px plus a mo
 1. **Landing / hero:** headline "Your ad, held up by a tiny pet while developers wait on their AI agent." Sub: "Pay per real impression. Unspent budget comes back." CTA "Start a campaign". Show the pet holding a sign with a sample line.
 2. **New campaign (checkout), one page:**
    - Field: "What do you sell?" (short brief, 1-2 sentences).
-   - "Notchi wrote these for you": 3 selectable line cards in the sign style, each with a tiny "written by AI · request ID" caption in monospace. Option to regenerate.
+   - "Gremlo wrote these for you": 3 selectable line cards in the sign style, each with a tiny "written by AI · request ID" caption in monospace. Option to regenerate.
    - Budget, price per impression, end date. A live summary card: estimated impressions, "Any unspent budget is refunded when the campaign ends".
    - Pay button "Fund campaign". Then a confirmation state with a receipt: amount, campaign ID, a monospace tx hash with an explorer link.
-3. **Campaign dashboard:** cards for impressions, spent, remaining, number of pets showing it. A simple line chart of impressions over time. A list of pets showing it (avatar, `name.notchi.eth`, impressions), only verified pets. An ended campaign shows "Refunded 12.4 to you" with a tx hash.
+3. **Campaign dashboard:** cards for impressions, spent, remaining, number of pets showing it. A simple line chart of impressions over time. A list of pets showing it (avatar, `name.gremlo.eth`, impressions), only verified pets. An ended campaign shows "Refunded 12.4 to you" with a tx hash.
 
 ---
 
@@ -92,17 +92,17 @@ Same style. Desktop plus mobile.
 1. **Get your pet:**
    - Step 1 "Download for Mac".
    - Step 2 "Prove you're a real person" with a World ID button. Short note: "One person, one pet. This stops fake views, so brands pay real people."
-   - Step 3 "Name your pet": choose a colour variant, type a name, preview `mochi.notchi.eth`.
+   - Step 3 "Name your pet": choose a colour variant, type a name, preview `mochi.gremlo.eth`.
    - Success: the pet waves, with "Mochi is moving into your notch."
 2. **Denied state:** "You already have a pet." Friendly, clear, with a link to the existing pet. This is a key demo screen, so make it look intentional, not like an error.
 3. **Approval request:** "Mochi wants to upgrade to its smartest brain for this session. Cost: 0.8 of its food." Buttons "Approve with World ID" and "Not now". Then the approved and denied result states.
-4. **Public pet page** (`mochi.notchi.eth`): large pet illustration in its current mood, live status ("Working with Claude Code", "Hungry", "Asleep"), earned total, meals eaten, and a small "Owned by a verified human" badge. A "Payout address can only be changed by the owner" note with a lock icon.
+4. **Public pet page** (`mochi.gremlo.eth`): large pet illustration in its current mood, live status ("Working with Claude Code", "Hungry", "Asleep"), earned total, meals eaten, and a small "Owned by a verified human" badge. A "Payout address can only be changed by the owner" note with a lock icon.
 
 ---
 
 ## Prompt 5: demo and pitch assets
 
-- An opening title card: "Notchi" with the pet peeking out of the notch door, and the line "Your coding agent makes you wait. Notchi makes that wait pay for itself."
+- An opening title card: "Gremlo" with the pet peeking out of the notch door, and the line "Your coding agent makes you wait. Gremlo makes that wait pay for itself."
 - One slide that shows the loop: brand pays, pet holds the sign, pet earns, pet eats (AI credit), pet thinks. Five simple icons with arrows.
 - One slide "Each sponsor has one job": 0G (brain + food), World (real humans only), ENS (the leash).
 - A 1200x630 social image.

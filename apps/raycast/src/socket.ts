@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { showHUD } from "@raycast/api";
 
-// The same local socket the notchi CLI uses: one JSON request line in, one JSON reply line out.
-const SOCKET = join(homedir(), "Library/Application Support/Notchi/notchi.sock");
+// The same local socket the gremlo CLI uses: one JSON request line in, one JSON reply line out.
+const SOCKET = join(homedir(), "Library/Application Support/Gremlo/gremlo.sock");
 
 type Reply = { ok: boolean; text: string; data?: Record<string, string> };
 
@@ -12,12 +12,12 @@ export function send(cmd: string, args: Record<string, string> = {}): Promise<Re
   return new Promise((resolve) => {
     let buf = "";
     const c = createConnection(SOCKET, () => c.write(JSON.stringify({ cmd, args }) + "\n"));
-    c.setTimeout(3000, () => { c.destroy(); resolve({ ok: false, text: "Notchi didn't answer" }); });
+    c.setTimeout(3000, () => { c.destroy(); resolve({ ok: false, text: "Gremlo didn't answer" }); });
     c.on("data", (d) => (buf += d.toString()));
     c.on("end", () => {
       try { resolve(JSON.parse(buf)); } catch { resolve({ ok: false, text: "no answer from the app" }); }
     });
-    c.on("error", () => resolve({ ok: false, text: "Notchi isn't running" }));
+    c.on("error", () => resolve({ ok: false, text: "Gremlo isn't running" }));
   });
 }
 

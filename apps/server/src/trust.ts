@@ -46,7 +46,7 @@ export type LogEntry = {
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 export const ZERO = "0".repeat(64);
 
-/** The hash that chains an entry to the one before; `notchi verify` computes the same string. */
+/** The hash that chains an entry to the one before; `gremlo verify` computes the same string. */
 export const entryHash = (e: Omit<LogEntry, "hash">) =>
   sha([e.prev, e.i, e.campaign, e.hour, e.counts.join(","), e.pet, e.key ?? "", e.time ?? "", e.sig ?? "", sha(e.body)].join("|"));
 

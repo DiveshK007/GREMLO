@@ -184,7 +184,9 @@ const petByDevice = (key: string) => Object.values(store.pets).find((p) => p.dev
  * request for it is a 401, and a signed one must come from one of its own devices.
  */
 function signer(req: IncomingMessage, path: string, raw: string) {
-  const key = req.headers["x-notchi-key"], time = req.headers["x-notchi-time"], sig = req.headers["x-notchi-sig"];
+  // Macs from before the rename send X-Notchi-*; read for one release
+  const hdr = (n: string) => req.headers[`x-gremlo-${n}`] ?? req.headers[`x-notchi-${n}`];
+  const key = hdr("key"), time = hdr("time"), sig = hdr("sig");
   if (typeof key !== "string" || typeof time !== "string" || typeof sig !== "string") return null;
   checkSigned({ key, time, sig, message: canonical(req.method ?? "GET", path, time, raw), now: Date.now(), seen: seenSigs });
   // an unpaired Mac signs anyway; that proves nothing more than no signature, so it counts as unsigned and
@@ -255,11 +257,11 @@ function addImpressions(req: IncomingMessage, raw: string) {
     store.days[r.petKey] = markDay(store.days[r.petKey], utcDay());
   }
   // every counted sighting is backed by the pet's own signed report, chained in the campaign's public log
-  const h = (k: string) => { const v = req.headers[k]; return typeof v === "string" ? v : null; };
+  const h = (k: string) => { const v = req.headers[k] ?? req.headers[k.replace("x-gremlo-", "x-notchi-")]; return typeof v === "string" ? v : null; };
   for (const [k, counts] of Object.entries(logged)) {
     const [id, petKey] = k.split("|");
     appendLog(id, { campaign: id, hour: Math.floor(Date.now() / 3_600_000), counts, pet: anonPet(petKey),
-      key: signed ? h("x-notchi-key") : null, time: signed ? h("x-notchi-time") : null, sig: signed ? h("x-notchi-sig") : null, body: raw });
+      key: signed ? h("x-gremlo-key") : null, time: signed ? h("x-gremlo-time") : null, sig: signed ? h("x-gremlo-sig") : null, body: raw });
   }
   save();
   return { accepted, pending: store.pending };
@@ -696,7 +698,7 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: st
 }
 if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
 
-/** A campaign's public log and what was billed from it; `notchi verify <campaign>` checks one against the other. */
+/** A campaign's public log and what was billed from it; `gremlo verify <campaign>` checks one against the other. */
 function publicLog(id: string) {
   const settled = store.payouts.filter((p) => p.id === id).reduce((a, p) => a + p.views, 0);
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);

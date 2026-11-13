@@ -36,7 +36,7 @@ The chain stores only a hash of the line and the brand's address. `line` and `br
 
 `GET /pets/:name` (name or pet key):
 ```json
-{ "name": "mochi.notchi.eth", "mood": "asleep", "walletBalance": "1250000", "computeBalance": null,
+{ "name": "mochi.gremlo.eth", "mood": "asleep", "walletBalance": "1250000", "computeBalance": null,
   "impressionsToday": 42, "lastThoughts": [], "lastMeal": null, "seeded": true }
 ```
 `walletBalance` is the onchain balance of the pet's payout address. `impressionsToday` counts impressions accepted since 00:00 UTC. The brain does not report to the server yet, so `computeBalance` is `null`, `lastThoughts` is empty, `lastMeal` is `null` and `mood` is `asleep`. None of these are made up.

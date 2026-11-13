@@ -2,7 +2,7 @@
 
 ## What we used it for
 
-One human, one pet. Notchi pays pets per ad impression, so the obvious attack is running many fake pets. A pet is only registered onchain (and only paid) after a World ID proof, and each human can register once.
+One human, one pet. Gremlo pays pets per ad impression, so the obvious attack is running many fake pets. A pet is only registered onchain (and only paid) after a World ID proof, and each human can register once.
 
 ## Flow
 
