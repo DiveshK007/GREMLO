@@ -1883,6 +1883,7 @@ do {
         backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
         backend.growth.hook(hook)
         backend.hunt.hook(hook)
+        backend.live.hooked(hook["hook_event_name"] as? String ?? "")
         if backend.companions.route(hook) { backend.render(); return }  // another agent's companion took it
         backend.broker.sawEvent(session: hook["session_id"] as? String ?? "", tool: hook["tool_name"] as? String, event: hook["hook_event_name"] as? String ?? "")
         // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)

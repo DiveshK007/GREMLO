@@ -26,6 +26,14 @@ import Testing
         #expect(with { $0.waiting = 2; $0.dragging = true } == .drop)
     }
 
+    @Test func peekLingersBetweenToolsButNotAfterTheRun() {
+        #expect(NotchLive.toolShowing(running: true, lastToolEnd: nil, runEnded: false, now: now))
+        #expect(NotchLive.toolShowing(running: false, lastToolEnd: now.addingTimeInterval(-0.5), runEnded: false, now: now))
+        #expect(!NotchLive.toolShowing(running: false, lastToolEnd: now.addingTimeInterval(-1.5), runEnded: false, now: now))
+        #expect(!NotchLive.toolShowing(running: false, lastToolEnd: now.addingTimeInterval(-0.5), runEnded: true, now: now), "Stop shows done, not peek")
+        #expect(!NotchLive.toolShowing(running: false, lastToolEnd: nil, runEnded: false, now: now))
+    }
+
     @Test func sizesFromTheSpec() {
         #expect(NotchLive.size(.rest) == (190, 32) && NotchLive.size(.knock) == (660, 150) && NotchLive.size(.offline) == (360, 36))
         #expect(NotchLive.size(.queue, agents: 2).h == 152 && NotchLive.size(.queue, agents: 9).h == 244, "max 4 rows")

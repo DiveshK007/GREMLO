@@ -72,6 +72,12 @@ public enum NotchLive {
     }
 
     public static let doneHold = 4.0
+
+    /// Peek holds for a moment after a tool ends, so back-to-back tools read as one steady peek instead of flapping.
+    public static let peekLinger = 1.2
+    public static func toolShowing(running: Bool, lastToolEnd: Date?, runEnded: Bool, now: Date) -> Bool {
+        running || (!runEnded && lastToolEnd.map { now.timeIntervalSince($0) < peekLinger } ?? false)
+    }
 }
 
 // MARK: - Approvals
