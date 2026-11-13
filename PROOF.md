@@ -13,7 +13,9 @@ The final run uses new accounts; the deploy, init and loop rows are filled from 
 | `operator.gremlo.testnet` | operator (1 NEAR) | [`7iB2EnwdXSpMKf6XqaBygpJHEpAGjMpupSkr3Q3aJeqx`](https://testnet.nearblocks.io/txns/7iB2EnwdXSpMKf6XqaBygpJHEpAGjMpupSkr3Q3aJeqx) |
 | `owner.gremlo.testnet` | pet owner (1 NEAR) | [`E9jsBNdoRV9zxxhzDFiTdeE5nVHjwWmJhrN1exmzt4tJ`](https://testnet.nearblocks.io/txns/E9jsBNdoRV9zxxhzDFiTdeE5nVHjwWmJhrN1exmzt4tJ) |
 | `byte.gremlo.testnet` | pet payout (0.1 NEAR) | [`GYT2icscofQBXC1TkKVAVqCk1fEX5AWcy6ym7s8woFrq`](https://testnet.nearblocks.io/txns/GYT2icscofQBXC1TkKVAVqCk1fEX5AWcy6ym7s8woFrq) |
-| Vault deployed and initialised | | |
+| Vault deployed and initialised (`DeployContract` + `new`, admin `gremlo.testnet`, operator `operator.gremlo.testnet`) | [`12bj3uDkB6ufrMmKS7m4s85xma9CC1zhgevS7eMbJ4bq`](https://testnet.nearblocks.io/txns/12bj3uDkB6ufrMmKS7m4s85xma9CC1zhgevS7eMbJ4bq) | |
+| Operator (`get_operator`) | `operator.gremlo.testnet` | |
+| Code hash (sha256, base58) | `AeXXhh355asstWmnF9XzLHowUBoTXtAao7VR4WhF7gdb` (matches a local `cargo near build non-reproducible-wasm` of `contracts-near`) | |
 
 ## Contract: DRY RUN (old accounts, before the rename)
 
