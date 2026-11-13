@@ -1152,10 +1152,18 @@ func nearGain(_ old: String?, _ new: String?) -> String? {
     return "+" + nearAmount(n - o)
 }
 
+/// GREMLO_PET under the one pet-name rule. A bad name stops the app with a clear message rather than talking to
+/// the server about a pet that can't exist (or quietly about someone else's).
+func startupPetName() -> String {
+    let raw = Legacy.env("PET") ?? "mochi"
+    guard let n = PetName.clean(raw) else { print("GREMLO_PET \"\(raw)\" isn't a pet name: use 2-24 of a-z, 0-9 and dashes"); exit(1) }
+    return n
+}
+
 // Talks to apps/server. Server down means the popover says so; nothing is invented.
 final class Backend: NSObject {
     let base = Legacy.env("SERVER") ?? "http://localhost:8787"
-    let petName = Legacy.env("PET") ?? "mochi"
+    let petName = startupPetName()
     let pet: Pet
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = MenuPanel()

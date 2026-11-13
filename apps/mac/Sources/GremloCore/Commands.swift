@@ -247,3 +247,15 @@ public enum CommandClient {
         return try? JSONDecoder().decode(Reply.self, from: data)
     }
 }
+
+// MARK: - Pet names
+
+/// One pet-name rule everywhere (web /pet, server, Mac): 2-24 of a-z, 0-9 and dashes.
+public enum PetName {
+    public static func valid(_ s: String) -> Bool { s.range(of: #"^[a-z0-9-]{2,24}$"#, options: .regularExpression) != nil }
+    /// A name as typed or set in the environment, lowercased and trimmed, or nil if it breaks the rule.
+    public static func clean(_ s: String) -> String? {
+        let n = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return valid(n) ? n : nil
+    }
+}

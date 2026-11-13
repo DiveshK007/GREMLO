@@ -3,6 +3,12 @@ import Testing
 @testable import GremloCore
 
 @Suite struct CommandTests {
+    @Test func onePetNameRule() {
+        #expect(PetName.valid("mochi") && PetName.valid("mochi-2") && PetName.valid(String(repeating: "a", count: 24)))
+        #expect(!PetName.valid("m") && !PetName.valid(String(repeating: "a", count: 25)) && !PetName.valid("Mochi") && !PetName.valid("mochi.gremlo"))
+        #expect(PetName.clean(" Mochi ") == "mochi" && PetName.clean("mo chi") == nil)
+    }
+
     @Test func durations() {
         #expect(Commands.minutes("30") == 30 && Commands.minutes("30m") == 30 && Commands.minutes("2h") == 120)
         #expect(Commands.minutes("1h30m") == 90 && Commands.minutes("90s") == 2 && Commands.minutes("x") == nil && Commands.minutes("0") == nil)
