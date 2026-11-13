@@ -1,0 +1,29 @@
+/* /park, from the app-pages export (web/park.html) */
+.yard-wrap { position: relative; }
+.park .msg { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; color: #F4F2ED; font-size: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(90%, 420px); }
+html[data-theme="light"] .park .msg { color: var(--ink); }
+.park .bench { position: absolute; bottom: 18%; left: 50%; transform: translateX(-50%); width: 120px; height: 14px; background: #6B4E36; border-radius: 3px; box-shadow: 14px 26px 0 -5px #4A3424, -14px 26px 0 -5px #4A3424; }
+.park.dim { filter: saturate(.3) brightness(.7); }
+.picked { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px 28px; align-items: center; margin-top: 12px; }
+@media (max-width: 760px) { .picked { grid-template-columns: auto minmax(0, 1fr); } .picked .go { grid-column: 1 / -1; } }
+.picked h2 { font-size: clamp(36px, 4.4vw, 56px); margin: 6px 0 6px; }
+.picked p { margin: 0; color: var(--text-2); font-size: 14.5px; }
+.picked .go { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 300px; }
+.picked .go small { font-size: 12.5px; color: var(--text-3); }
+.everyone { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 12px; border-radius: 14px; background: var(--surface); border: 1.5px solid transparent; cursor: pointer; text-align: center; width: 100%; }
+.tile:hover { border-color: var(--rule-strong); }
+.tile[aria-pressed="true"] { border-color: var(--accent); }
+.tile b { font-size: 15px; color: var(--fg); }
+.tile small { font: 11px/1.4 var(--mono); color: var(--text-3); }
+.tile .art { height: 76px; display: flex; align-items: flex-end; }
+.parkrules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; padding-block: 36px 8px; }
+.parkrules b { display: block; font-size: 15px; margin-bottom: 4px; color: var(--fg); }
+.parkrules p { margin: 0; color: var(--text-2); font-size: 14px; }
+@media (max-width: 860px) { .parkrules { grid-template-columns: 1fr 1fr; } }
+.join { margin-top: 28px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.join p { margin: 0; font-size: 14.5px; color: var(--text-2); }
+.skel { background: linear-gradient(90deg, var(--surface) 0 40%, var(--surface-2) 50%, var(--surface) 60% 100%); background-size: 300% 100%; animation: sk 1.4s linear infinite; border-radius: 14px; height: 130px; }
+@keyframes sk { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-color-scheme: light) { html:not([data-theme]) .park .msg { color: var(--ink); } }
+.park .msg .spin, .note .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }

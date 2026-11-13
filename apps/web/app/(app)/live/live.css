@@ -1,0 +1,19 @@
+/* /live, from the app-pages export (web/live.html) */
+.now { height: 300px; }
+.now .tl { position: absolute; left: 16px; top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .totals { grid-template-columns: 1fr 1fr; } }
+.totals > div { background: var(--surface); border-radius: var(--r-tile); padding: 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.totals .big { font: 800 clamp(40px, 5vw, 76px)/.9 var(--display); font-variation-settings: 'wdth' 80, 'opsz' 96; letter-spacing: -.04em; color: var(--fg); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.totals .big.dash { color: var(--text-3); }
+.try { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+@media (max-width: 960px) { .try { grid-template-columns: 1fr; } }
+.signs { display: flex; justify-content: space-around; align-items: flex-end; height: 240px; padding-bottom: 20px; gap: 10px; flex-wrap: nowrap; }
+.signs .held { transform-origin: bottom; }
+@media (max-width: 760px) { .signs { height: auto; flex-direction: column; align-items: center; gap: 70px; padding: 70px 0 24px; } }
+.fl { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+.fl li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); font-size: 14.5px; color: var(--fg); }
+.fl li span { font: 500 11px/1.8 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.tech { font: 12px/1.7 var(--mono); color: var(--text-3); }
+.tech b { color: var(--text-2); font-weight: 500; }
+.note .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; flex: none; }

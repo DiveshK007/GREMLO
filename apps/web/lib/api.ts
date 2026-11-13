@@ -141,7 +141,7 @@ export const parkPets = () => call<{ pets: ParkPet[] }>(`/park`);
 export type GallerySpecies = { id: string; name: string; creator: string; rows: number; at: number; paused?: boolean };
 export const gallerySpecies = () => call<{ species: GallerySpecies[] }>(`/gallery`);
 export const reportSpecies = (id: string, reason: string) => call<{ status: string }>(`/gallery/${encodeURIComponent(id)}/report`, { method: "POST", body: JSON.stringify({ reason }) });
-export const sheetUrl = (id: string) => `${SERVER_URL}/gallery/${encodeURIComponent(id)}/sheet.png`;
+export const gallerySheetUrl = (id: string) => `${SERVER_URL}/gallery/${encodeURIComponent(id)}/sheet.png`;
 
 /** Whether a pet name is free: the server answers 404 for a name nobody has. */
 export async function nameFree(name: string) {

@@ -10,6 +10,7 @@ import { addressLink, formatNear, formatWhen, parseNear, SERVER_URL, txLink, VAU
 import { Pet } from "@/components/Pet";
 import { Plate } from "@/components/Plate";
 import { toast, useNotch } from "@/components/Shell";
+import { useRotate } from "@/components/useRotate";
 import "./brand.css";
 
 const MIN_HOOK = 6, MAX_HOOK = 40; // the plate shows a line whole, never truncated or scrolled (R2 §2)
@@ -32,18 +33,6 @@ function Elapsed() {
   const [s, setS] = useState(0);
   useEffect(() => { const t = setInterval(() => setS((n) => n + 1), 1000); return () => clearInterval(t); }, []);
   return <span className="secs">{s}s</span>;
-}
-
-/** Cycles through the lines the way the pet rotates them; holds the first under reduced motion. */
-function useRotate(lines: string[], every = 3200) {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    setI(0);
-    if (lines.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setInterval(() => setI((n) => (n + 1) % lines.length), every);
-    return () => clearInterval(t);
-  }, [lines.join("\n"), every]); // eslint-disable-line react-hooks/exhaustive-deps
-  return lines.length ? lines[i % lines.length] : null;
 }
 
 function Field({ id, label, value, onChange, max = 160, opt, ph, hint, area, suffix, bad, type }: {

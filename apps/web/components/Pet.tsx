@@ -8,16 +8,17 @@ import { FRAMES, ROW, sheetUrl, speciesOf, type RowName, type Species } from "@/
 
 const sheets = new Map<string, HTMLImageElement | null>();
 const waiting = new Map<string, Promise<void>>();
-function sheet(s: Species) {
-  if (!waiting.has(s.id)) {
-    waiting.set(s.id, new Promise((res) => {
+/** Loads a sheet once, keyed by its URL (a species' own sheet, or a community species' reviewed sheet). */
+function sheet(url: string) {
+  if (!waiting.has(url)) {
+    waiting.set(url, new Promise((res) => {
       const i = new Image();
-      i.onload = () => { sheets.set(s.id, i); res(); };
-      i.onerror = () => { sheets.set(s.id, null); res(); };
-      i.src = sheetUrl(s);
+      i.onload = () => { sheets.set(url, i); res(); };
+      i.onerror = () => { sheets.set(url, null); res(); };
+      i.src = url;
     }));
   }
-  return waiting.get(s.id)!;
+  return waiting.get(url)!;
 }
 
 type Play = { row: number; frames?: number[]; fps?: number; loop?: boolean; onEnd?: () => void };
@@ -31,7 +32,7 @@ class Sprite {
   fixed: number | null = null;
   onEnd: (() => void) | null = null;
   last = "";
-  constructor(public cv: HTMLCanvasElement, sp: Species, public scale: number) { this.sp = sp; this.size(); }
+  constructor(public cv: HTMLCanvasElement, sp: Species, public scale: number, public url: string) { this.sp = sp; this.size(); }
   size() {
     const d = Math.min(2, window.devicePixelRatio || 1);
     this.cv.width = Math.round(192 * this.scale * d);
@@ -56,8 +57,8 @@ class Sprite {
       }
       f = this.frames[i % this.frames.length];
     }
-    const img = sheets.get(this.sp.id);
-    const key = `${this.sp.id}.${this.row}.${f}`;
+    const img = sheets.get(this.url);
+    const key = `${this.url}.${this.row}.${f}`;
     if (!img || key === this.last) return;
     this.last = key;
     const c = this.cv.getContext("2d")!;
@@ -95,30 +96,33 @@ type Props = {
   style?: React.CSSProperties;
   /** set only when the pet is the content (an image someone should hear about); otherwise it's decorative */
   label?: string;
+  /** a sheet URL instead of the species' own (community species in the gallery) */
+  src?: string;
 };
 
-export const Pet = forwardRef<PetHandle, Props>(function Pet({ species, row = "idle", fps = 6, frames, frame, scale = 0.5, className, style, label }, ref) {
+export const Pet = forwardRef<PetHandle, Props>(function Pet({ species, row = "idle", fps = 6, frames, frame, scale = 0.5, className, style, label, src }, ref) {
   const cv = useRef<HTMLCanvasElement>(null);
   const sprite = useRef<Sprite | null>(null);
   const sp = speciesOf(species);
+  const url = src ?? sheetUrl(sp);
   const framesKey = frames?.join(",");
 
   useEffect(() => {
-    const s = new Sprite(cv.current!, sp, scale);
+    const s = new Sprite(cv.current!, sp, scale, url);
     sprite.current = s;
     live.add(s);
-    void sheet(sp).then(() => { s.last = ""; });
+    void sheet(url).then(() => { s.last = ""; });
     start();
     return () => { live.delete(s); };
-    // a new species or scale is a new sprite; row and timing changes are applied below
-  }, [sp.id, scale]); // eslint-disable-line react-hooks/exhaustive-deps
+    // a new sheet or scale is a new sprite; row and timing changes are applied below
+  }, [url, scale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const s = sprite.current;
     if (!s) return;
     if (frame != null) s.show(ROW[row], frame);
     else s.play({ row: ROW[row], fps, frames });
-  }, [sp.id, scale, row, fps, framesKey, frame]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [url, scale, row, fps, framesKey, frame]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({
     play: (r, o) => sprite.current?.play({ ...o, row: ROW[r] }),
