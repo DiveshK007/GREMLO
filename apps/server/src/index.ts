@@ -226,7 +226,9 @@ function addImpressions(req: IncomingMessage, raw: string) {
   const rows = body.impressions.map((i: any) => {
     const pet = findPet(String(i?.petKey ?? ""));
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
-    mustBeFrom(pet, signed, REQUIRE_SIGNED);
+    // a view is money: it counts only from a paired Mac, locally too, so every paid view is a signed report that
+    // gremlo verify can check (think and clicks stay lenient locally for development)
+    mustBeFrom(pet, signed, true);
     const id = String(i.campaignId);
     if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
     const hook = i.hook === undefined ? null : Number(i.hook);
@@ -387,6 +389,7 @@ async function getPet(key: string) {
     }),
     petKey,
     species: rec.species ? rec.species.replace(/^gremlo-/, "") : null, // as the Mac last reported it; null until then
+    paired: !!rec.devices?.length, // whether a Mac is paired (views count only from one); never the keys themselves
     stage: rec.stage ?? null,
     // settlement txs that fed this pet's compute budget: each is one meal (a receipt) for growth on the Mac
     meals: store.payouts.filter((x) => x.pet === petKey && x.tx).map((x) => x.tx!).slice(-500),
