@@ -265,7 +265,8 @@ export default function GetYourPet() {
               </>
             ) : <div>Registered.</div>}
           </div>
-          <p className="muted" style={{ margin: "0 0 22px" }}>Open the Gremlo app on your Mac. The egg is waiting in the notch and hatches the first time your agent starts working.</p>
+          <p className="muted" style={{ margin: "0 0 12px" }}>Open the Gremlo app on your Mac. The egg is waiting in the notch and hatches the first time your agent starts working.</p>
+          <p className="note" style={{ margin: "0 0 22px" }}>One more step to earn: pair that Mac. In the Gremlo menu bar, press <b>Pair</b> and sign once with this wallet. Views only count from a paired Mac.</p>
           <div className="actions"><Link className="btn solid" href={`/me?pet=${encodeURIComponent(phase.name)}`}>See your pet</Link></div>
         </div>
       </div>

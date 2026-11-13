@@ -202,6 +202,7 @@ export default function Me() {
     <div className="wrap">
       {lookup}
       {pet.seeded && <div className="seeded" style={{ marginTop: 24 }}><b>Seeded</b>Seeded data on a local sandbox, not real money.</div>}
+      {pet.paired === false && <p className="note" role="status" style={{ marginTop: 24 }}>No Mac is paired to {pet.name} yet, so its views don’t count. In the Gremlo menu bar on that Mac, press Pair and sign once with the owner’s wallet.</p>}
       <div className="me-hero">
         <div>
           <div className="eyebrow">Your pet · {species ? species.name : PRODUCT} · {stage}</div>

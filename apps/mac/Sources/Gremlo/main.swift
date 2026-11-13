@@ -1095,6 +1095,7 @@ struct PetInfo: Decodable {
     let paidViews: Int?; let earnedWei: String?; let level: Int?; let streak: Int? // nil: older server or chain unreadable
     let explorer: String? // nearblocks for the server's network
     let meals: [String]? // settlement txs that fed the compute budget: one meal each, for growth
+    let paired: Bool? // a Mac is paired to this pet; nil from an older server
 }
 
 /// Species are earned, never bought (spec D §2): starters are open; the rest show what unlocks them.
@@ -1495,6 +1496,14 @@ final class Backend: NSObject {
         var notes: [NSView] = []
         if seeded { notes.append(UI.notice("Seeded data, not real money", UI.amber, width: w)) }
         if let e = serverError { notes.append(UI.notice("Server: \(e)", UI.text3, width: w)) }
+        // views count only from a paired Mac, so an unpaired one says so first and offers the one step that fixes it
+        if info?.paired == false && !seeded {
+            let pair = Btn("Pair", style: .primary, target: self, action: #selector(pairDevice)); pair.small = true
+            let text = devicePublicKey == nil ? "This Mac has no Secure Enclave, so its views can't count." : "Not paired yet: views from this Mac don't count."
+            let r = UI.hstack([UI.notice(text, UI.amber, width: w - (devicePublicKey == nil ? 0 : 64)), UI.spacer()] + (devicePublicKey == nil ? [] : [pair]))
+            r.widthAnchor.constraint(equalToConstant: w).isActive = true
+            notes.append(r)
+        }
         if let f = privacy.focus {
             let end = Btn("End", style: .secondary, target: self, action: #selector(endFocusNow)); end.small = true
             let r = UI.hstack([UI.notice("Focus: \(Int(f.remaining(Date()) / 60) + 1) min left. Lines off, not earning.", UI.accent, width: w - 60), UI.spacer(), end])
@@ -1696,6 +1705,7 @@ final class Backend: NSObject {
         let web = Legacy.env("WEB") ?? "http://localhost:3000"
         let pet = petName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? petName
         if let u = URL(string: "\(web)/pair?pet=\(pet)&key=\(key)") { NSWorkspace.shared.open(u) }
+        menu.dismiss()
     }
 
     // Brings the terminal running Claude Code forward. The approval itself happens there; the app never answers a hook.

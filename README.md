@@ -33,8 +33,9 @@ Claude Code hooks ──> Mac app (notch, menu bar, 127.0.0.1:47474)
    hooks NEAR AI writes, each with its completion id) and pays into the vault from its own wallet.
 3. **The pet holds the line while your agent works.** A view counts only when the sign has been on screen for 5
    seconds, the screen is unlocked, not shared and not recorded, and someone used the Mac in the last 5 minutes; at most
-   12 lines an hour. Once the Mac is paired, each view is a report signed by its Secure Enclave and appended to the
-   campaign's public log; `gremlo verify <campaign>` replays it against the bill.
+   12 lines an hour. Views count only from a Mac paired to the pet (one wallet signature on `/pair`): each is a report
+   signed by its Secure Enclave and appended to the campaign's public log; `gremlo verify <campaign>` replays it
+   against the bill.
 4. **Settlement feeds the pet.** The server settles views in the vault: most goes to the payout account, a share goes
    into the pet's compute budget. Each NEAR AI call is charged a fixed per-tier rate in NEAR against that budget, with
    the TEE-signed completion id in the log. The operator holds the NEAR AI credits; the pet can't buy credits directly

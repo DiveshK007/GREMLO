@@ -119,6 +119,8 @@ export type PetPublic = {
   petKey: string; owner: string; payout: string; computeBalance: string | null; explorer: string; vault: string;
   /** as the Mac last reported it; null until the Mac has thought once (then the page shows Gremlo) */
   species?: string | null; stage?: string | null;
+  /** a Mac is paired to this pet; views count only from a paired Mac */
+  paired?: boolean;
   /** one settlement receipt per meal */
   meals?: string[];
   /** the vault's compute budget for this pet; null when the chain couldn't be read */
