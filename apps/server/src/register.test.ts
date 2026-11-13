@@ -2,10 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HttpError, makeRegister, signalHash, signalMatches, verifyWorldProof, type Verdict } from "./register.ts";
 
-const OWNER = "owner.notchi.testnet";
+const OWNER = "owner.gremlo.testnet";
 const SIG = signalHash(OWNER);
 const proof = { protocol_version: "4.0", nonce: "0x1", action: "register-pet", responses: [{ nullifier: "42", signal_hash: SIG }], environment: "production" };
-const body = (pet: string) => ({ name: pet, owner: OWNER, payout: "mochi.notchi.testnet", worldProof: proof });
+const body = (pet: string) => ({ name: pet, owner: OWNER, payout: "byte.gremlo.testnet", worldProof: proof });
 const PET_A = "mochi";
 const PET_B = "pixel";
 const TX = { registerTx: "Htx1", verifyTx: "Htx2" };
@@ -64,8 +64,8 @@ test("two concurrent requests with one nullifier: one wins, one gets 409", async
 const legacy = { proof: "0xabc", merkle_root: "0xdef", nullifier_hash: "0x2a", verification_level: "orb", signal_hash: SIG };
 
 test("the proof is bound to the owner's NEAR account (signal = account id)", async () => {
-  // reference value from @worldcoin/idkit-core hashSignal("owner.notchi.testnet")
-  assert.equal(SIG, "0x001ec9d49255d0c64109f3e3fe99d4cfd8c529eeea5c4bc108876c97a3bf8477");
+  // reference value from @worldcoin/idkit-core hashSignal("owner.gremlo.testnet")
+  assert.equal(SIG, "0x00ad6185f8094a6055ef69fe7c0e88ea9bc542138d2abb35779c9c43e8534df7");
   assert.equal(signalMatches(proof, OWNER), true);
   assert.equal(signalMatches({ responses: [{ nullifier: "1" }] }, OWNER), false); // no signal: replayable, refused
   assert.equal(signalMatches({ responses: [{ signal_hash: signalHash("other.testnet") }] }, OWNER), false);
@@ -151,8 +151,8 @@ test("NEAR accounts: bad ids are a 400, and a missing owner or payout account is
   }
   await status(register({ ...body("A"), owner: OWNER }), 400); // pet name too short and uppercase
   let sent = false;
-  const missing = setup({ ok: true, nullifier: "42" }, async () => ((sent = true), TX), async (id) => id !== "mochi.notchi.testnet");
-  await assert.rejects(missing.register(body(PET_A)), (e: any) => e.status === 400 && /payout account mochi.notchi.testnet does not exist/.test(e.message));
+  const missing = setup({ ok: true, nullifier: "42" }, async () => ((sent = true), TX), async (id) => id !== "byte.gremlo.testnet");
+  await assert.rejects(missing.register(body(PET_A)), (e: any) => e.status === 400 && /payout account byte.gremlo.testnet does not exist/.test(e.message));
   assert.equal(sent, false);
   assert.deepEqual(missing.store.nullifiers, []);
 });

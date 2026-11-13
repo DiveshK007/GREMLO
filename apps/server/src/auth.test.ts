@@ -38,7 +38,7 @@ test("pairing message names the pet and a stable device id", () => {
   const d = device();
   assert.equal(keyId(d.key), keyId(d.key));
   assert.equal(keyId(d.key).length, 16);
-  assert.match(pairMessage("mochi.notchi.eth", keyId(d.key)), /Pet: mochi\.notchi\.eth\nDevice: [0-9a-f]{16}$/);
+  assert.match(pairMessage("mochi.gremlo.eth", keyId(d.key)), /Pet: mochi\.gremlo\.eth\nDevice: [0-9a-f]{16}$/);
 });
 
 test("a paired pet only accepts its own device; an unpaired pet still works unsigned", () => {
@@ -61,7 +61,7 @@ test("NEP-413 owner signature: real ed25519, the exact message and recipient, fu
   const pk = key.getPublicKey().toString();
   // the chain's answer for this key: full access for the owner's key, function-call only for anything else
   const provider: any = { viewAccessKey: async ({ publicKey }: any) => ({ nonce: 0n, permission: String(publicKey) === pk ? "FullAccess" : { FunctionCall: { receiver_id: "x", method_names: [] } } }) };
-  const sign = async (kp: typeof key, message: string, recipient = "vault.notchi.testnet") => {
+  const sign = async (kp: typeof key, message: string, recipient = "vault.gremlo.testnet") => {
     const nonce = crypto.getRandomValues(new Uint8Array(32));
     const s = await signMessage({ signerAccount: new Account("owner.testnet", provider, kp.toString() as any), payload: { message, recipient, nonce } });
     return { signature: Buffer.from(s.signature).toString("base64"), publicKey: s.publicKey.toString(), nonce: Buffer.from(nonce).toString("base64") };
@@ -69,9 +69,9 @@ test("NEP-413 owner signature: real ed25519, the exact message and recipient, fu
   const used = new Set<string>();
   const msg = pairMessage("mochi", "abc123");
   const good = await sign(key, msg);
-  await checkOwnerSignature(good, "owner.testnet", msg, "vault.notchi.testnet", provider, used);
-  await assert.rejects(checkOwnerSignature(good, "owner.testnet", msg, "vault.notchi.testnet", provider, used), (e: any) => e.status === 401); // replay
-  const code = async (body: object, m = msg) => checkOwnerSignature(body, "owner.testnet", m, "vault.notchi.testnet", provider, new Set()).then(() => 200, (e: any) => e.status);
+  await checkOwnerSignature(good, "owner.testnet", msg, "vault.gremlo.testnet", provider, used);
+  await assert.rejects(checkOwnerSignature(good, "owner.testnet", msg, "vault.gremlo.testnet", provider, used), (e: any) => e.status === 401); // replay
+  const code = async (body: object, m = msg) => checkOwnerSignature(body, "owner.testnet", m, "vault.gremlo.testnet", provider, new Set()).then(() => 200, (e: any) => e.status);
   assert.equal(await code(await sign(key, msg), pairMessage("mochi", "other-device")), 403); // signed a different message
   assert.equal(await code(await sign(key, msg, "evil.testnet")), 403); // signed for another recipient
   assert.equal(await code(await sign(other, msg)), 403); // not a full-access key of the owner

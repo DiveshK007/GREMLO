@@ -2,7 +2,22 @@
 
 Every value here comes from a real run on NEAR testnet or NEAR AI Cloud. Blank rows are filled from the demo run; nothing is estimated or made up. Explorer: https://testnet.nearblocks.io
 
-## Contract
+## Final run accounts (gremlo.testnet)
+
+The final run uses new accounts; the deploy, init and loop rows are filled from that run.
+
+| Account | Role | Creation tx |
+|---|---|---|
+| `gremlo.testnet` | admin (10 NEAR from the faucet) | [`FfLHrk39dTWCQqW7PpcwHWqDauPghMgs4ot37nw4tvTA`](https://testnet.nearblocks.io/txns/FfLHrk39dTWCQqW7PpcwHWqDauPghMgs4ot37nw4tvTA) |
+| `vault.gremlo.testnet` | vault contract (3 NEAR) | [`evTcxm7JALCQ9bJTYAvodkyuEC8mRwiixxsURwbSxsC`](https://testnet.nearblocks.io/txns/evTcxm7JALCQ9bJTYAvodkyuEC8mRwiixxsURwbSxsC) |
+| `operator.gremlo.testnet` | operator (1 NEAR) | [`7iB2EnwdXSpMKf6XqaBygpJHEpAGjMpupSkr3Q3aJeqx`](https://testnet.nearblocks.io/txns/7iB2EnwdXSpMKf6XqaBygpJHEpAGjMpupSkr3Q3aJeqx) |
+| `owner.gremlo.testnet` | pet owner (1 NEAR) | [`E9jsBNdoRV9zxxhzDFiTdeE5nVHjwWmJhrN1exmzt4tJ`](https://testnet.nearblocks.io/txns/E9jsBNdoRV9zxxhzDFiTdeE5nVHjwWmJhrN1exmzt4tJ) |
+| `byte.gremlo.testnet` | pet payout (0.1 NEAR) | [`GYT2icscofQBXC1TkKVAVqCk1fEX5AWcy6ym7s8woFrq`](https://testnet.nearblocks.io/txns/GYT2icscofQBXC1TkKVAVqCk1fEX5AWcy6ym7s8woFrq) |
+| Vault deployed and initialised | | |
+
+## Contract: DRY RUN (old accounts, before the rename)
+
+The dry run ran on the original testnet accounts, which keep their `notchi` names.
 
 | What | Value | Link |
 |---|---|---|
