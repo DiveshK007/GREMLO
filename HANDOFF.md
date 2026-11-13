@@ -40,6 +40,12 @@ contracts-accounts, server, brain, web, mac (build, tests, release script) and t
   Shortcuts lists the App Intents only from an Xcode-built bundle (`gremlo://` and the CLI work now).
 - Not done on purpose: the purse contracts aren't deployed; the Fly app and volume keep their `notchi` names.
 - Open items per milestone: `docs/PLAN_1.0.md`.
+- Web app pages (2026-11-13): all eight app pages and the share card are on the 1.0 design from
+  `docs/design/1.0/app-pages/` (the export's screenshots aren't in the repo). Left: an on-screen pass against the
+  export's screens at 1440 and 390 in both themes, and an axe run; installing a community species from the gallery
+  (there is no install path on the Mac or in the CLI, and `gremlo://` deliberately can't change the pet), so the
+  cards say it comes later; the streak on `/me` and the card (the 1.0 rules say no streaks; the export recommends a
+  count that never resets). The web tests need Node 22 in CI; locally run them with tsx.
 
 ## Accounts (NEAR testnet)
 

@@ -103,8 +103,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
     species: (id) => setSpecies(id),
   }), []);
 
-  // a new page starts with a resting notch and a closed menu
-  useEffect(() => { setOpen(false); notch.base("rest"); }, [path, notch]);
+  // a new page starts with a resting notch and a closed menu. Reset while rendering, not in an effect: a page's own
+  // effects run before the layout's, so an effect here would wipe the notch state the page just set
+  const [seenPath, setSeenPath] = useState(path);
+  if (seenPath !== path) {
+    setSeenPath(path);
+    setOpen(false);
+    setState("rest");
+    setText("");
+    base.current = "rest";
+    clearTimeout(doneT.current);
+  }
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
