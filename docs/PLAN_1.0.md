@@ -1,7 +1,7 @@
 # Gremlo 1.0: build plan
 
 Source of truth: `docs/design/1.0/` (base spec `GREMLO_1.0_DESIGN.md`, then `ROUND2`, `ROUND3`, `ROUND4`; later rounds win; build briefs in `briefs/`).
-Branch: `notchi-1.0` (from `near`). Push after every milestone. Each milestone lands with its tests.
+Branch: `main` (built on `near`; the ETHGlobal build is on `ethglobal-0g`). Push after every milestone. Each milestone lands with its tests.
 
 Decisions (2026-11-13):
 - **Human check:** World ID stays.

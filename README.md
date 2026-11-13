@@ -10,10 +10,10 @@ Prior art: sk-ruban/notchi is an open-source notch companion for Claude Code. Gr
 
 Gremlo was called Notchi until the 1.0 rename. The dry-run testnet accounts (`vault.notchi.testnet` and its siblings in PROOF.md) keep their original names; the final run uses new `*.gremlo.testnet` accounts, set only through env (`NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT_ID`, `NEXT_PUBLIC_NEAR_CONTRACT_ID`).
 
-## Gremlo 1.0 (branch `notchi-1.0`)
+## Gremlo 1.0 (branch `main`)
 
 1.0 implements the design export in `docs/design/1.0/`. Milestones and what is still open: `docs/PLAN_1.0.md`.
-The sections below this one describe the earlier hackathon builds.
+The sections below this one describe the earlier hackathon builds; the ETHGlobal 0G build is kept on the `ethglobal-0g` branch.
 
 | Part | Where | Build and test |
 |---|---|---|

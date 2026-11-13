@@ -2,9 +2,9 @@
 
 A desktop AI pet that has to earn its own food. It lives on the Mac screen edge and in a home behind a door in the notch. It reacts live to Claude Code / Codex sessions, holds the sponsored line on a little sign while the agent works, and pays for its own 0G inference from what it earns.
 
-ETHGlobal Mumbai 2026, Classic (from scratch). Submission deadline: Sat 7 Nov, 09:00 IST. Freeze features at midnight Fri.
+Started at ETHGlobal Mumbai 2026 (Classic, from scratch); that build is kept on the `ethglobal-0g` branch.
 
-## Gremlo 1.0 (branch `notchi-1.0`)
+## Gremlo 1.0 (branch `main`)
 The design export in `docs/design/1.0/` is the source of truth (rounds 2-4 extend the base spec; later rounds win).
 The build plan and progress live in `docs/PLAN_1.0.md`. Windows/Linux and the Rust core are out of scope for now.
 Product copy names no chain ("purse", "earned", "paid for thinking"); account IDs and hashes appear only in Advanced views, docs and the README.
