@@ -1,6 +1,7 @@
 {
   "name": "@gremlo/brain",
   "private": true,
+  "engines": { "node": ">=22" },
   "type": "module",
   "main": "index.js",
   "scripts": {

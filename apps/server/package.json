@@ -1,6 +1,7 @@
 {
   "name": "@gremlo/server",
   "private": true,
+  "engines": { "node": ">=22" },
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env --import tsx src/index.ts",
