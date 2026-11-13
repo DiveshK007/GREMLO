@@ -48,6 +48,21 @@ const views = viewCache(5_000);
 export const view = <T>(method: string, args: Record<string, unknown> = {}) =>
   views.get(`${method}:${JSON.stringify(args)}`, () => rpc(`view ${method}`, (url) => at(url).callFunction({ contractId: vault, method, args }) as Promise<T>));
 
+/** A view on any contract (the pets' purses); cached like vault views. */
+export const viewOn = <T>(contractId: string, method: string, args: Record<string, unknown> = {}) =>
+  views.get(`${contractId}:${method}:${JSON.stringify(args)}`, () => rpc(`view ${contractId}.${method}`, (url) => at(url).callFunction({ contractId, method, args }) as Promise<T>));
+
+/** Balance and storage of an account, for what a purse can still spend. */
+export const accountInfo = async (id: string) => {
+  const a: any = await rpc(`view_account ${id}`, (url) => at(url).viewAccount({ accountId: id }));
+  return { amount: BigInt(a.amount), storageUsage: Number(a.storage_usage ?? a.storageUsage ?? 0) };
+};
+
+/** A transaction's final outcome, or null if no RPC knows it yet. */
+export const txOutcome = (hash: string, sender: string) =>
+  fo.run((url) => withTimeout(at(url).viewTransactionStatus({ txHash: hash, accountId: sender, waitUntil: "FINAL" }), 10_000))
+    .catch((e) => { if (unknownTx(e)) return null; throw new Error(`NEAR RPC ${failedAt(e)} tx ${hash}: ${errText(e)}`); });
+
 /** True when the account exists onchain. A missing account is false; an RPC failure throws. */
 export async function accountExists(id: string) {
   try {

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { accountExists, balanceOf, explorer, network, provider, seeded, send, vault, view } from "./chain.ts";
+import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, network, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "./chain.ts";
+import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "./purse.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView, type Compute } from "./views.ts";
 import { bad, errText, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
@@ -370,11 +371,14 @@ async function getPet(key: string) {
   }
   // shortcut: "today" uses this server's UTC clock, which can disagree with the chain's for a few seconds at midnight
   const today = Math.floor(Date.now() / 86_400_000);
-  const compute: Compute | null = pet && {
+  const vaultCompute: Compute | null = pet && {
     budget: BigInt(pet.compute_budget),
     chargedToday: pet.charge_day === today ? BigInt(pet.charged_today) : 0n,
     dailyCap: BigInt(pet.daily_cap),
   };
+  // a pet with a purse thinks on its purse: mood from what the purse can still spend, minus what it already owes
+  const pp = await purseOf(rec, pet?.owner ?? rec.owner);
+  const compute: Compute | null = pp ? { budget: pp.spendable, chargedToday: BigInt(pp.view.spent_today), dailyCap: BigInt(pp.view.daily) } : vaultCompute;
   const t = store.today[petKey];
   return {
     ...petView({
@@ -382,7 +386,7 @@ async function getPet(key: string) {
       walletBalance: pet ? await payoutBalance(pet.payout) : null, // the payout account, where earnings land
       compute,
       fees,
-      inflight: inflight.get(petKey) ?? 0n,
+      inflight: pp ? owed(store.thoughts[petKey]) : inflight.get(petKey) ?? 0n,
       impressionsToday: t?.day === utcDay() ? t.count : 0,
       seeded,
       lastThoughts: store.thoughts[petKey],
@@ -395,10 +399,19 @@ async function getPet(key: string) {
     meals: store.payouts.filter((x) => x.pet === petKey && x.tx).map((x) => x.tx!).slice(-500),
     owner: pet?.owner ?? rec.owner,
     payout: pet?.payout ?? rec.payout,
-    compute: pet && {
+    purse: pp ? { account: pp.account, perCall: pp.view.per_call, daily: pp.view.daily } : null,
+    compute: pp ? {
+      budget: pp.spendable.toString(),
+      spent: pp.view.total_paid,
+      chargedToday: pp.view.spent_today,
+      dailyCap: pp.view.daily,
+      shareBps: pet?.compute_share_bps ?? 0,
+      feeSmart: fees.smart.toString(),
+      feeCheap: fees.cheap.toString(),
+    } : pet && {
       budget: pet.compute_budget,
       spent: pet.compute_spent,
-      chargedToday: compute!.chargedToday.toString(),
+      chargedToday: vaultCompute!.chargedToday.toString(),
       dailyCap: pet.daily_cap,
       shareBps: pet.compute_share_bps,
       feeSmart: fees.smart.toString(),
@@ -439,14 +452,16 @@ async function petThink(key: string, body: any) {
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
   const petKey = pet.petKey;
   rememberLook(key, body);
+  const blocked = purseGate(pet, pet.mood === "thriving" ? fees.smart : fees.cheap);
+  if (blocked) return { action: "sleep", say: null, reason: blocked, requestId: null, fee: null };
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
   if (!r.requestId && pet.moodReason) r.reason = pet.moodReason; // no call was made; say why in the pet's words
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
   store.days[petKey] = markDay(store.days[petKey], utcDay());
   save();
   const fee = r.completionId ? (pet.mood === "thriving" ? fees.smart : fees.cheap) : 0n;
-  if (fee) void charge(petKey, fee, r.completionId);
-  return { ...r, fee: fee ? fee.toString() : null };
+  const payFor = fee ? bill(petKey, pet.purse, fee, r.completionId, r.action) : null;
+  return { ...r, fee: fee ? fee.toString() : null, payFor };
 }
 
 /** The opt-in diary entry (1.0 design §8): counts and tool names only, one cheap call, charged like a think. */
@@ -457,12 +472,73 @@ async function petDiary(key: string, body: any) {
   const tools = Object.fromEntries(Object.entries(body?.tools ?? {}).filter(([k]) => /^[A-Za-z0-9_.:-]{1,64}$/.test(k)).slice(0, 20).map(([k, v]) => [k, n(v)]));
   const today = utcDay();
   if (diaryDays.get(pet.petKey) === today) throw new HttpError(429, "one diary entry a day");
+  const blocked = purseGate(pet, fees.cheap);
+  if (blocked) return { entry: null, reason: blocked, requestId: null };
   const r = await diary({ mood: pet.mood, species: str(body?.species, 24), voice: str(body?.voice, 60), runs: n(body?.runs), failures: n(body?.failures),
     approvals: n(body?.approvals), tools, length: body?.length === "longer" ? "longer" : "short" });
   if (!r.entry) return { entry: null, reason: pet.moodReason ?? r.reason, requestId: r.requestId ?? null };
   diaryDays.set(pet.petKey, today);
-  void charge(pet.petKey, fees.cheap, r.completionId);
-  return { entry: r.entry, requestId: r.requestId, fee: fees.cheap.toString() };
+  const payFor = bill(pet.petKey, pet.purse, fees.cheap, r.completionId, "diary");
+  return { entry: r.entry, requestId: r.requestId, fee: fees.cheap.toString(), payFor };
+}
+
+// ---------- the pet's purse (purse.ts) ----------
+const PURSE_PARENT = process.env.PURSE_PARENT ?? ""; // where the purse factory runs (contracts-accounts); empty: no purses
+type PetPurse = { account: string; view: PurseView; spendable: bigint };
+const purseCache = new Map<string, { at: number; v: PetPurse | null }>();
+/** The pet's purse when it fits (owned by the pet's owner, allowed to pay this operator); null otherwise. Cached 30 s. */
+async function purseOf(rec: PetRecord, owner: string): Promise<PetPurse | null> {
+  if (!PURSE_PARENT) return null;
+  const hit = purseCache.get(rec.name);
+  if (hit && Date.now() - hit.at < 30_000) return hit.v;
+  const account = purseAccount(rec.name, PURSE_PARENT);
+  let v: PetPurse | null = null;
+  try {
+    const pv = await viewOn<PurseView>(account, "get_purse");
+    if (purseFits(pv, owner, operatorId)) { const a = await accountInfo(account); v = { account, view: pv, spendable: spendable(a.amount, a.storageUsage) }; }
+  } catch (e) {
+    // no account or no purse code means this pet has no purse; anything else is the RPC, and the vault stays in charge
+    if (!isMissingAccount(e) && !/CodeDoesNotExist|MethodNotFound|MethodResolveError/i.test(errMsg(e))) console.error(`purse ${account}: ${errMsg(e)}`);
+  }
+  purseCache.set(rec.name, { at: Date.now(), v });
+  return v;
+}
+/** The deterministic budget check for purse pets: no paid thought while one is overdue or the fee is over the cap. */
+function purseGate(pet: { petKey: string; purse: { perCall: string } | null }, fee: bigint) {
+  if (!pet.purse) return null;
+  if (overdue(store.thoughts[pet.petKey])) return "sleeping: the last thought isn't paid for yet";
+  if (fee > BigInt(pet.purse.perCall)) return "sleeping: the purse's per-call cap is below the fee";
+  return null;
+}
+/** Bills one served completion: a purse pet owes it (the Mac pays, /paid checks it); any other pet is charged in the vault. */
+function bill(petKey: string, purse: { account: string } | null, fee: bigint, completionId: string, action: string) {
+  if (!purse) { void charge(petKey, fee, completionId); return null; }
+  let t = store.thoughts[petKey]?.find((x) => x.requestId === completionId);
+  if (!t) { store.thoughts[petKey] = addThought(store.thoughts[petKey], { action, requestId: completionId }); t = store.thoughts[petKey][0]; }
+  t.due = fee.toString();
+  t.payTo = operatorId;
+  save();
+  return { requestId: completionId, amount: t.due, payTo: operatorId, purse: purse.account };
+}
+/** The Mac reports a purse payment; it counts only once the chain shows the purse paid exactly this thought. */
+async function pursePaid(name: string, b: any) {
+  const rec = findPet(name);
+  if (!rec) throw new HttpError(404, "unknown pet");
+  const requestId = str(b?.requestId, 128), tx = str(b?.tx, 64);
+  if (!requestId || !tx || !/^[1-9A-HJ-NP-Za-km-z]{32,64}$/.test(tx)) throw bad("requestId and a base58 tx hash are required");
+  const t = store.thoughts[rec.petKey]?.find((x) => x.requestId === requestId);
+  if (!t?.due || !t.payTo) throw new HttpError(404, "no payment is owed for that thought");
+  if (t.chargeTx) return { ok: true, tx: t.chargeTx };
+  if (!PURSE_PARENT) throw new HttpError(409, "this server has no purse factory set");
+  const account = purseAccount(rec.name, PURSE_PARENT);
+  const out = await txOutcome(tx, account);
+  if (!out) throw new HttpError(409, "that transaction isn't final yet; try again in a few seconds");
+  if (!paymentMatches(out, { purse: account, provider: t.payTo, amount: t.due, requestId })) throw new HttpError(400, "that transaction isn't this purse paying for this thought");
+  t.chargeTx = tx;
+  purseCache.delete(rec.name); // the balance moved
+  save();
+  console.log(`purse: ${rec.name} paid ${t.due} yoctoNEAR for ${requestId}, tx ${tx}`);
+  return { ok: true, tx };
 }
 
 /** charge_compute for one served completion; the tx hash lands on the thought. A failure is logged, never invented. */
@@ -855,6 +931,8 @@ async function route(req: IncomingMessage) {
   const ark = pathname.match(/^\/campaigns\/([1-9][0-9]*)\/arkiv$/);
   if (m === "GET" && ark) return arkivCampaign(ark[1]);
   if (m === "POST" && pathname === "/campaigns") return saveCampaign(await readBody(req));
+  const paidPath = pathname.match(/^\/pets\/([^/]+)\/paid$/);
+  if (m === "POST" && paidPath) return pursePaid(decodeURIComponent(paidPath[1]), await readBody(req));
   const thinkPath = pathname.match(/^\/pets\/([^/]+)\/think$/);
   if (m === "POST" && thinkPath) {
     const raw = await readRaw(req);
