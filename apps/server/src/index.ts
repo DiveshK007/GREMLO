@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, network, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "./chain.ts";
 import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "./purse.ts";
+import { health } from "./health.ts";
 import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView, type Compute } from "./views.ts";
 import { bad, errText, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
@@ -741,9 +742,12 @@ async function tryHook(req: IncomingMessage, body: any) {
  * unspent budget returns to the brand without anyone clicking. One pass at a time; errors are logged, not fatal.
  */
 let working = false;
+const WORKER_ON = process.env.WORKER !== "off", WORKER_MS = Number(process.env.WORKER_MINUTES ?? 10) * 60_000;
+const worker = { startedAt: Date.now(), lastOk: null as number | null, lastError: null as string | null, expiredUnpaid: 0 };
 async function workerPass() {
   if (working) return;
   working = true;
+  let failed = false;
   try {
     const now = nowS();
     for (const [id, c] of await campaigns()) {
@@ -754,7 +758,7 @@ async function workerPass() {
         const job = workFor({ closed: c.closed, endTime, remaining }, pending, now);
         const held = (store.held[String(id)] ?? []).reduce((a, h) => a + h.n, 0);
         if (!c.closed && (job !== "none" || pending || held)) console.log(`worker: campaign ${id}: ${pending} payable, ${held} held, job ${job}`);
-        if (job === "refund" && pending) console.error(`worker: campaign ${id}: ${pending} views expired unpaid (the vault pays only until 1h after the end)`);
+        if (job === "refund" && pending) { worker.expiredUnpaid += pending; console.error(`worker: campaign ${id}: ${pending} views expired unpaid (the vault pays only until 1h after the end)`); }
         if (job === "settle") {
           const r = await settle(String(id));
           console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, stopped: ${r.error}` : ""}`);
@@ -763,14 +767,26 @@ async function workerPass() {
         }
         if (!c.closed) await brandMail(String(id), BigInt(c.budget), BigInt(c.spent), `0x${c.line_hash}`);
       } catch (e) {
+        failed = true;
+        worker.lastError = `campaign ${id}: ${errMsg(e)}`;
         console.error(`worker: campaign ${id}: ${errMsg(e)}`);
       }
     }
   } catch (e) {
+    failed = true;
+    worker.lastError = errMsg(e);
     console.error(`worker: ${errMsg(e)}`);
   } finally {
+    if (!failed) worker.lastOk = Date.now();
     working = false;
   }
+}
+/** GET /health: 200 when nothing needs a person, 503 with the reasons when something does (for an uptime monitor). */
+async function healthCheck() {
+  const operatorBalance = await balanceOf(operatorId).then((b) => BigInt(b)).catch(() => null);
+  const h = health({ workerOn: WORKER_ON, everyMs: WORKER_MS, startedAt: worker.startedAt, lastOk: worker.lastOk, lastError: worker.lastError, operatorBalance, expiredUnpaid: worker.expiredUnpaid });
+  return { httpStatus: h.ok ? 200 : 503, body: { ...h, worker: { on: WORKER_ON, everyMinutes: WORKER_MS / 60_000, lastOk: worker.lastOk, lastError: worker.lastError },
+    operator: { account: operatorId, balance: operatorBalance?.toString() ?? null }, network, vault } };
 }
 /** Budget alerts and the weekly report for one live campaign, when the brand left an email and mail is on. */
 async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: string) {
@@ -793,7 +809,7 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: st
     save();
   }
 }
-if (process.env.WORKER !== "off") setInterval(workerPass, Number(process.env.WORKER_MINUTES ?? 10) * 60_000);
+if (WORKER_ON) setInterval(workerPass, WORKER_MS);
 
 /** A campaign's public log and what was billed from it; `gremlo verify <campaign>` checks one against the other. */
 function publicLog(id: string) {
@@ -917,6 +933,7 @@ async function route(req: IncomingMessage) {
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(req, await readBody(req));
   if (m === "GET" && pathname === "/stats") return publicStats();
+  if (m === "GET" && pathname === "/health") return healthCheck();
   if (m === "POST" && pathname === "/try") return tryHook(req, await readBody(req));
   if (m === "POST" && pathname === "/campaigns/check") {
     // run before the brand pays, so nothing they wrote can be refused after the money moved
@@ -999,6 +1016,7 @@ createServer((req, res) => {
   route(req).then(
     (body: any) => {
       if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
+      if (body?.httpStatus) { reply(res, body.httpStatus, body.body); return; }
       if (body?.file) { res.writeHead(200, { "content-type": body.type, "cache-control": "public, max-age=3600" }); res.end(body.file); return; }
       reply(res, 200, body);
     },
