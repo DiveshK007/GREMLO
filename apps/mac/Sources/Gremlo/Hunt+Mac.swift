@@ -442,21 +442,34 @@ enum RunLog {
 // MARK: - Settings rows
 
 extension Backend {
+    /// Settings, Developer: test commands for the bug hunt, git moods, GitHub.
     func huntControls() -> [NSView] {
-        let seasons = NSButton(checkboxWithTitle: "Seasonal scenery", target: self, action: #selector(toggleSeasons(_:)))
-        seasons.state = HuntController.seasonsOn ? .on : .off
-        let meetings = NSButton(checkboxWithTitle: "Meeting heads-up (asks for Calendar access; titles stay on this Mac)", target: self, action: #selector(toggleMeetings(_:)))
-        meetings.state = HuntController.meetingsOn ? .on : .off
-        let runners = NSTextField(string: HuntController.extraRunners.joined(separator: ", "))
-        runners.placeholderString = "more test commands, e.g. make check, ./run-tests"
+        let w = pageWidth
+        let runners = Field(HuntController.extraRunners.joined(separator: ", "), placeholder: "make check, ./run-tests", width: 220)
         runners.target = self
         runners.action = #selector(setRunners(_:))
-        let gh = NSButton(checkboxWithTitle: GitHubController.gh == nil ? "GitHub: install the gh CLI to celebrate merges" : "GitHub (your gh CLI): celebrate merged PRs, send my companion when I ask for a review", target: self, action: #selector(toggleGitHub(_:)))
-        gh.state = GitHubController.on ? .on : .off
-        gh.isEnabled = GitHubController.gh != nil
-        let add = NSButton(title: "Add git hooks to a repo\u{2026}", target: self, action: #selector(installGitHooks))
-        let remove = NSButton(title: "Remove git hooks from a repo\u{2026}", target: self, action: #selector(removeGitHooks))
-        return [caption("Extras"), seasons, meetings, caption("Test commands (bug hunt)"), runners, caption("Git moods (no messages, diffs or file names are sent)"), add, remove, gh]
+        let hasGh = GitHubController.gh != nil
+        let gh = Toggle(on: GitHubController.on, target: self, action: #selector(toggleGitHub(_:)), label: "GitHub")
+        gh.isEnabled = hasGh
+        return [
+            UI.group("Bug hunt", [
+                UI.row("More test commands", "Comma-separated. A failing run drops a bug; a passing one lets the pet eat it.", runners, width: w),
+            ], width: w),
+            UI.group("Git moods", [
+                UI.row("Add git hooks to a repo", "No messages, diffs or file names are sent.", Btn("Choose\u{2026}", target: self, action: #selector(installGitHooks)), width: w),
+                UI.row("Remove git hooks from a repo", nil, Btn("Choose\u{2026}", target: self, action: #selector(removeGitHooks)), width: w),
+                UI.row("GitHub", hasGh ? "Through your gh CLI: merged PRs celebrate; asking for a review sends your companion." : "Install the gh CLI to celebrate merged PRs.", gh, width: w),
+            ], width: w),
+        ]
+    }
+    /// Settings, Notch and sound: the extras.
+    func extrasGroup() -> NSView {
+        let w = pageWidth
+        return UI.group("Extras", [
+            UI.row("Seasonal scenery", nil, Toggle(on: HuntController.seasonsOn, target: self, action: #selector(toggleSeasons(_:)), label: "Seasonal scenery"), width: w),
+            UI.row("Meeting heads-up", "Asks for Calendar access. Titles stay on this Mac.",
+                   Toggle(on: HuntController.meetingsOn, target: self, action: #selector(toggleMeetings(_:)), label: "Meeting heads-up"), width: w),
+        ], width: w)
     }
 
     @objc func toggleGitHub(_ b: NSButton) { defaults.set(b.state == .on, forKey: "github"); if b.state == .on { defaults.set(Date(), forKey: "github.since"); github.tick() } }

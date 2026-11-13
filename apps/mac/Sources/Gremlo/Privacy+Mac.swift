@@ -435,27 +435,35 @@ final class RoomView: NSView {
 // MARK: - Settings rows: privacy ledger, stream mode, visits, focus
 
 extension Backend {
+    /// Settings, Privacy: the ledger (D §9), focus, stream mode, visits, export and delete.
     func privacyControls() -> [NSView] {
-        var v: [NSView] = [caption("Privacy ledger")]
+        let w = pageWidth
         let rows = [("Code, prompts, diffs", "never read"), ("Screen contents", "never read"), ("File paths, repo names", "stay on this Mac"),
                     ("Tool names and counts", "only for the diary, if on"), ("Impression counts", "a signed number per campaign"),
                     ("Identity", "one anonymous proof of personhood")]
-        for (k, val) in rows { v.append(row(k, val)) }
-        v.append(label("Always on: pets duck when the screen is shared or recorded, sleep in meetings, hide in full screen. \u{2325}\u{2318}P pauses everything.", 11, .regular, .secondaryLabelColor))
-        v.append(NSStackView(views: [NSButton(title: "Export my data\u{2026}", target: self, action: #selector(exportData)),
-                                     NSButton(title: "Delete my data\u{2026}", target: self, action: #selector(deleteData))]))
-        let stream = NSButton(checkboxWithTitle: "Stream mode (OBS overlay on 127.0.0.1:\(StreamServer.port)/overlay; lines off)", target: self, action: #selector(toggleStream(_:)))
-        stream.state = PrivacyController.streamOn ? .on : .off
-        let visits = NSButton(checkboxWithTitle: "Allow visits from other pets (guestbook)", target: self, action: #selector(toggleVisits(_:)))
-        visits.state = PrivacyController.visitsOn ? .on : .off
-        let focus = NSSegmentedControl(labels: FocusSession.durations.map { "Focus \($0)m" }, trackingMode: .momentary, target: self, action: #selector(startFocus(_:)))
-        return v + [stream, visits, caption("Focus (\u{2325}\u{2318}F starts 25 min; lines off, no earning)"), focus]
+        let ledger = UI.group("What leaves this Mac", rows.map { UI.kv($0.0, $0.1, width: w, valueColor: UI.text) },
+                              note: "Always on: pets duck when the screen is shared or recorded, sleep in meetings and hide in full screen. \u{2325}\u{2318}P pauses everything.", width: w)
+        let focus = UI.group("Focus", [
+            UI.row("Start a focus session", "Lines off and no earning while it runs. \u{2325}\u{2318}F starts 25 minutes.",
+                   Seg(FocusSession.durations.map { "\($0)m" }, selected: -1, momentary: true, target: self, action: #selector(startFocus(_:))), width: w),
+        ], width: w)
+        let sharing = UI.group("Sharing", [
+            UI.row("Stream mode", "An OBS overlay on 127.0.0.1:\(StreamServer.port)/overlay. Lines off, views not counted.",
+                   Toggle(on: PrivacyController.streamOn, target: self, action: #selector(toggleStream(_:)), label: "Stream mode"), width: w),
+            UI.row("Allow visits", "Other pets can visit your room and sign the guestbook.",
+                   Toggle(on: PrivacyController.visitsOn, target: self, action: #selector(toggleVisits(_:)), label: "Allow visits"), width: w),
+        ], width: w)
+        let data = UI.group("Your data", [
+            UI.row("Export", "Everything the pet keeps on this Mac, as files.", Btn("Export\u{2026}", target: self, action: #selector(exportData)), width: w),
+            UI.row("Delete", "Removes it from this Mac. Asks first.", Btn("Delete\u{2026}", target: self, action: #selector(deleteData)), width: w),
+        ], width: w)
+        return [ledger, focus, sharing, data]
     }
     @objc func exportData() { privacy.export() }
     @objc func deleteData() { privacy.deleteAll() }
     @objc func toggleStream(_ b: NSButton) { privacy.setStream(b.state == .on) }
     @objc func toggleVisits(_ b: NSButton) { defaults.set(b.state == .on, forKey: "visits") }
-    @objc func startFocus(_ s: NSSegmentedControl) {
+    @objc func startFocus(_ s: Seg) {
         if privacy.focus != nil { privacy.endFocus(finished: false) }
         privacy.toggleFocus(FocusSession.durations[max(0, s.selectedSegment)])
     }

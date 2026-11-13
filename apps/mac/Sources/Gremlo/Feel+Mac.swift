@@ -77,25 +77,33 @@ enum Feel {
 }
 
 extension Backend {
-    /// Settings rows: theme, sound level, haptics.
+    /// Settings, Notch and sound: sound level and haptics (R2 §8, HAPTICS.md).
     func feelControls() -> [NSView] {
-        let theme = NSSegmentedControl(labels: ThemeSetting.allCases.map { $0.rawValue.capitalized }, trackingMode: .selectOne, target: self, action: #selector(setTheme(_:)))
-        theme.selectedSegment = ThemeSetting.allCases.firstIndex(of: themeSetting) ?? 0
-        let sound = NSPopUpButton(frame: .zero, pullsDown: false)
-        for l in SoundLevel.allCases { sound.addItem(withTitle: l.title) }
-        sound.selectItem(at: soundLevel.rawValue)
-        sound.target = self
-        sound.action = #selector(setSoundLevel(_:))
-        let haptic = NSSegmentedControl(labels: ["On", "Subtle", "Off"], trackingMode: .selectOne, target: self, action: #selector(setHaptics(_:)))
-        haptic.selectedSegment = HapticLevel.allCases.firstIndex(of: hapticLevel) ?? 0
-        return [caption("Theme"), theme, caption("Sound"), sound, caption("Haptics (Force Touch trackpad)"), haptic,
-                caption("Cost alerts (estimate, never stops an agent)"), alertPicker("softAlertRunCents", "per run"), alertPicker("softAlertDayCents", "per day")]
+        let w = pageWidth
+        let titles = ["Off", "Approvals", "Pet", "All"]
+        return [UI.group("Feel", [
+            UI.row("Sound", "Off, approvals only, pet sounds or everything. Silent during screen shares and meetings.",
+                   Seg(titles, selected: soundLevel.rawValue, target: self, action: #selector(setSoundLevel(_:))), width: w),
+            UI.row("Haptics", "Force Touch trackpad. Never for a sponsored line.",
+                   Seg(["On", "Subtle", "Off"], selected: HapticLevel.allCases.firstIndex(of: hapticLevel) ?? 0, target: self, action: #selector(setHaptics(_:))), width: w),
+        ], width: w)]
+    }
+    func themeControl() -> NSView {
+        Seg(ThemeSetting.allCases.map { $0.rawValue.capitalized }, selected: ThemeSetting.allCases.firstIndex(of: themeSetting) ?? 0, target: self, action: #selector(setTheme(_:)))
+    }
+    /// Settings, Earning: amber pulses at a spend you choose. An estimate; it never stops an agent.
+    func costAlertGroup() -> NSView {
+        let w = pageWidth
+        return UI.group("Cost alerts", [
+            UI.row("Per run", nil, UI.popup(alertPicker("softAlertRunCents")), width: w),
+            UI.row("Per day", nil, UI.popup(alertPicker("softAlertDayCents")), width: w),
+        ], note: "An estimate from the transcript's token counts. It never stops an agent.", width: w)
     }
 
     static let alertSteps = [0, 100, 500, 1000, 2500, 5000]  // cents
-    func alertPicker(_ key: String, _ label: String) -> NSPopUpButton {
+    func alertPicker(_ key: String) -> NSPopUpButton {
         let p = NSPopUpButton(frame: .zero, pullsDown: false)
-        for c in Backend.alertSteps { p.addItem(withTitle: c == 0 ? "Off \(label)" : "$\(c / 100) \(label)") }
+        for c in Backend.alertSteps { p.addItem(withTitle: c == 0 ? "Off" : "$\(c / 100)") }
         p.selectItem(at: Backend.alertSteps.firstIndex(of: defaults.integer(forKey: key)) ?? 0)
         p.identifier = NSUserInterfaceItemIdentifier(key)
         p.target = self
@@ -107,16 +115,16 @@ extension Backend {
         defaults.set(Backend.alertSteps[max(0, p.indexOfSelectedItem)], forKey: key)
     }
 
-    @objc func setTheme(_ s: NSSegmentedControl) {
+    @objc func setTheme(_ s: Seg) {
         themeSetting = ThemeSetting.allCases[max(0, s.selectedSegment)]
         defaults.set(themeSetting.rawValue, forKey: "theme")
         applyTheme()
     }
-    @objc func setSoundLevel(_ s: NSPopUpButton) {
-        soundLevel = SoundLevel(rawValue: s.indexOfSelectedItem) ?? .default
+    @objc func setSoundLevel(_ s: Seg) {
+        soundLevel = SoundLevel(rawValue: s.selectedSegment) ?? .default
         defaults.set(soundLevel.rawValue, forKey: "soundLevel")
     }
-    @objc func setHaptics(_ s: NSSegmentedControl) {
+    @objc func setHaptics(_ s: Seg) {
         hapticLevel = HapticLevel.allCases[max(0, s.selectedSegment)]
         defaults.set(hapticLevel.rawValue, forKey: "haptics")
     }

@@ -80,25 +80,32 @@ final class PhoneController {
 }
 
 extension Backend {
+    /// Settings, Phone and Mac. Approvals are sealed end to end; the relay can't read them.
     func phoneControls() -> [NSView] {
-        var v: [NSView] = [caption("Phone and Watch (approvals are sealed; the relay can't read them)")]
-        if let p = phone.pairing {
-            if let img = PhoneController.qr(p.code) {
-                let iv = NSImageView(image: img)
-                iv.widthAnchor.constraint(equalToConstant: 180).isActive = true
-                iv.heightAnchor.constraint(equalToConstant: 180).isActive = true
-                v.append(iv)
-            }
-            v.append(label("Scan in the Gremlo phone app, or copy the code.", 11, .regular, .secondaryLabelColor))
-            v.append(NSStackView(views: [NSButton(title: "Copy pairing code", target: self, action: #selector(copyPairing)),
-                                         NSButton(title: "Unpair", target: self, action: #selector(unpairPhone))]))
-        } else {
-            v.append(NSButton(title: "Pair a phone", target: self, action: #selector(pairPhone)))
+        let w = pageWidth
+        guard let p = phone.pairing else {
+            return [UI.group("Phone and Watch", [
+                UI.row("Pair a phone", "Answer approvals from the lock screen or your Watch. The relay can't read them.",
+                       Btn("Pair", style: .primary, target: self, action: #selector(pairPhone)), width: w),
+            ], width: w)]
         }
-        return v
+        var rows: [NSView] = []
+        if let img = PhoneController.qr(p.code) {
+            let iv = NSImageView(image: img)
+            iv.wantsLayer = true
+            iv.layer?.backgroundColor = NSColor.white.cgColor  // a QR needs its white quiet zone in both themes
+            iv.layer?.cornerRadius = 8
+            UI.fixed(iv, w: 168, h: 168)
+            let s = UI.vstack([iv, UI.label("Scan in the Gremlo phone app, or copy the code.", UI.body(11), UI.text2, width: w - 28)], spacing: 10,
+                              insets: NSEdgeInsets(top: 14, left: 14, bottom: 6, right: 14))
+            rows.append(s)
+        }
+        rows.append(UI.row("Pairing code", nil, UI.hstack([Btn("Copy", target: self, action: #selector(copyPairing)),
+                                                           Btn("Unpair", style: .ghost, target: self, action: #selector(unpairPhone))]), width: w))
+        return [UI.group("Phone and Watch", rows, width: w)]
     }
-    @objc func pairPhone() { phone.pairing = PhonePairing.new(relay: base); showingSettings = false; openSettings() }
-    @objc func unpairPhone() { phone.pairing = nil; showingSettings = false; openSettings() }
+    @objc func pairPhone() { phone.pairing = PhonePairing.new(relay: base); settings.reload() }
+    @objc func unpairPhone() { phone.pairing = nil; settings.reload() }
     @objc func copyPairing() {
         guard let p = phone.pairing else { return }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(p.code, forType: .string)
@@ -109,20 +116,18 @@ extension Backend {
 
 extension Backend {
     func advancedControls() -> [NSView] {
-        var v: [NSView] = [caption("Advanced")]
-        v.append(row("Pet account", petName))
-        v.append(row("Server", base))
+        let w = pageWidth
         let sha = { (u: URL?) -> String in
             guard let u, let d = try? Data(contentsOf: u) else { return "\u{2014}" }
             return SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined().prefix(16) + "\u{2026}"
         }
         let bundled = Bundle.main.url(forResource: "gremlo-hook", withExtension: "sh") ?? Bundle.module.url(forResource: "gremlo-hook", withExtension: "sh")
         let running = sha(ClaudeHooks.scriptURL), shipped = sha(bundled)
-        v.append(row("Running hook", running))
-        v.append(row("This build's hook", shipped))
-        if running != shipped && running != "\u{2014}" { v.append(label("The installed hook differs from this build's; it's replaced at the next launch.", 11, .regular, .systemOrange)) }
-        if info?.explorer != nil { v.append(NSButton(title: "Open the pet's account in the explorer", target: self, action: #selector(openAccount))) }
-        return v
+        var rows = [UI.kv("Pet account", petName, width: w), UI.kv("Server", base, width: w),
+                    UI.kv("Running hook", running, width: w), UI.kv("This build's hook", shipped, width: w)]
+        if info?.explorer != nil { rows.append(UI.row("Pet's account", nil, Btn("Open in explorer", symbol: "arrow.up.right", target: self, action: #selector(openAccount)), width: w)) }
+        let differs = running != shipped && running != "\u{2014}"
+        return [UI.group("Advanced", rows, note: differs ? "The installed hook differs from this build's; it's replaced at the next launch." : nil, width: w)]
     }
     @objc func openAccount() {
         guard let e = info?.explorer, let u = URL(string: "\(e)/address/\(petName)") else { return }

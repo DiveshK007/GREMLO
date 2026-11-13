@@ -151,29 +151,37 @@ final class SocialController {
 }
 
 extension Backend {
+    /// Settings, Team and park. Both are opt-in; your companion visits, never the earner.
     func socialControls() -> [NSView] {
-        let code = NSTextField(string: SocialController.team); code.placeholderString = "team code (6-40 of a-z, 0-9, -)"
-        let handle = NSTextField(string: SocialController.handle); handle.placeholderString = "your handle"
+        let w = pageWidth
+        let code = Field(SocialController.team, placeholder: "team code", width: 200)
+        let handle = Field(SocialController.handle, placeholder: "your handle", width: 200)
         code.identifier = NSUserInterfaceItemIdentifier("team.code"); handle.identifier = NSUserInterfaceItemIdentifier("team.handle")
         teamFields = (code, handle)
-        let join = NSButton(title: "Join team", target: self, action: #selector(joinTeam))
-        let to = NSTextField(string: ""); to.placeholderString = "teammate's handle"
-        let pr = NSTextField(string: ""); pr.placeholderString = "PR link (optional)"
+        let to = Field("", placeholder: "teammate's handle", width: 200)
+        let pr = Field("", placeholder: "https://github.com/\u{2026}/pull/1", width: 200)
         visitFields = (to, pr)
-        let send = NSButton(title: "Send my companion", target: self, action: #selector(sendCompanion))
-        let park = NSButton(checkboxWithTitle: "Show my pet in the park (name, species, stage, outfit only)", target: self, action: #selector(togglePark(_:)))
-        park.state = SocialController.parkOn ? .on : .off
-        var v: [NSView] = [caption("Team (opt-in on both sides; your companion visits, never the earner)"), code, handle, join, to, pr, send, caption("Park"), park]
-        if !SocialController.blockedBrands.isEmpty {
-            v.append(label("Hidden brands: \(SocialController.blockedBrands.joined(separator: ", "))", 11, .regular, .secondaryLabelColor))
-            v.append(NSButton(title: "Show hidden brands again", target: self, action: #selector(clearBlocked)))
-        }
-        return v
+        return [
+            UI.group("Team", [
+                UI.row("Team code", "6 to 40 of a\u{2013}z, 0\u{2013}9 and dashes. Everyone on the team uses the same one.", code, width: w),
+                UI.row("Your handle", nil, handle, width: w),
+                UI.row("", nil, Btn("Join team", style: .primary, target: self, action: #selector(joinTeam)), width: w),
+            ], note: "Opt-in on both sides. Your companion visits, never the earner.", width: w),
+            UI.group("Send your companion", [
+                UI.row("To", nil, to, width: w),
+                UI.row("Pull request", "Optional.", pr, width: w),
+                UI.row("", nil, Btn("Send", target: self, action: #selector(sendCompanion)), width: w),
+            ], width: w),
+            UI.group("Park", [
+                UI.row("Show my pet in the park", "Name, species, stage and outfit only. No ranking, no counts.",
+                       Toggle(on: SocialController.parkOn, target: self, action: #selector(togglePark(_:)), label: "Show my pet in the park"), width: w),
+            ], width: w),
+        ]
     }
     @objc func joinTeam() { if let (c, h) = teamFields { social.joinTeam(code: c.stringValue.trimmingCharacters(in: .whitespaces), handle: h.stringValue.trimmingCharacters(in: .whitespaces)) } }
     @objc func sendCompanion() { if let (to, pr) = visitFields { social.sendVisit(to: to.stringValue.trimmingCharacters(in: .whitespaces), pr: pr.stringValue.trimmingCharacters(in: .whitespaces)) } }
     @objc func togglePark(_ b: NSButton) { social.setPark(b.state == .on) }
-    @objc func clearBlocked() { defaults.removeObject(forKey: "blockedBrands"); shown = ""; render() }
+    @objc func clearBlocked() { defaults.removeObject(forKey: "blockedBrands"); shown = ""; render(); settings.reload() }
     @objc func notForMe() { social.notForMe() }
     @objc func reportLine() { social.report() }
 }
