@@ -120,9 +120,9 @@ export default function Money() {
         <div className="sub-head"><div><div className="eyebrow">The rule</div><h2>A sighting counts only when</h2></div></div>
         <div className="rule">
           <ul className="checks">
-            <li>the plate is fully visible for 2 seconds or more</li>
+            <li>the sign has been on screen for 5 seconds or more</li>
             <li>the screen is unlocked, not shared and not recorded</li>
-            <li>someone used the Mac in the last minute</li>
+            <li>someone used the Mac in the last 5 minutes</li>
             <li>the pet is under 12 lines an hour</li>
           </ul>
           <div>
