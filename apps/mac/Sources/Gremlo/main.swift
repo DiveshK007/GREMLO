@@ -1096,6 +1096,7 @@ struct PetInfo: Decodable {
     let explorer: String? // nearblocks for the server's network
     let meals: [String]? // settlement txs that fed the compute budget: one meal each, for growth
     let paired: Bool? // a Mac is paired to this pet; nil from an older server
+    let purse: PurseInfo? // the pet's own purse, when it has one; it pays for each thought itself
 }
 
 /// Species are earned, never bought (spec D §2): starters are open; the rest show what unlocks them.
@@ -1123,7 +1124,10 @@ struct WaitClock {
         return Int((seconds + (since.map { min(now.timeIntervalSince($0), WaitClock.maxStretch) } ?? 0)) / 60)
     }
 }
-struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String? }
+struct ThinkResult: Decodable { let action: String; let say: String?; let reason: String?; let requestId: String?; let payFor: PayFor? }
+/// A thought the pet's purse owes (server: bill); the Mac pays it with its pay_inference key.
+struct PayFor: Codable, Equatable { let requestId: String; let amount: String; let payTo: String; let purse: String }
+struct PurseInfo: Decodable, Equatable { let account: String; let perCall: String; let daily: String }
 
 let popoverWidth: CGFloat = 340
 
@@ -1222,6 +1226,7 @@ final class Backend: NSObject {
     lazy var privacy: PrivacyController = PrivacyController(backend: self)
     lazy var social: SocialController = SocialController(backend: self)
     lazy var phone: PhoneController = PhoneController(backend: self)
+    lazy var purse: PurseController = PurseController(backend: self)
     lazy var github: GitHubController = GitHubController(backend: self)
     var teamFields: (NSTextField, NSTextField)?
     var visitFields: (NSTextField, NSTextField)?
@@ -1277,6 +1282,7 @@ final class Backend: NSObject {
             guard let self, !self.pet.offline, !self.demoMode else { done(nil, nil); return }
             self.request("/pets/\(self.petName)/diary", body: payload) { data, _ in
                 let o = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                if let p = o?["payFor"], let d = try? JSONSerialization.data(withJSONObject: p), let pay = try? JSONDecoder().decode(PayFor.self, from: d) { self.purse.pay(pay) }
                 done(o?["entry"] as? String, o?["requestId"] as? String)
             }
         }
@@ -1437,6 +1443,7 @@ final class Backend: NSObject {
             self.thinking = false
             if let err { self.lastThink = "think failed: \(err)" }
             else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
+                if let pay = r.payFor { self.purse.pay(pay) }  // a purse pet pays for this thought itself
                 let id = r.requestId.map { "completion \($0)" } ?? "no AI call"
                 self.lastThink = r.action == "sleep" ? "sleep: \(r.reason ?? "") (\(id))" : "\(r.action) \"\(r.say ?? "")\" (\(id))"
                 // Exactly what the AI said, only when it said something. Never invent a line.

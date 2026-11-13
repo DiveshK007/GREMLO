@@ -127,7 +127,7 @@ extension Backend {
         case .notch: return feelControls() + [extrasGroup()]
         case .privacy: return privacyControls()
         case .team: return socialControls()
-        case .devices: return phoneControls() + [thisMacGroup()]
+        case .devices: return phoneControls() + [thisMacGroup(), purseGroup()]
         case .developer: return huntControls() + [demoGroup()] + advancedControls()
         }
     }

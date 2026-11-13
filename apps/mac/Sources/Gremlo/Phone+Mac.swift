@@ -146,9 +146,9 @@ enum Keychain {
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
         return String(data: d, encoding: .utf8)
     }
-    static func set(_ v: String) {
-        delete()
-        var q = query(); q[kSecValueData as String] = Data(v.utf8); q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    static func set(_ v: String, service: String = "dev.gremlo.phone") {
+        delete(service: service)
+        var q = query(service); q[kSecValueData as String] = Data(v.utf8); q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(q as CFDictionary, nil)
     }
     static func delete(service: String = "dev.gremlo.phone") { SecItemDelete(query(service) as CFDictionary) }
