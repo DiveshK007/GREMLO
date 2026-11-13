@@ -12,6 +12,10 @@
   --bloom: cubic-bezier(.34,1.4,.5,1); --settle: cubic-bezier(.3,1,.4,1);
   color-scheme: dark;
 }
+/* accent text (APP_PAGES_REDESIGN §1.2): the accent on the dark desk, the pet's paper-safe shade in Light;
+   site.js sets --accent-safe with every accent change */
+body { --accent-safe: #C1442D; --accent-text: var(--accent); }
+html[data-theme="light"] body { --accent-text: var(--accent-safe); }
 * { box-sizing: border-box; }
 html { background: var(--ink); }
 body { background: var(--ink); color: var(--paper); font: 400 16px/1.55 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; transition: --accent .7s ease; }
@@ -20,10 +24,10 @@ html.lenis, html.lenis body { height: auto; }
 canvas { image-rendering: pixelated; display: block; }
 a { color: inherit; }
 button { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
 .wrap { width: 100%; max-width: 1280px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
 .dsp { font-family: var(--display); font-weight: 800; font-variation-settings: 'wdth' 80, 'opsz' 96; letter-spacing: -0.035em; line-height: .88; text-wrap: balance; }
-.eyebrow { font: 500 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.eyebrow { font: 500 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text); }
 .mono { font-family: var(--mono); }
 .btn { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; font-weight: 600; font-size: 15px; text-decoration: none; border: 0; cursor: pointer; transition: transform .2s var(--settle), background .2s; }
 .btn:hover { transform: translateY(-2px); }
@@ -153,7 +157,7 @@ section { position: relative; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .steps li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); opacity: .38; transition: opacity .3s; }
 .steps li.on { opacity: 1; }
-.steps li span { font: 11px/1.6 var(--mono); color: var(--accent); }
+.steps li span { font: 11px/1.6 var(--mono); color: var(--accent-text); }
 .steps li b { display: block; font-size: 17px; font-weight: 600; margin-bottom: 2px; }
 .steps li p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.5; }
 @media (max-width: 960px) { .steps li:not(.on) { display: none; } .steps li { border-top: 0; } }
@@ -263,10 +267,10 @@ section { position: relative; }
 .earn { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 560px) { .earn { grid-template-columns: 1fr 1fr; } }
 .earn div { font-size: 12.5px; color: var(--text-2); padding: 10px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--rule); }
-.earn b { color: var(--accent); font: 500 12px var(--mono); margin-right: 4px; }
+.earn b { color: var(--accent-text); font: 500 12px var(--mono); margin-right: 4px; }
 .buy { margin-top: 4px; min-height: 40px; border-radius: 10px; border: 0; background: var(--paper); color: var(--ink); font-weight: 600; cursor: pointer; }
 .buy[disabled] { background: var(--graphite); color: var(--text-3); cursor: default; }
-.toast { min-height: 20px; font: 12px/1.4 var(--mono); color: var(--accent); }
+.toast { min-height: 20px; font: 12px/1.4 var(--mono); color: var(--accent-text); }
 
 /* ---------- money parade ---------- */
 .parade { position: relative; height: 230px; overflow: hidden; border-bottom: 1.5px solid var(--rule); }
@@ -277,7 +281,7 @@ section { position: relative; }
 .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding-block: 48px clamp(60px, 9vw, 120px); }
 @media (max-width: 860px) { .flow { grid-template-columns: 1fr 1fr; } }
 .flow div { background: var(--carbon); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
-.flow i { font: normal 11px/1 var(--mono); color: var(--accent); }
+.flow i { font: normal 11px/1 var(--mono); color: var(--accent-text); }
 .flow b { font-size: 18px; }
 .flow p { margin: 0; font-size: 13.5px; color: var(--text-2); }
 

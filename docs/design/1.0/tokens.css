@@ -1,135 +1,67 @@
-/* Gremlo 1.0 tokens, round 2.
-   The UI is ink and paper. The active pet supplies --accent.
-   New in round 2: full light theme, 29-row sheets, the sign kit. */
+/* Gremlo 1.0 tokens · replaces docs/design/1.0/tokens.css and apps/web/app/tokens.css.
+   Shared by the home page (site.css) and every app page. See APP_PAGES_REDESIGN.md §1. */
 
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #FF5A3C; }
 
 :root {
-  --ink: #0B0B0B;
-  --carbon: #141414;
-  --graphite: #1F1F1F;
-  --bone: #E9E6DF;
-  --paper: #F4F2ED;
-  --notch: #000000;            /* hardware: same in both themes */
-
-  /* dark (default) */
-  --bg: var(--ink);
-  --surface: var(--carbon);
-  --control: var(--graphite);
-  --fg: var(--paper);
-  --text: rgba(244, 242, 237, .85);
-  --text-2: rgba(244, 242, 237, .62);
-  --text-3: rgba(244, 242, 237, .45);
-  --rule: rgba(244, 242, 237, .14);
-  --shadow-float: 0 30px 70px rgba(0, 0, 0, .6), 0 0 0 1px rgba(244, 242, 237, .08);
-
-  --accent: #FF5A3C;           /* fills, dots, bars, buttons */
-  --accent-on-paper: #C1442D;  /* accent-coloured TEXT in light mode */
-  --accent-text: var(--accent);
-
-  --font-display: 'Bricolage Grotesque', Inter, system-ui, sans-serif;
-  --font-body: Inter, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-
-  --r-block: 0;
-  --r-control: 6px;
-  --r-surface: 14px;
-
-  --ease-snap: cubic-bezier(.2, .8, .2, 1);
-  --ease-settle: cubic-bezier(.3, 1, .4, 1);
-  --ease-bloom: cubic-bezier(.34, 1.4, .5, 1);
-  --t-snap: 160ms;
-  --t-settle: 280ms;
-  --t-bloom: 420ms;
+  /* neutrals (fixed) */
+  --ink: #0B0B0B; --carbon: #141414; --graphite: #1F1F1F; --bone: #E9E6DF; --paper: #F4F2ED; --notch: #000;
+  /* type */
+  --display: 'Bricolage Grotesque', 'Arial Narrow', Inter, system-ui, sans-serif;
+  --body: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  /* motion */
+  --snap: cubic-bezier(.2,.8,.2,1); --settle: cubic-bezier(.3,1,.4,1); --bloom: cubic-bezier(.34,1.4,.5,1);
+  /* radius: the built site wins (see APP_PAGES_REDESIGN.md §1.3) */
+  --r-pill: 999px; --r-field: 10px; --r-tile: 16px; --r-block: 0;
+  /* accent: --accent fills things, --accent-text colours text. They differ only in Light. */
+  --accent: #FF5A3C; --accent-safe: #C1442D; --signal: #FF5A3C;
+  --bar-h: 38px;
 }
 
-[data-theme="light"] {
-  --bg: var(--paper);
-  --surface: var(--bone);
-  --control: rgba(11, 11, 11, .06);
-  --fg: var(--ink);
-  --text: rgba(11, 11, 11, .85);
-  --text-2: rgba(11, 11, 11, .62);
-  --text-3: rgba(11, 11, 11, .45);
-  --rule: rgba(11, 11, 11, .14);
-  --shadow-float: 0 20px 50px rgba(11, 11, 11, .18), 0 0 0 1px rgba(11, 11, 11, .08);
-  --accent-text: var(--accent-on-paper);
+/* ---------- dark (default look, and System when the OS is dark) ---------- */
+:root, html[data-theme="dark"] {
+  --bg: var(--ink); --surface: var(--carbon); --surface-2: var(--graphite); --field: var(--carbon);
+  --fg: var(--paper); --text: rgba(244,242,237,.85); --text-2: rgba(244,242,237,.62); --text-3: rgba(244,242,237,.45);
+  --rule: rgba(244,242,237,.14); --rule-strong: rgba(244,242,237,.32);
+  --bar-bg: rgba(11,11,11,.88);
+  --shadow-float: 0 24px 60px rgba(0,0,0,.55);
+  --cert-bg: var(--paper); --cert-shadow: 0 30px 80px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+/* ---------- light ---------- */
+html[data-theme="light"] {
+  --bg: var(--paper); --surface: var(--bone); --surface-2: #DEDAD1; --field: #FFFDF8;
+  --fg: var(--ink); --text: rgba(11,11,11,.85); --text-2: rgba(11,11,11,.66); --text-3: rgba(11,11,11,.55);
+  --rule: rgba(11,11,11,.14); --rule-strong: rgba(11,11,11,.34);
+  --bar-bg: rgba(244,242,237,.88);
+  --shadow-float: 0 18px 44px rgba(11,11,11,.16);
+  --cert-bg: #FFFDF8; --cert-shadow: 0 20px 50px rgba(11,11,11,.16);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  html:not([data-theme]) {
+    --bg: var(--paper); --surface: var(--bone); --surface-2: #DEDAD1; --field: #FFFDF8;
+    --fg: var(--ink); --text: rgba(11,11,11,.85); --text-2: rgba(11,11,11,.66); --text-3: rgba(11,11,11,.55);
+    --rule: rgba(11,11,11,.14); --rule-strong: rgba(11,11,11,.34);
+    --bar-bg: rgba(244,242,237,.88);
+    --shadow-float: 0 18px 44px rgba(11,11,11,.16);
+    --cert-bg: #FFFDF8; --cert-shadow: 0 20px 50px rgba(11,11,11,.16);
+    color-scheme: light;
+  }
 }
 
-[data-pet="gremlo"] { --accent: #FF5A3C; --accent-on-paper: #C1442D; --sheet: url(assets/pets/gremlo/spritesheet.webp);       --kit: url(assets/pets/gremlo/signkit.png);       --plate-y: 26; }
-[data-pet="pip"]    { --accent: #FFC93C; --accent-on-paper: #876A1F; --sheet: url(assets/pets/gremlo-pip/spritesheet.webp);   --kit: url(assets/pets/gremlo-pip/signkit.png);   --plate-y: 47; }
-[data-pet="moss"]   { --accent: #8FD14F; --accent-on-paper: #52792D; --sheet: url(assets/pets/gremlo-moss/spritesheet.webp);  --kit: url(assets/pets/gremlo-moss/signkit.png);  --plate-y: 47; }
-[data-pet="gloop"]  { --accent: #2ED3B7; --accent-on-paper: #1B7C6B; --sheet: url(assets/pets/gremlo-gloop/spritesheet.webp); --kit: url(assets/pets/gremlo-gloop/signkit.png); --plate-y: 104; }
-[data-pet="byte"]   { --accent: #4CC9FF; --accent-on-paper: #2C7696; --sheet: url(assets/pets/gremlo-byte/spritesheet.webp);  --kit: url(assets/pets/gremlo-byte/signkit.png);  --plate-y: 54; }
-[data-pet="puff"]   { --accent: #8FA8FF; --accent-on-paper: #5B6BA3; --sheet: url(assets/pets/gremlo-puff/spritesheet.webp);  --kit: url(assets/pets/gremlo-puff/signkit.png);  --plate-y: 62; }
-[data-pet="wisp"]   { --accent: #B48CFF; --accent-on-paper: #7C60AF; --sheet: url(assets/pets/gremlo-wisp/spritesheet.webp);  --kit: url(assets/pets/gremlo-wisp/signkit.png);  --plate-y: 26; }
-[data-pet="tako"]   { --accent: #FF7AB6; --accent-on-paper: #AA5179; --sheet: url(assets/pets/gremlo-tako/spritesheet.webp);  --kit: url(assets/pets/gremlo-tako/signkit.png);  --plate-y: 61; }
-/* --plate-y is plateAnchor[0].y from pet.json (cell px at full scale). Read pet.json for per-frame values. */
+/* accent text resolves where the pet is set, so it follows data-pet */
+body, [data-pet] { --accent-text: var(--accent); }
+html[data-theme="light"] body, html[data-theme="light"] [data-pet] { --accent-text: var(--accent-safe); }
+@media (prefers-color-scheme: light) { html:not([data-theme]) body, html:not([data-theme]) [data-pet] { --accent-text: var(--accent-safe); } }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 400 16px/1.5 var(--font-body);
-  -webkit-font-smoothing: antialiased;
-}
-
-.dsp { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.04em; line-height: .9; }
-.mono { font-family: var(--font-mono); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
-
-/* ---- Sprites: 29-row sheets, 192 x 208 cells, 8 columns ----
-   <span class="pet" data-pet="pip" style="--row:28; --n:6; --d:220ms"></span>
-   --s: .2857 is real size (48 px pet). */
-.pet {
-  --s: .2857; --row: 5; --n: 4; --o: 0; --d: 250ms;
-  display: inline-block; flex: none;
-  width: calc(192px * var(--s));
-  height: calc(208px * var(--s));
-  background-image: var(--sheet);
-  background-size: calc(1536px * var(--s)) calc(6032px * var(--s));
-  background-repeat: no-repeat;
-  background-position: calc(-192px * var(--o) * var(--s)) calc(-208px * var(--row) * var(--s));
-  image-rendering: pixelated;
-  animation: pet-strip calc(var(--n) * var(--d)) steps(var(--n)) infinite;
-}
-.pet.still { animation: none; }   /* gaze (17) and tools (25) pick a frame with --o */
-@keyframes pet-strip {
-  from { background-position-x: calc(-192px * var(--o) * var(--s)); }
-  to   { background-position-x: calc(-192px * (var(--o) + var(--n)) * var(--s)); }
-}
-
-/* ---- The held sign ----
-   <span class="held" data-pet="pip" style="--s:.4286">
-     <span class="pet" style="--row:28; --n:6; --d:220ms"></span>
-     <span class="sign">Tests in three seconds<span class="sign-ad">AD</span></span>
-   </span> */
-.held { position: relative; display: inline-block; flex: none; width: calc(192px * var(--s)); height: calc(208px * var(--s)); }
-.held > .pet { position: absolute; inset: 0; --s: inherit; }
-.sign {
-  --k: max(3px, calc(7px * var(--s)));        /* one kit pixel */
-  position: absolute; left: 50%;
-  top: calc(var(--plate-y) * 1px * var(--s)); /* plate bottom-centre */
-  transform: translate(-50%, -100%);
-  box-sizing: border-box;
-  height: calc(11 * var(--k));
-  display: flex; align-items: center;
-  padding: 0 calc(1.2 * var(--k));
-  border: solid transparent;
-  border-width: calc(3 * var(--k)) calc(4 * var(--k));
-  border-image: var(--kit) 3 4 fill / calc(3 * var(--k)) calc(4 * var(--k)) stretch;
-  image-rendering: pixelated;
-  color: var(--ink);
-  font: 600 calc(3.7 * var(--k))/1 var(--font-body);
-  white-space: nowrap;
-}
-.sign-ad {
-  position: absolute; right: 0; bottom: 100%;
-  margin-bottom: calc(3 * var(--k) - 1px);
-  background: var(--paper); color: var(--ink);
-  font: 500 9px/1 var(--font-mono); letter-spacing: .08em;
-  padding: 2px 4px; box-shadow: 0 0 0 1px var(--ink);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition-duration: 120ms !important; }
-}
+/* ---------- pet accents: set data-pet on <body> or any section ---------- */
+[data-pet="gremlo"] { --accent: #FF5A3C; --accent-safe: #C1442D; }
+[data-pet="pip"]    { --accent: #FFC93C; --accent-safe: #876A1F; }
+[data-pet="moss"]   { --accent: #8FD14F; --accent-safe: #52792D; }
+[data-pet="gloop"]  { --accent: #2ED3B7; --accent-safe: #1B7C6B; }
+[data-pet="byte"]   { --accent: #4CC9FF; --accent-safe: #2C7696; }
+[data-pet="puff"]   { --accent: #8FA8FF; --accent-safe: #5B6BA3; }
+[data-pet="wisp"]   { --accent: #B48CFF; --accent-safe: #7C60AF; }
+[data-pet="tako"]   { --accent: #FF7AB6; --accent-safe: #AA5179; }

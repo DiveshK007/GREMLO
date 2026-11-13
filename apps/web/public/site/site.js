@@ -173,7 +173,8 @@ async function init() {
   marqueeInit();
 
   /* section accents + top notch director */
-  const accentTo = c => document.body.style.setProperty('--accent', c);
+  const SAFE = { '#FF5A3C': '#C1442D', '#FFC93C': '#876A1F', '#8FD14F': '#52792D', '#2ED3B7': '#1B7C6B', '#4CC9FF': '#2C7696', '#8FA8FF': '#5B6BA3', '#B48CFF': '#7C60AF', '#FF7AB6': '#AA5179' };
+  const accentTo = c => { document.body.style.setProperty('--accent', c); document.body.style.setProperty('--accent-safe', SAFE[String(c).toUpperCase()] || '#C1442D'); };
   const directors = [];
   const reDirect = () => { const t = directors.find(d => d.isActive); if (t) setNotch(top, t.trigger.dataset.notch); };
 
@@ -240,7 +241,8 @@ async function init() {
   const stBox = document.getElementById('starter');
   starters.forEach(id => { const b = document.createElement('button'); b.type = 'button'; b.textContent = SP[id].name; b.setAttribute('aria-pressed', id === starter); b.onclick = () => { starter = id; [...stBox.children].forEach(x => x.setAttribute('aria-pressed', x === b)); certPet.setSpecies(id); document.getElementById('certSp').textContent = SP[id].name; accentTo(SP[id].c); }; stBox.appendChild(b); });
   const nameIn = document.getElementById('petName');
-  const syncName = () => { const v = nameIn.value.trim() || 'Mochi'; document.getElementById('certName').textContent = v; document.querySelector('.nl-room .room-cap').textContent = v + '’s room'; document.querySelectorAll('.nl-done .em b').forEach(b => b.textContent = v + ' earned 0.03'); document.getElementById('roomName').textContent = v + '’s room'; };
+  // one pet-name rule everywhere (APP_PAGES_REDESIGN §2): 2-24 of a-z, 0-9 and dashes, lowercased as you type
+  const syncName = () => { const clean = nameIn.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24); if (clean !== nameIn.value) nameIn.value = clean; const v = clean.length >= 2 ? clean : 'mochi'; document.getElementById('certName').textContent = v; document.querySelector('.nl-room .room-cap').textContent = v + '’s room'; document.querySelectorAll('.nl-done .em b').forEach(b => b.textContent = v + ' earned 0.03'); document.getElementById('roomName').textContent = v + '’s room'; };
   nameIn.addEventListener('input', syncName);
   const now = new Date();
   document.getElementById('certDate').textContent = now.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });

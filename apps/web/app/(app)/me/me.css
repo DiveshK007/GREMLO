@@ -1,0 +1,26 @@
+/* /me, from the app-pages export (web/me.html) */
+.lookup { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; padding-top: 28px; }
+.lookup .field { margin: 0; flex: 0 1 300px; }
+.lookup .field input { min-height: 46px; padding: 10px 14px; }
+.lookup .btn { min-height: 46px; }
+.me-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 48px; align-items: end; padding-block: clamp(36px, 6vw, 72px) 36px; }
+@media (max-width: 900px) { .me-hero { grid-template-columns: 1fr; } }
+.me-hero h1 { font-size: clamp(64px, 12vw, 180px); margin: 12px 0 18px; overflow-wrap: anywhere; }
+.mood { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 15px; color: var(--text); margin-bottom: 24px; }
+.mood b { color: var(--fg); }
+.me-stage { min-height: 340px; padding-bottom: 40px; }
+.me-stage.asleep { align-items: flex-start; padding: 0; }
+.me-stage .sleepnotch { margin-top: 0; }
+.sec { padding-top: 8px; }
+.first { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: center; }
+@media (max-width: 900px) { .first { grid-template-columns: 1fr; } }
+.first h1 { font-size: clamp(56px, 9vw, 132px); margin: 14px 0 18px; }
+.empty-box { padding: clamp(28px, 5vw, 56px); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.empty-box h2 { font: 600 clamp(24px, 2.6vw, 32px)/1.15 var(--body); letter-spacing: -.02em; margin: 0; }
+.empty-box p { margin: 0; color: var(--text-2); }
+.budget-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 20px; align-items: end; margin-bottom: 22px; }
+.budget-top .lbl { grid-column: 1 / -1; }
+.budget-top .meter { grid-column: 1 / -1; height: 14px; border-radius: 7px; }
+.budget-top b { font: 800 clamp(30px, 3.6vw, 48px)/1 var(--display); font-variation-settings: 'wdth' 80, 'opsz' 96; color: var(--fg); letter-spacing: -.03em; }
+.proof-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; align-items: baseline; margin: 40px 0 12px; }
+.proof-head h3 { margin: 0; font: 600 18px/1.2 var(--body); }

@@ -76,7 +76,8 @@ export const checkCampaign = (brief: Brief, hooks: string[], url: string, email 
 /** GET /campaigns/:id/stats -> per-hook views and clicks, queued views. */
 export type Stats = { campaignId: string; url: string | null; views: number[]; clicks: number[]; pendingViews: number; best: number | null; emailAlerts: boolean;
   heldViews: number; holdbackHours: number; voided: Record<string, number>;
-  moments?: Record<string, number | null>; reports?: number[]; paused?: number[] }; // a moment shows a count only with 50+ distinct pets
+  moments?: Record<string, number | null>; reports?: number[]; paused?: number[];  // a moment shows a count only with 50+ distinct pets
+  lines?: string[] | null };  // each line's text, so the table can show it; null when the contract can't be read
 export const campaignStats = (id: string) => call<Stats>(`/campaigns/${encodeURIComponent(id)}/stats`);
 
 /** POST /campaigns -> tell the server the line text for an onchain campaign (the chain stores only its hash). */
@@ -116,6 +117,10 @@ export type PetPublic = {
   name: string; mood: string; moodReason: string | null; walletBalance: string | null; impressionsToday: number; seeded: boolean;
   paidViews: number | null; earnedWei: string | null; level: number | null; streak: number; week: { views: number; wei: string };
   petKey: string; owner: string; payout: string; computeBalance: string | null; explorer: string; vault: string;
+  /** as the Mac last reported it; null until the Mac has thought once (then the page shows Gremlo) */
+  species?: string | null; stage?: string | null;
+  /** one settlement receipt per meal */
+  meals?: string[];
   /** the vault's compute budget for this pet; null when the chain couldn't be read */
   compute: null | { budget: string; spent: string; chargedToday: string; dailyCap: string; shareBps: number; feeSmart: string; feeCheap: string };
   lastThoughts: { action: string; requestId: string; at: number; model?: string; chargeTx?: string }[];
@@ -127,3 +132,18 @@ export type ArkivView =
   | { on: false }
   | { on: true; explorer: string; card: { key: string; expiresAt: string; hooks: string[]; url: string; rateWei: string; fundingTx: string } | null; receipts: { key: string; pet: string; views: number; amountWei: string; settleTx: string }[] };
 export const arkivCampaign = (id: string) => call<ArkivView>(`/campaigns/${encodeURIComponent(id)}/arkiv`);
+
+/** GET /park: pets whose owners chose to show them, shuffled on every load. */
+export type ParkPet = { id: string; name: string; species: string; stage: string; outfit: string[]; tricks?: string[] };
+export const parkPets = () => call<{ pets: ParkPet[] }>(`/park`);
+
+/** GET /gallery: reviewed community species; a paused one is shown, marked, while it's re-checked. */
+export type GallerySpecies = { id: string; name: string; creator: string; rows: number; at: number; paused?: boolean };
+export const gallerySpecies = () => call<{ species: GallerySpecies[] }>(`/gallery`);
+export const reportSpecies = (id: string, reason: string) => call<{ status: string }>(`/gallery/${encodeURIComponent(id)}/report`, { method: "POST", body: JSON.stringify({ reason }) });
+export const sheetUrl = (id: string) => `${SERVER_URL}/gallery/${encodeURIComponent(id)}/sheet.png`;
+
+/** Whether a pet name is free: the server answers 404 for a name nobody has. */
+export async function nameFree(name: string) {
+  try { await getPet(name); return false; } catch (e) { if (e instanceof ApiError && e.status === 404) return true; throw e; }
+}
