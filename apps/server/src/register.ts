@@ -27,7 +27,7 @@ export const WORLD_ACTIONS = new Set(["register-pet", "approve-spend"]);
 const REGISTER_ACTION = "register-pet";
 
 export type Verdict = { ok: true; nullifier: string } | { ok: false; code: string };
-export type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string; verifyTx?: string; devices?: string[] }; // petKey = name = the vault pet_id; owner/payout are NEAR accounts; devices: paired Secure Enclave keys (X9.63, base64url)
+export type PetRecord = { name: string; petKey: string; owner: string; payout: string; registerTx: string; verifyTx?: string; devices?: string[]; species?: string; stage?: string }; // petKey = name = the vault pet_id; owner/payout are NEAR accounts; devices: paired Secure Enclave keys (X9.63, base64url)
 
 /** Same number whether it arrives as decimal (IDKit) or 0x hex (Developer Portal). */
 const canonical = (n: unknown) => {

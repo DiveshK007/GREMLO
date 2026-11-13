@@ -386,6 +386,8 @@ async function getPet(key: string) {
       lastThoughts: store.thoughts[petKey],
     }),
     petKey,
+    species: rec.species ? rec.species.replace(/^gremlo-/, "") : null, // as the Mac last reported it; null until then
+    stage: rec.stage ?? null,
     // settlement txs that fed this pet's compute budget: each is one meal (a receipt) for growth on the Mac
     meals: store.payouts.filter((x) => x.pet === petKey && x.tx).map((x) => x.tx!).slice(-500),
     owner: pet?.owner ?? rec.owner,
@@ -416,11 +418,24 @@ const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) :
  * (enough for the smart rate: smart; for the cheap rate: cheap; less: no AI call, the pet sleeps hungry), and every
  * served completion is charged with charge_compute and its completion id. A sleep is a valid answer, so it is 200 too.
  */
+const LOOK_SPECIES = ["gremlo", "gremlo-pip", "gremlo-moss", "gremlo-gloop", "gremlo-byte", "gremlo-puff", "gremlo-wisp", "gremlo-tako"];
+const LOOK_STAGES = ["egg", "hatchling", "buddy", "elder"];
+/** The Mac says which species it is and how grown, so the pet page can draw it. Cosmetic only: never money or mood. */
+function rememberLook(key: string, body: any) {
+  const rec = findPet(key);
+  const species = LOOK_SPECIES.includes(body?.species) ? body.species : undefined, stage = LOOK_STAGES.includes(body?.stage) ? body.stage : undefined;
+  if (!rec || (!species && !stage) || (rec.species === (species ?? rec.species) && rec.stage === (stage ?? rec.stage))) return;
+  if (species) rec.species = species;
+  if (stage) rec.stage = stage;
+  save();
+}
+
 async function petThink(key: string, body: any) {
   const event = str(body.event);
   if (!event) throw bad("event is required");
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
   const petKey = pet.petKey;
+  rememberLook(key, body);
   const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
   if (!r.requestId && pet.moodReason) r.reason = pet.moodReason; // no call was made; say why in the pet's words
   store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
@@ -585,13 +600,16 @@ function release(id: string, ended: boolean) {
   save();
 }
 
-function campaignStats(id: string) {
+async function campaignStats(id: string) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
+  // the line text, so the dashboard can show each line and not just "#1"; null when the contract can't be read
+  const onchain = await view<OnchainCampaign | null>("get_campaign", { id: Number(id) }).catch(() => null);
+  const lines = onchain ? store.lines[`0x${onchain.line_hash}`]?.split("\n") ?? null : null;
   const views = store.hookViews[id] ?? [0, 0, 0, 0, 0], clicks = store.clicks[id] ?? [0, 0, 0, 0, 0];
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
   const heldViews = (store.held[id] ?? []).reduce((a, h) => a + h.n, 0);
   return { campaignId: id, url: store.urls[id] ?? null, views, clicks, pendingViews: pending, heldViews, holdbackHours: HOLDBACK_HOURS, voided: store.voided[id] ?? {}, best: bestHook(views, clicks), emailAlerts: mailOn && !!store.emails[id],
-    moments: momentView(store.momentViews[id]), reports: store.reports[id] ?? [], paused: pausedLines(store.reports[id], views) };
+    moments: momentView(store.momentViews[id]), reports: store.reports[id] ?? [], paused: pausedLines(store.reports[id], views), lines };
 }
 
 let statsCache: { at: number; body: unknown } | null = null;
@@ -749,7 +767,7 @@ function sendVisit(req: IncomingMessage, b: any) {
   if (!allow(visitHits, clientIp(req), Date.now(), 20, 3_600_000)) throw new HttpError(429, "slow down");
   const to = String(b?.to ?? "");
   if (!store.park[to]) throw new HttpError(404, "that pet isn't in the park");
-  const { id: _, ...from } = parkPet({ ...b?.from, id: newParkId() });
+  const { id: _, tricks: __, ...from } = parkPet({ ...b?.from, id: newParkId() });
   store.visits = [...store.visits.filter((v) => Date.now() - v.at < VISIT_TTL_MS), { to, from, at: Date.now() }].slice(-5000);
   save();
   return { ok: true };
@@ -862,7 +880,14 @@ async function route(req: IncomingMessage) {
     if (what === "state") return m === "PUT" ? putState(store.phones, ch, await readBody(req), now) : getState(store.phones, ch);
     return m === "POST" ? addAnswer(store.phones, ch, await readBody(req), now) : takeAnswers(store.phones, ch, now);
   }
-  if (m === "GET" && pathname === "/gallery") return { species: store.gallery.filter((s) => s.status === "listed") };
+  // listed and paused species (a paused one stays visible, marked, so it doesn't vanish for people who have it)
+  if (m === "GET" && pathname === "/gallery") return { species: store.gallery.filter((s) => s.status !== "review").map((s) => ({ id: s.id, name: s.name, creator: s.creator, rows: s.rows, at: s.at, paused: s.status === "paused" })) };
+  const sheet = pathname.match(/^\/gallery\/([a-f0-9]{12})\/sheet\.png$/);
+  if (m === "GET" && sheet) {
+    const s = store.gallery.find((x) => x.id === sheet[1] && x.status !== "review");
+    if (!s || !existsSync(`${GALLERY_DIR}/${s.id}/spritesheet.png`)) throw new HttpError(404, "unknown species");
+    return { file: readFileSync(`${GALLERY_DIR}/${s.id}/spritesheet.png`), type: "image/png" };
+  }
   if (m === "POST" && pathname === "/gallery") return submitSpecies(req, await readRaw(req, 12_000_000));
   const g = pathname.match(/^\/gallery\/([a-f0-9]{12})\/(report|review)$/);
   if (m === "POST" && g) return g[2] === "report" ? reportGallery(req, g[1]) : reviewGallery(req, g[1], await readBody(req));
@@ -893,6 +918,7 @@ createServer((req, res) => {
   route(req).then(
     (body: any) => {
       if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
+      if (body?.file) { res.writeHead(200, { "content-type": body.type, "cache-control": "public, max-age=3600" }); res.end(body.file); return; }
       reply(res, 200, body);
     },
     (e) => {

@@ -5,11 +5,13 @@ import { randomBytes } from "node:crypto";
 const SPECIES = ["gremlo", "gremlo-pip", "gremlo-moss", "gremlo-gloop", "gremlo-byte", "gremlo-puff", "gremlo-wisp", "gremlo-tako"];
 const STAGES = ["hatchling", "buddy", "elder"];
 const ITEMS = ["party", "beanie", "scarf", "star", "bow", "cap", "glasses", "headphones", "flower", "shades", "crown", "wizard"];
+const TRICKS = ["backflip", "juggle", "moonwalk"];
 import { HttpError } from "./register.ts";
 const bad = (m: string) => new HttpError(400, m);
 
-export type ParkPet = { id: string; name: string; species: string; stage: string; outfit: string[] };
-/** The park stores exactly {id, name, species, stage, outfit}; anything else is dropped. */
+export type ParkPet = { id: string; name: string; species: string; stage: string; outfit: string[]; tricks: string[] };
+/** The park stores exactly {id, name, species, stage, outfit, tricks}; anything else is dropped. Tricks let a tap show
+ *  one the pet has really learned (R4 §14). */
 export function parkPet(b: any): ParkPet {
   const id = String(b?.id ?? ""), name = String(b?.name ?? "").trim();
   if (!/^[a-f0-9]{16,32}$/.test(id)) throw bad("id must be the pet's random park id");
@@ -17,7 +19,8 @@ export function parkPet(b: any): ParkPet {
   if (!SPECIES.includes(b?.species)) throw bad("unknown species");
   if (!STAGES.includes(b?.stage)) throw bad("unknown stage");
   const outfit = (Array.isArray(b?.outfit) ? b.outfit : []).filter((x: unknown) => ITEMS.includes(String(x))).slice(0, 3).map(String);
-  return { id, name, species: b.species, stage: b.stage, outfit };
+  const tricks = (Array.isArray(b?.tricks) ? b.tricks : []).filter((x: unknown) => TRICKS.includes(String(x))).slice(0, 3).map(String);
+  return { id, name, species: b.species, stage: b.stage, outfit, tricks };
 }
 export const newParkId = () => randomBytes(12).toString("hex");
 
@@ -31,7 +34,7 @@ export function parkList(p: Park, now: number, rand = Math.random) {
   return list;
 }
 
-export type Visit = { to: string; from: Omit<ParkPet, "id">; at: number };
+export type Visit = { to: string; from: Omit<ParkPet, "id" | "tricks">; at: number };  // the guestbook keeps name, species, stage, outfit
 export const VISIT_TTL_MS = 24 * 3_600_000;
 
 // MARK: team relay

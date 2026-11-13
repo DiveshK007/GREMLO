@@ -111,7 +111,7 @@ final class SocialController {
 
     var parkPayload: [String: Any] {
         let g = backend.growth
-        return ["name": g.petDisplayName, "species": pet.skin.name, "stage": g.isEgg ? "hatchling" : "\(g.p.stage)", "outfit": g.p.worn]
+        return ["name": g.petDisplayName, "species": pet.skin.name, "stage": g.isEgg ? "hatchling" : "\(g.p.stage)", "outfit": g.p.worn, "tricks": g.tricks.map(\.rawValue)]
     }
 
     private func parkHeartbeat() {

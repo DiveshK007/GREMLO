@@ -1421,7 +1421,9 @@ final class Backend: NSObject {
         guard !thinking, !demoMode, !pet.offline, !paused, !pet.egg else { return } // no AI spend while demoing, offline or paused
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
-                                   "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? ""]
+                                   "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? "",
+                                   // cosmetic: lets the pet page draw the right species and stage; never money or mood
+                                   "species": pet.skin.name, "stage": growth.isEgg ? "egg" : "\(growth.p.stage)"]
         request(petPath + "/think", body: body) { data, err in
             self.thinking = false
             if let err { self.lastThink = "think failed: \(err)" }

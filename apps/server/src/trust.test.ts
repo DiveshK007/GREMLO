@@ -42,10 +42,11 @@ test("public log: signed reports chain, verify, and tampering shows", () => {
   assert.notEqual(anonPet("pet.a"), "pet.a");
 });
 
-test("park keeps exactly five fields, shuffles, and forgets pets that left", () => {
-  const p = parkPet({ id: "a".repeat(24), name: "Mochi", species: "gremlo", stage: "buddy", outfit: ["beanie", "rolex"], owner: "x", earnings: 5 });
-  assert.deepEqual(Object.keys(p).sort(), ["id", "name", "outfit", "species", "stage"]);
+test("park keeps exactly six fields, shuffles, and forgets pets that left", () => {
+  const p = parkPet({ id: "a".repeat(24), name: "Mochi", species: "gremlo", stage: "buddy", outfit: ["beanie", "rolex"], tricks: ["moonwalk", "fly"], owner: "x", earnings: 5 });
+  assert.deepEqual(Object.keys(p).sort(), ["id", "name", "outfit", "species", "stage", "tricks"]);
   assert.deepEqual(p.outfit, ["beanie"]);
+  assert.deepEqual(p.tricks, ["moonwalk"], "only tricks the Mac can learn");
   assert.throws(() => parkPet({ id: "nope", name: "x", species: "gremlo", stage: "buddy" }));
   const park: Park = { a: { pet: p, seen: 0 }, b: { pet: { ...p, id: "b".repeat(24) }, seen: 1_000_000 } };
   assert.deepEqual(parkList(park, 1_000_001).map((x) => x.id), ["b".repeat(24)]);
