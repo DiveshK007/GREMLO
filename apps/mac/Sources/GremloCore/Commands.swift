@@ -250,9 +250,10 @@ public enum CommandClient {
 
 // MARK: - Pet names
 
-/// One pet-name rule everywhere (web /pet, server, Mac): 2-24 of a-z, 0-9 and dashes.
+/// One pet-name rule everywhere (web /pet, server, Mac, the purse factory): 2-24 of a-z, 0-9 and dashes, not starting
+/// or ending with a dash, so the name is also a valid account (<pet>.<parent>).
 public enum PetName {
-    public static func valid(_ s: String) -> Bool { s.range(of: #"^[a-z0-9-]{2,24}$"#, options: .regularExpression) != nil }
+    public static func valid(_ s: String) -> Bool { s.range(of: #"^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$"#, options: .regularExpression) != nil }
     /// A name as typed or set in the environment, lowercased and trimmed, or nil if it breaks the rule.
     public static func clean(_ s: String) -> String? {
         let n = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

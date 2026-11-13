@@ -1,5 +1,6 @@
-/** One pet-name rule everywhere (web /pet, server, Mac): 2-24 of a-z, 0-9 and dashes. */
-export const PET_NAME = /^[a-z0-9-]{2,24}$/;
+/** One pet-name rule everywhere (web /pet, server, Mac, the purse factory): 2-24 of a-z, 0-9 and dashes, not starting
+ *  or ending with a dash, so the name is also a valid account. */
+export const PET_NAME = /^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/;
 export const validPetName = (n: string) => PET_NAME.test(n);
 /** What typing leaves in the field: lowercased, only allowed characters, at most 24. */
 export const cleanPetName = (raw: string) => raw.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24);

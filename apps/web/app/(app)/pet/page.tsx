@@ -84,7 +84,7 @@ export default function GetYourPet() {
 
   function validate(): string {
     if (!owner) return "Connect your wallet first.";
-    if (!validPetName(name)) return "Name: 2-24 letters, numbers or dashes.";
+    if (!validPetName(name)) return "Name: 2-24 letters, numbers or dashes, not starting or ending with a dash.";
     if (!isAccountId(payout.trim())) return "Payout must be an account id, like mochi.testnet.";
     if (!WORLD_APP_ID || !WORLD_RP_ID) return "World app ID / RP ID missing in .env.";
     return "";

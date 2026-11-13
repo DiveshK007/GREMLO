@@ -5,7 +5,7 @@ import Testing
 @Suite struct CommandTests {
     @Test func onePetNameRule() {
         #expect(PetName.valid("mochi") && PetName.valid("mochi-2") && PetName.valid(String(repeating: "a", count: 24)))
-        #expect(!PetName.valid("m") && !PetName.valid(String(repeating: "a", count: 25)) && !PetName.valid("Mochi") && !PetName.valid("mochi.gremlo"))
+        #expect(!PetName.valid("m") && !PetName.valid(String(repeating: "a", count: 25)) && !PetName.valid("Mochi") && !PetName.valid("mochi.gremlo") && !PetName.valid("-mochi") && !PetName.valid("mochi-"))
         #expect(PetName.clean(" Mochi ") == "mochi" && PetName.clean("mo chi") == nil)
     }
 

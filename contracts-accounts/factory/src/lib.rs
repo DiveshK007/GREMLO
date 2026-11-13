@@ -35,7 +35,7 @@ impl Factory {
 
     #[payable]
     pub fn create_pet(&mut self, name: String, owner: AccountId, owner_key: PublicKey, mac_key: PublicKey) -> Promise {
-        require!(Self::valid_name(&name), "a pet name is 2-32 of a-z, 0-9 and dashes");
+        require!(Self::valid_name(&name), "a pet name is 2-24 of a-z, 0-9 and dashes");
         let deposit = env::attached_deposit().as_yoctonear();
         require!(deposit >= MIN_DEPOSIT, "attach at least 2 NEAR for the purse's storage and reserve");
         require!(owner_key != mac_key, "the Mac's key must not be the owner's key");
@@ -66,9 +66,9 @@ impl Factory {
 }
 
 impl Factory {
-    /// 2-32 of a-z, 0-9 and dashes, not starting or ending with a dash.
+    /// The one pet-name rule: 2-24 of a-z, 0-9 and dashes, not starting or ending with a dash.
     pub fn valid_name(name: &str) -> bool {
-        (2..=32).contains(&name.len()) && !name.starts_with('-') && !name.ends_with('-')
+        (2..=24).contains(&name.len()) && !name.starts_with('-') && !name.ends_with('-')
             && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     }
 }
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn names() {
         assert!(Factory::valid_name("mochi") && Factory::valid_name("mochi-2"));
-        assert!(!Factory::valid_name("m") && !Factory::valid_name("-mochi") && !Factory::valid_name("Mochi") && !Factory::valid_name("mo.chi"));
+        assert!(!Factory::valid_name("m") && !Factory::valid_name("-mochi") && !Factory::valid_name("Mochi") && !Factory::valid_name("mo.chi") && !Factory::valid_name(&"a".repeat(25)));
     }
 
     #[test]

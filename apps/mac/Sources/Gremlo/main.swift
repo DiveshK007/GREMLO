@@ -1157,7 +1157,7 @@ func nearGain(_ old: String?, _ new: String?) -> String? {
 /// the server about a pet that can't exist (or quietly about someone else's).
 func startupPetName() -> String {
     let raw = Legacy.env("PET") ?? "mochi"
-    guard let n = PetName.clean(raw) else { print("GREMLO_PET \"\(raw)\" isn't a pet name: use 2-24 of a-z, 0-9 and dashes"); exit(1) }
+    guard let n = PetName.clean(raw) else { print("GREMLO_PET \"\(raw)\" isn't a pet name: use 2-24 of a-z, 0-9 and dashes, not starting or ending with a dash"); exit(1) }
     return n
 }
 
