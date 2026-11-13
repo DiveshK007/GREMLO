@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, getPet, type PetPublic } from "@/lib/api";
-import { addressLink, formatNear, formatWhen, PRODUCT, txLink } from "@/lib/config";
+import { addressLink, formatNear, formatWhen, NETWORK, PRODUCT, txLink } from "@/lib/config";
 import { knownSpecies, speciesOf, type RowName } from "@/lib/species";
 import { Pet } from "@/components/Pet";
 import { useAccent, useNotch } from "@/components/Shell";
@@ -267,6 +267,19 @@ export default function Me() {
           </tbody>
         </table>
       )}
+
+      {/* the only place on this page that names the network, contract and provider (product copy names no chain) */}
+      <details className="panel" style={{ marginTop: 40 }}>
+        <summary className="lbl" style={{ cursor: "pointer" }}>Advanced · technical details</summary>
+        <dl className="kvs" style={{ marginTop: 16 }}>
+          <dt>Network</dt><dd>NEAR {NETWORK}</dd>
+          <dt>Pet account</dt><dd className="mono">{pet.petKey}</dd>
+          <dt>Owner</dt><dd><a className="hash" href={addressLink(pet.owner)} target="_blank" rel="noreferrer">{pet.owner}</a></dd>
+          <dt>Payout</dt><dd><a className="hash" href={addressLink(pet.payout)} target="_blank" rel="noreferrer">{pet.payout}</a></dd>
+          <dt>Contract</dt><dd>{pet.vault ? <a className="hash" href={addressLink(pet.vault)} target="_blank" rel="noreferrer">{pet.vault}</a> : "—"}</dd>
+          <dt>Thinking</dt><dd>NEAR AI Cloud (private inference). Each call is charged a fixed per-tier rate in NEAR from the pet’s compute budget, with its completion id in the contract’s log.</dd>
+        </dl>
+      </details>
     </div>
   );
 }
