@@ -1,12 +1,12 @@
-# fly launch --no-deploy --copy-config  (then edit `app`), fly volumes create notchi_data --size 1 --region bom
-app = "notchi-api"
+# Deploy from the repo root (the image needs packages/brain): fly deploy . -c apps/server/fly.toml --dockerfile apps/server/Dockerfile
+app = "gremlo-api"   # Fly app names are global: change it if taken
 primary_region = "bom"
 
 [build]
   dockerfile = "Dockerfile"
 
 [mounts]
-  source = "notchi_data"
+  source = "gremlo_data"
   destination = "/data"
 
 [http_service]
