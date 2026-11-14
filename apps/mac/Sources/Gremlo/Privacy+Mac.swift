@@ -27,7 +27,7 @@ final class PrivacyController {
         HotKeys.register(2, keyCode: UInt32(kVK_ANSI_F), mods: UInt32(cmdKey | optionKey)) { [weak self] in self?.toggleFocus(25) }
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.detect() }
         Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in self?.postcardTick() }
-        if Self.streamOn { setStream(true) }
+        if Self.streamOn { DispatchQueue.main.async { [weak self] in self?.setStream(true) } }  // after init: setStream renders, which reads backend.privacy (this lazy var)
     }
 
     // MARK: Detectors (always on, no setting)
