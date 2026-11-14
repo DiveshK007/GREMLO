@@ -1,10 +1,90 @@
 # Deploying Gremlo
 
-Three pieces: the API (Fly.io), the web app (Vercel), the Mac app (signed .dmg). The vault is `vault.gremlo.testnet` on NEAR testnet.
+Three pieces: the API (a free VM, or Fly.io), the web app (Vercel), the Mac app (`install.sh` or the release dmg). The vault is `vault.gremlo.testnet` on NEAR testnet.
 Secrets live only in each host's secret store. Never commit them, never put them in the image.
-Nothing here has been deployed yet; `fly.toml` and `apps/web/vercel.json` are ready for when it is.
+Nothing here has been deployed yet. The configs are ready: `deploy/vm/` (systemd, Caddy, health check), `apps/web/vercel.json`, `apps/server/fly.toml`.
 
-## 1. API on Fly.io (Mumbai region)
+## 1. API on a free VM (Oracle Cloud or Google Cloud)
+
+One small Linux VM runs the API under systemd, behind Caddy for HTTPS, with its data on a persistent disk.
+Free options: Oracle Cloud Always Free (an Ampere A1 VM; Mumbai is `ap-mumbai-1`) or Google Cloud's free e2-micro
+(1 GB RAM, US regions only). Ubuntu 22.04 or 24.04. The files are in `deploy/vm/`.
+
+**The VM, its disk, its address**
+
+- Give the VM a static public IP (Oracle: a reserved public IP; Google: a static external IP).
+- Attach a second disk for the data (Oracle: a block volume; Google: a persistent disk), so the data outlives the VM.
+- Point a DNS A record, e.g. `api.example.com`, at the IP. Caddy needs a real name to get a certificate.
+- Open TCP 80 and 443. Oracle needs both the VCN security list and the VM's own firewall
+  (`sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -m state --state NEW -j ACCEPT && sudo netfilter-persistent save`).
+  Google: tick Allow HTTP and HTTPS on the VM, or add a firewall rule for tcp:80,443.
+
+```bash
+# the data disk, mounted at /data (mkfs only the first time: it erases the disk)
+lsblk                                            # find it, e.g. /dev/sdb
+sudo mkfs.ext4 -L gremlo-data /dev/sdb
+sudo mkdir -p /data && echo 'LABEL=gremlo-data /data ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab && sudo mount /data
+
+# Node 22, git, and Caddy (Caddy's apt repo: caddyserver.com/docs/install#debian-ubuntu-raspbian)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs git
+sudo apt-get install -y caddy                    # after adding Caddy's repo as its docs say
+
+# the code, read-only to the service; the data, writable only by it
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin gremlo
+sudo git clone https://github.com/DiveshK007/GREMLO.git /opt/gremlo
+(cd /opt/gremlo/apps/server && sudo npm ci)       # tsx is a dev dependency and the server runs on it
+sudo install -d -o gremlo -g gremlo -m 700 /data/gremlo
+```
+
+**Secrets.** They go in one root-only file that systemd reads before it drops to the `gremlo` user, so the service
+can't read the file itself and nothing lands in the repo or the shell history:
+
+```bash
+sudo install -d -m 700 /etc/gremlo
+sudo install -m 600 /dev/null /etc/gremlo/api.env
+sudoedit /etc/gremlo/api.env
+```
+
+One `NAME=value` per line, no quotes: `NEAR_NETWORK`, `NEAR_CONTRACT_ID`, `NEAR_RPC_URL`, `NEAR_OPERATOR_ACCOUNT_ID`,
+`NEAR_OPERATOR_PRIVATE_KEY`, `NEAR_AI_BASE_URL`, `NEAR_AI_API_KEY`, `NEAR_AI_MODEL_SMART`, `NEAR_AI_MODEL_CHEAP`,
+`COMPUTE_FEE_SMART_YOCTO`, `COMPUTE_FEE_CHEAP_YOCTO`, `WORLD_APP_ID`, `RP_ID`, `RP_SIGNING_KEY`,
+`WEB_ORIGIN=https://<your-vercel-domain>`, and the optional ones from HANDOFF (`PURSE_PARENT` only once the purse
+factory is deployed). The unit itself sets the rest: `HOST=127.0.0.1`, `PORT=8787`, `REQUIRE_SIGNED=1`,
+`TRUST_PROXY=1`, `HOLDBACK_HOURS=24`, and the store, logs and gallery under `/data/gremlo`.
+
+**Services**
+
+```bash
+cd /opt/gremlo/deploy/vm
+sudo cp gremlo-api.service gremlo-health.service gremlo-health.timer /etc/systemd/system/
+sudo install -m 755 gremlo-health /usr/local/bin/gremlo-health
+sudo cp Caddyfile /etc/caddy/Caddyfile && sudoedit /etc/caddy/Caddyfile     # replace api.example.com with your name
+sudo systemctl daemon-reload
+sudo systemctl enable --now gremlo-api gremlo-health.timer
+sudo systemctl reload caddy
+curl https://api.example.com/health               # 200 with "ok": true
+journalctl -u gremlo-api -f                       # the worker logs here
+```
+
+The API listens only on loopback. Caddy faces the internet, renews the certificate, and overwrites the client-IP
+headers so nobody can fake an IP past the rate limits and fraud rules.
+
+**Health.** `/health` answers 503 with plain reasons when the settlement worker stalls, the operator account is
+under 0.5 NEAR, or views expired unpaid.
+- On the VM, `gremlo-health.timer` checks it every 5 minutes and logs failures (`journalctl -u gremlo-health`).
+  Put `ALERT_URL=` (an ntfy.sh topic or a chat webhook that takes a plain POST) in `/etc/gremlo/health.env` to be told.
+- The VM can't report its own death, so also add an outside monitor (UptimeRobot or Better Stack, free) on
+  `https://api.example.com/health`, alerting on anything but 200.
+
+**Updating:** `cd /opt/gremlo && sudo git pull --ff-only && (cd apps/server && sudo npm ci) && sudo systemctl restart gremlo-api`
+
+**Backups:** schedule snapshots of the data disk (Oracle: a volume backup policy; Google: a snapshot schedule).
+`/data/gremlo` holds the whole store and the signed logs.
+
+Limits: one instance only (the store is a single file). The operator key sits in `/etc/gremlo/api.env`, readable by
+root on that VM; move it to a KMS before mainnet.
+
+## 1b. API on Fly.io (alternative)
 
 The Dockerfile builds from the repo root because the server imports `packages/brain`.
 
@@ -43,7 +123,7 @@ and the operator key is a Fly secret (encrypted at rest). Move it to a KMS or mu
 ```bash
 cd apps/web
 vercel link            # root directory: apps/web
-vercel env add NEXT_PUBLIC_SERVER_URL production        # https://<your-app-name>.fly.dev
+vercel env add NEXT_PUBLIC_SERVER_URL production        # https://api.example.com (or the fly.dev URL)
 vercel env add NEXT_PUBLIC_WEB_URL production           # https://<your-vercel-domain>
 vercel env add NEXT_PUBLIC_NEAR_NETWORK production      # testnet
 vercel env add NEXT_PUBLIC_NEAR_CONTRACT_ID production  # vault.gremlo.testnet
@@ -55,12 +135,13 @@ vercel env add NEXT_PUBLIC_WORLD_PRESET production
 vercel --prod
 ```
 
-Then set `WEB_ORIGIN` on Fly to the Vercel URL (CORS) and redeploy the API.
+Then set `WEB_ORIGIN` on the API to the Vercel URL (CORS): in `/etc/gremlo/api.env` and `sudo systemctl restart gremlo-api`, or as a Fly secret.
 After deploying, `E2E_BASE_URL=https://<your-vercel-domain> npm run e2e` runs the page checks against it.
 
 ## 3. Mac app
 
-Point it at production with `GREMLO_SERVER=https://<your-app-name>.fly.dev GREMLO_WEB=https://<your-vercel-domain>`.
+Point it at production with `GREMLO_SERVER=https://api.example.com GREMLO_WEB=https://<your-vercel-domain>`
+(for an app opened from Finder: `launchctl setenv GREMLO_SERVER ...`, then reopen it).
 Each user then pairs their Mac once: Gremlo menu → Settings → Pair this Mac with my pet (signs with the pet owner's wallet).
 Signed, notarised .dmg + Sparkle auto-update need an Apple Developer account; see PLAN_V2 phase G.
 
@@ -80,7 +161,7 @@ spend, best hook). Addresses stay in the server store; they are never served bac
 
 A pet with a purse pays for each thought from its own account, signed on the Mac with a key that can only call
 `pay_inference`. Deploy the factory and create a purse with the steps in `contracts-accounts/README.md`, then set
-`PURSE_PARENT` on Fly. Without it every pet pays from its vault budget, as now.
+`PURSE_PARENT` on the API. Without it every pet pays from its vault budget, as now.
 
 ## Holdback and fraud rules
 
@@ -97,6 +178,11 @@ at once, because the contract pays for only one more hour.
 - The worker logs `worker: settled campaign N` within 10 minutes of queued views.
 
 ## Mac app: signed, notarized dmg
+
+Until there's an Apple Developer account: `install.sh` builds on the user's Mac (no Gatekeeper warning), and pushing a
+`v*` tag makes `.github/workflows/release.yml` attach an ad hoc signed dmg to the release (README, Install, has the
+first-launch steps). With an account:
+
 
 `scripts/release-mac.sh` builds a universal `Gremlo.app` (pets and hook script inside), wraps it in a dmg, and with your Apple Developer account signs, notarizes and staples it. You need:
 

@@ -1,0 +1,30 @@
+# /etc/systemd/system/gremlo-api.service  (docs/DEPLOY.md, "API on a free VM")
+# Secrets live in /etc/gremlo/api.env (root-only, read by systemd before it drops to the gremlo user).
+# The service listens on loopback; Caddy is the only thing facing the internet.
+[Unit]
+Description=Gremlo API (campaigns, views, settlement worker)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/data
+
+[Service]
+User=gremlo
+Group=gremlo
+WorkingDirectory=/opt/gremlo/apps/server
+EnvironmentFile=/etc/gremlo/api.env
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=8787 REQUIRE_SIGNED=1 TRUST_PROXY=1 HOLDBACK_HOURS=24
+Environment=STORE_PATH=/data/gremlo/data.json LOG_DIR=/data/gremlo/logs GALLERY_DIR=/data/gremlo/gallery
+ExecStart=/usr/bin/node --import tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+
+# it only needs to write its data on the persistent disk
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/data/gremlo
+
+[Install]
+WantedBy=multi-user.target

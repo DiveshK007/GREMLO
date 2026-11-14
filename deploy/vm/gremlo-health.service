@@ -1,0 +1,11 @@
+# /etc/systemd/system/gremlo-health.service: runs /usr/local/bin/gremlo-health once. Put ALERT_URL (an ntfy.sh topic or a
+# chat webhook that takes a plain POST) in /etc/gremlo/health.env to be told when it fails.
+# This can't see the VM itself going down: keep an outside monitor on https://api.example.com/health as well.
+[Unit]
+Description=Gremlo API health check
+
+[Service]
+Type=oneshot
+DynamicUser=true
+EnvironmentFile=-/etc/gremlo/health.env
+ExecStart=/usr/local/bin/gremlo-health

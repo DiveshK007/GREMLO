@@ -1,0 +1,11 @@
+#!/bin/sh
+# /usr/local/bin/gremlo-health: one check of the API's /health (run by gremlo-health.timer).
+# On anything but 200 it prints the reasons (they land in the journal) and posts them to ALERT_URL if that's set.
+url="${HEALTH_URL:-http://127.0.0.1:8787/health}"
+out=$(curl -s --max-time 10 -w '\n%{http_code}' "$url")
+code=$(printf '%s\n' "$out" | tail -n 1)
+body=$(printf '%s\n' "$out" | sed '$d')
+[ "$code" = 200 ] && exit 0
+echo "gremlo health: HTTP ${code:-none} $body"
+if [ -n "${ALERT_URL:-}" ]; then curl -s --max-time 10 -d "Gremlo API health: HTTP ${code:-none} $body" "$ALERT_URL" >/dev/null; fi
+exit 1

@@ -1,0 +1,10 @@
+# /etc/caddy/Caddyfile  (docs/DEPLOY.md, "API on a free VM")
+# Caddy gets and renews the HTTPS certificate itself once api.example.com points at this VM and ports 80 and 443 are open.
+api.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8787 {
+		# TRUST_PROXY=1 reads the client IP from these headers; never let a client set them
+		header_up -Fly-Client-IP
+		header_up X-Real-IP {remote_host}
+	}
+}
