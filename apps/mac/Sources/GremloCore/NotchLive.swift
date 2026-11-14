@@ -33,6 +33,14 @@ public enum NotchLive {
         }
     }
 
+    /// Approval cards fit their rows: the measured content height, never under `minCard` and never over the spec size.
+    public static let minCard = 64.0
+    public static func cardHeight(_ s: LiveState, agents: Int = 1, content: Double?) -> Double {
+        let spec = size(s, agents: agents).h
+        guard s == .knock || s == .queue, let c = content, c > 0 else { return spec }
+        return min(spec, max(minCard, c.rounded(.up)))
+    }
+
     public struct Inputs: Sendable, Equatable {
         public var waiting = 0              // approvals waiting
         public var visitor = false          // a teammate's companion knocking

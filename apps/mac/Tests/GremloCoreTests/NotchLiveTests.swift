@@ -202,3 +202,15 @@ import Testing
         #expect(run.runUsage?.total == 0)
     }
 }
+
+@Suite struct CardHeightTests {
+    @Test func approvalCardsFitTheirRowsWithinMinAndSpec() {
+        #expect(NotchLive.cardHeight(.knock, content: 94.2) == 95, "a three-row card is about 100 pt, not the 150 pt spec")
+        #expect(NotchLive.cardHeight(.knock, content: 30) == NotchLive.minCard)
+        #expect(NotchLive.cardHeight(.knock, content: 400) == 150, "never over the spec size")
+        #expect(NotchLive.cardHeight(.knock, content: nil) == 150, "unmeasured: the spec size")
+        #expect(NotchLive.cardHeight(.queue, agents: 3, content: 120) == 120)
+        #expect(NotchLive.cardHeight(.done, content: 40) == 82, "other cards keep their spec size")
+    }
+}
+

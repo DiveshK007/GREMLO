@@ -291,6 +291,7 @@ final class NotchLiveController: NSObject {
             place(animated: true)  // same state, new size: another agent joined the queue, or a note dropped below the notch
         } else {
             refreshContent()
+            if target() != placed { place(animated: true) }  // new rows, new height (a risky note came or went)
         }
         // Resign the keyboard without ordering the panel out. Ordering it out and back was a visible jerk on every click.
         if panel.isKeyWindow, state != .knock, state != .queue, NSEvent.pressedMouseButtons == 0 { panel.resignKey() }
@@ -338,7 +339,12 @@ final class NotchLiveController: NSObject {
     }
 
     var shapeSize: (w: Double, h: Double) {
-        if NotchFeel.grows.contains(state) { return fit(NotchLive.size(state, agents: broker.queue.waiting.count)) }
+        if NotchFeel.grows.contains(state) {
+            let n = broker.queue.waiting.count
+            var s = fit(NotchLive.size(state, agents: n))
+            s.h = NotchLive.cardHeight(state, agents: n, content: cardContentH)  // approval cards fit their rows
+            return s
+        }
         var h = housing.h
         if state == .rest, idleRow != nil, Date() < idleUntil { h += 12 }
         if Date() < breathUntil { h += NotchFeel.breath }
@@ -389,7 +395,9 @@ final class NotchLiveController: NSObject {
         let swap = { [weak self] in
             guard let self, g == self.generation else { return }
             self.refreshContent(clear: true, stagger: animated)
-            self.spring(to: to, opening: opening, animated: animated)
+            let f = self.target()  // the new rows were just measured, so an approval card opens to its content
+            self.placed = f
+            self.spring(to: (Double(f.width), Double(f.height)), opening: opening, animated: animated)
             if animated && !reduceMotion && s == .knock { self.shake() }
             if animated && s == .done { self.burst(self.run.errors > 0 ? .smoke : .confetti) }
             if animated && s == .stuck { self.burst(.smoke) }
@@ -583,6 +591,8 @@ final class NotchLiveController: NSObject {
     /// Live values (clock, cost, counts, bars) set in place on every refresh; views are rebuilt only when the layout changes.
     private var ticks: [() -> Void] = []
     private var contentWidth: CGFloat = 154
+    /// An approval card's rows as measured, below the camera housing; nil for every other state.
+    private var cardContentH: Double?
     var lastKey = ""
     var roomOpen = false
     private var swipe: CGFloat = 0
@@ -673,6 +683,7 @@ final class NotchLiveController: NSObject {
         case .knock: if let r = broker.queue.top { knock(r) }
         case .queue: queueRows()
         }
+        cardContentH = state == .knock || state == .queue ? Double(stack.fittingSize.height - (belowNotch ? notchHeight : 0)) : nil
         ticks.forEach { $0() }
         if stagger { Stagger.rows(stack.arrangedSubviews) }
     }
@@ -843,7 +854,11 @@ final class NotchLiveController: NSObject {
 
     func knock(_ r: ApprovalRequest) {
         stack.addArrangedSubview(row([text("Needs approval", 13, .primary), spacer(), text(r.tool, 11, .secondary, mono: true)]))
-        stack.addArrangedSubview(text(r.summary.isEmpty ? "—" : r.summary, 12, .primary, mono: true))
+        // in a row like the others, so it shares their inset and truncates inside the margin, keeping the command's
+        // start and the end of its path
+        let command = text(r.summary.isEmpty ? "\u{2014}" : r.summary, 12, .primary, mono: true)
+        command.lineBreakMode = .byTruncatingMiddle
+        stack.addArrangedSubview(row([command]))
         var buttons: [NSView] = [button("Deny", r.id, .deny)]
         if r.canAlwaysAllow { buttons.append(button("Always allow", r.id, .alwaysAllow)) }
         buttons.append(button(r.risky ? "Allow once" : "Allow once  \u{2325}\u{21A9}", r.id, .allowOnce, primary: true))
@@ -853,7 +868,7 @@ final class NotchLiveController: NSObject {
         terminal.contentTintColor = .secondaryLabelColor
         terminal.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.addArrangedSubview(row(buttons + [spacer(), terminal]))
-        if r.risky { stack.addArrangedSubview(text("Deletes, pushes or spends: answer with a click.", 10, .secondary)) }
+        if r.risky { stack.addArrangedSubview(row([text("Deletes, pushes or spends: answer with a click.", 10, .secondary)])) }
     }
 
     func queueRows() {
