@@ -1,5 +1,7 @@
 # Gremlo
 
+<p align="center"><img src="docs/media/gremlo-teaser.gif" width="720" alt="Gremlo springs out of the notch"></p>
+
 **Your agent makes you wait. Gremlo makes the wait pay.**
 
 Gremlo is a tiny desktop pet that lives behind a door in your MacBook notch. It reacts live to Claude Code: it drops
