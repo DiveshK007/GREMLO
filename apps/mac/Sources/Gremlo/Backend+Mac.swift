@@ -213,10 +213,22 @@ final class Backend: NSObject {
         menu.fit(stack, under: item.button)
         menu.open()
     }
-    /// The menu bar icon is the pet itself, a small idle frame.
+    /// The logo pack's menu bar mark (the notch with eyes), a template image macOS tints for light and dark.
+    static let menuBarLogo: NSImage? = {
+        let img = NSImage(size: NSSize(width: 18, height: 18))
+        for f in ["menubar", "menubar@2x"] {
+            guard let r = NSImageRep(contentsOf: assetsDir.appendingPathComponent("icon/\(f).png")) else { continue }
+            r.size = img.size  // the @2x file is the same 18 pt icon at double density
+            img.addRepresentation(r)
+        }
+        img.isTemplate = true
+        return img.representations.isEmpty ? nil : img
+    }()
+    /// The menu bar icon: the logo mark, or the pet's idle frame if the icon files are missing.
     func statusIcon() {
         guard iconSkin != pet.skin.name else { return }
         iconSkin = pet.skin.name
+        if let logo = Self.menuBarLogo { item.button?.image = logo; item.button?.title = ""; return }
         guard let f = (pet.skin.strips[.idle] ?? pet.skin.strips[.walk])?.frames.first else { item.button?.title = productName; return }
         item.button?.image = UI.pixelIcon(f, side: 18)
         item.button?.title = ""

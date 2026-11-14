@@ -28,12 +28,16 @@ cp Sources/Gremlo/Resources/gremlo-hook.sh Sources/Gremlo/Resources/gremlo-git-h
 cp -R ../../assets/pets "$APP/Contents/Resources/assets/pets"
 cp -R ../../assets/fonts "$APP/Contents/Resources/assets/fonts"
 for d in sounds props haptics; do cp -R "../../assets/$d" "$APP/Contents/Resources/assets/$d"; done
+# the app icon (logo pack, option B) and the menu bar's template mark
+iconutil -c icns ../../assets/icon/Gremlo.iconset -o "$APP/Contents/Resources/Gremlo.icns"
+mkdir -p "$APP/Contents/Resources/assets/icon" && cp ../../assets/icon/menubar*.png "$APP/Contents/Resources/assets/icon/"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Gremlo</string>
   <key>CFBundleExecutable</key><string>Gremlo</string>
+  <key>CFBundleIconFile</key><string>Gremlo</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
