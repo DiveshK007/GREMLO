@@ -414,8 +414,18 @@ final class Backend: NSObject {
         stack.addArrangedSubview(UI.group(nil, [LinkRow("Closet, stars and certificate", width: w, target: self, action: #selector(openGrowth)),
                                                 LinkRow("Pet page and weekly recap", width: w, target: self, action: #selector(openPetPage))], width: w))
         stack.addArrangedSubview(UI.label("Last think: \(lastThink)", UI.mono(10, .regular), UI.text3, width: w))
+        // a menu-bar app has no app menu, so Quit lives here (and in Settings, General); Cmd+Q works while the panel is open
+        let quit = Btn("Quit Gremlo", style: .ghost, symbol: "power", target: self, action: #selector(quitApp))
+        quit.small = true
+        quit.keyEquivalent = "q"
+        quit.keyEquivalentModifierMask = .command
+        let foot = UI.hstack([UI.spacer(), UI.label("\u{2318}Q", UI.mono(10, .regular), UI.text3, wrap: false), quit], spacing: 6)
+        foot.widthAnchor.constraint(equalToConstant: w).isActive = true
+        stack.addArrangedSubview(foot)
         resizeMenu()
     }
+
+    @objc func quitApp() { NSApp.terminate(nil) }
 
     @objc func openSettings() { menu.dismiss(); settings.show() }
 

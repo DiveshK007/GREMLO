@@ -9,6 +9,13 @@ import Testing
         #expect(PetName.clean(" Mochi ") == "mochi" && PetName.clean("mo chi") == nil)
     }
 
+    @Test func startupPetNameEnvWinsThenSettings() {
+        #expect(PetName.startup(env: "Byte", saved: "pip") == "byte", "GREMLO_PET wins")
+        #expect(PetName.startup(env: "-bad", saved: "pip") == nil, "a bad env name is an error, never a quiet fallback")
+        #expect(PetName.startup(env: nil, saved: "pip") == "pip")
+        #expect(PetName.startup(env: nil, saved: "no good") == "mochi" && PetName.startup(env: nil, saved: nil) == "mochi")
+    }
+
     @Test func durations() {
         #expect(Commands.minutes("30") == 30 && Commands.minutes("30m") == 30 && Commands.minutes("2h") == 120)
         #expect(Commands.minutes("1h30m") == 90 && Commands.minutes("90s") == 2 && Commands.minutes("x") == nil && Commands.minutes("0") == nil)

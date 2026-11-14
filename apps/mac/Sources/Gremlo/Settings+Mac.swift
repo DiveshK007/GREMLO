@@ -160,7 +160,10 @@ extension Backend {
         let cli = UI.group("Command line", [
             UI.row("gremlo", "Talk to the pet from any terminal.", Btn("Install", target: self, action: #selector(installCommand)), width: w),
         ], width: w)
-        return [claude, screen, cli]
+        let quit = UI.group("Gremlo", [
+            UI.row("Quit Gremlo", "The pet and its hook server stop until you open Gremlo again.", Btn("Quit", target: self, action: #selector(quitApp)), width: w),
+        ], width: w)
+        return [claude, screen, cli, quit]
     }
 
     // MARK: Pet
@@ -182,7 +185,44 @@ extension Backend {
             UI.row("Closet, stars and certificate", "Earned outfits, the room, tricks and the diary.", Btn("Open", target: self, action: #selector(openGrowth)), width: w),
             UI.row("Pet page", "This week's recap, with the receipts.", Btn("Open", target: self, action: #selector(openPetPage)), width: w),
         ], width: w)
-        return [grid, growing]
+        return [nameGroup(), grid, growing]
+    }
+
+    private static var nameNote: String?
+    /// The pet's name, saved in defaults (GREMLO_PET still wins). It is read once at launch, so a new name restarts the app.
+    func nameGroup() -> NSView {
+        let w = pageWidth
+        let fromEnv = Legacy.env("PET") != nil
+        let field = Field(petName, placeholder: "mochi", width: 200)
+        field.target = self
+        field.action = #selector(setPetName(_:))
+        field.cell?.sendsActionOnEndEditing = false // only Return saves: clicking away mustn't restart the app
+        field.isEnabled = !fromEnv
+        let note = fromEnv ? "Set by GREMLO_PET, which wins over this field." : Self.nameNote ?? "The pet this Mac shows and earns for. Press Return to save; Gremlo restarts to switch."
+        return UI.group("Name", [UI.row("Pet name", note, field, width: w)], width: w)
+    }
+
+    @objc func setPetName(_ f: NSTextField) {
+        guard let name = PetName.clean(f.stringValue) else {
+            Self.nameNote = "\u{201C}\(f.stringValue)\u{201D} isn't a pet name: 2-24 of a-z, 0-9 and dashes, not starting or ending with a dash."
+            NSSound.beep()
+            settings.reload()
+            return
+        }
+        Self.nameNote = nil
+        guard name != petName else { settings.reload(); return }
+        defaults.set(name, forKey: PetName.defaultsKey)
+        // relaunching needs a bundle; `swift run` just says so
+        guard Bundle.main.bundleIdentifier != nil else {
+            Self.nameNote = "Saved as \(name). Quit and start Gremlo again to switch."
+            settings.reload()
+            return
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundleURL.path] // after this copy has let go of the hook port
+        try? p.run()
+        NSApp.terminate(nil)
     }
 
     private static var idleFrames: [String: CGImage] = [:]

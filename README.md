@@ -65,8 +65,11 @@ The app isn't notarized yet: there's no Apple Developer account behind it. The d
 repo's release workflow from the tagged source, so macOS can't check who made it. That's what the steps above get past.
 
 There's no hosted server yet. The app talks to `http://localhost:8787` unless `GREMLO_SERVER` is set, so run the server
-from the Quickstart below. To set it, or your pet's name, for an app opened from Finder:
-`launchctl setenv GREMLO_SERVER <url>` and `launchctl setenv GREMLO_PET <name>`, then reopen it.
+from the Quickstart below. To set it for an app opened from Finder: `launchctl setenv GREMLO_SERVER <url>`, then reopen it.
+
+Set your pet's name in the menu bar: Settings, Pet, Name (press Return; Gremlo restarts to switch). `GREMLO_PET` still
+wins when it's set. Quit Gremlo from the bottom of its menu bar panel (or ⌘Q while the panel is open), or from
+Settings, General.
 
 ## Quickstart
 

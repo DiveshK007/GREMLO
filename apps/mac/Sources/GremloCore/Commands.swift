@@ -259,4 +259,10 @@ public enum PetName {
         let n = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return valid(n) ? n : nil
     }
+    public static let defaultsKey = "petName"
+    /// GREMLO_PET wins, then the name saved in Settings, then "mochi". A bad env name is an error (nil); a bad saved one is ignored.
+    public static func startup(env: String?, saved: String?) -> String? {
+        if let env { return clean(env) }
+        return saved.flatMap(clean) ?? "mochi"
+    }
 }
