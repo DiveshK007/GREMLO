@@ -66,11 +66,13 @@ enum Feel {
     }
 
     /// A haptic for something the user is touching; never an alert, never for a sponsored line.
-    static func haptic(_ h: Haptic, lineUp: Bool = false) {
+    /// `at: .drawCompleted` lands the first tap with the next drawn frame (the notch's overshoot frame).
+    static func haptic(_ h: Haptic, lineUp: Bool = false, at time: NSHapticFeedbackManager.PerformanceTime = .now) {
         haptics.level = hapticLevel
         guard let recipe = haptics.play(h, now: Date(), screenShared: silence.screenShared, lineUp: lineUp) else { return }
         for (p, delay) in recipe {
             let pattern: NSHapticFeedbackManager.FeedbackPattern = p == .alignment ? .alignment : p == .levelChange ? .levelChange : .generic
+            if delay == 0 { performer.perform(pattern, performanceTime: time); continue }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { performer.perform(pattern, performanceTime: .now) }
         }
     }
@@ -84,6 +86,8 @@ extension Backend {
         return [UI.group("Feel", [
             UI.row("Sound", "Off, approvals only, pet sounds or everything. Silent during screen shares and meetings.",
                    Seg(titles, selected: soundLevel.rawValue, target: self, action: #selector(setSoundLevel(_:))), width: w),
+            UI.row("Notch sounds", "Soft pops and ticks as the notch moves. Silent during screen shares and meetings.",
+                   Seg(SoundKit.Level.allCases.map(\.title), selected: SoundKit.shared.level.rawValue, target: self, action: #selector(setNotchSound(_:))), width: w),
             UI.row("Haptics", "Force Touch trackpad. Never for a sponsored line.",
                    Seg(["On", "Subtle", "Off"], selected: HapticLevel.allCases.firstIndex(of: hapticLevel) ?? 0, target: self, action: #selector(setHaptics(_:))), width: w),
         ], width: w)]
@@ -123,6 +127,10 @@ extension Backend {
     @objc func setSoundLevel(_ s: Seg) {
         soundLevel = SoundLevel(rawValue: s.selectedSegment) ?? .default
         defaults.set(soundLevel.rawValue, forKey: "soundLevel")
+    }
+    @objc func setNotchSound(_ s: Seg) {
+        SoundKit.shared.level = SoundKit.Level(rawValue: max(0, s.selectedSegment)) ?? .subtle
+        SoundKit.shared.play(.tick)  // so you hear the level you picked
     }
     @objc func setHaptics(_ s: Seg) {
         hapticLevel = HapticLevel.allCases[max(0, s.selectedSegment)]

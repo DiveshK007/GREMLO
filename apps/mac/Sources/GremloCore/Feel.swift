@@ -120,12 +120,18 @@ public enum Haptics {
 /// during a screen share or while a sponsored line is up. Haptics are never the only signal for anything.
 public struct HapticGate: Sendable {
     public var level: HapticLevel = .on
-    var last = Date.distantPast, lastPurr = Date.distantPast
+    var last = Date.distantPast, lastPurr = Date.distantPast, lastTick = Date.distantPast
     public init(level: HapticLevel = .on) { self.level = level }
 
     public mutating func play(_ h: Haptic, now: Date, screenShared: Bool, lineUp: Bool) -> [(HapticPattern, TimeInterval)]? {
         guard level != .off, !screenShared, !lineUp else { return nil }
         if level == .subtle && h != .tick { return nil }
+        // texture ticks may be dense but never closer than 35 ms (notch feel #20); every other pattern keeps 100 ms
+        if h == .tick {
+            guard now.timeIntervalSince(lastTick) >= 0.035 else { return nil }
+            lastTick = now
+            return Haptics.recipes[h]
+        }
         guard now.timeIntervalSince(last) >= 0.1 else { return nil }
         if h == .purr { guard now.timeIntervalSince(lastPurr) >= 10 else { return nil }; lastPurr = now }
         last = now

@@ -14,7 +14,7 @@ public enum NotchLive {
     public static func size(_ s: LiveState, agents: Int = 1) -> (w: Double, h: Double) {
         switch s {
         case .rest: return (190, 32)
-        case .think: return (210, 32)
+        case .think: return (214, 34)   // notch feel spec
         case .peek: return (290, 36)
         case .ticker: return (600, 82)
         case .knock: return (660, 150)

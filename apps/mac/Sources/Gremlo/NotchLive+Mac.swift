@@ -75,8 +75,21 @@ final class NotchLiveController: NSObject {
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var hoverWork: DispatchWorkItem?
-    private var placed = NSRect.zero     // the frame the panel is moving to
-    private var generation = 0           // a newer transition cancels an older one's fade-in
+    private var placed = NSRect.zero     // the shape's target, in screen points
+    private var generation = 0           // a newer transition cancels an older one's content swap
+    // Notch feel: the notch is one spring-driven path in a fixed, transparent panel (NotchFeel+Mac.swift).
+    let shape = NotchShapeLayer()
+    let W = Spring(190), H = Spring(32), R = Spring(12)
+    let lean = Spring(0, .lean), squash = Spring(0, .squash), press = Spring(1, .press), openness = Spring(0, .close)
+    private var leanGrow: (w: Double, h: Double) = (0, 0)
+    private var wasBig = false
+    private var swapPending = false      // closing: the old content is fading out, the new waits
+    var idleRow: Row?
+    var idleUntil = Date.distantPast
+    private var idleTimer: Timer?
+    private var moveMonitors: [Any] = []
+    static let big: Set<LiveState> = [.ticker, .knock, .queue, .room, .stuck, .drop, .done]
+    static let leans: Set<LiveState> = [.rest, .think]
     var softRunCents: Int? { (defaults.object(forKey: "softAlertRunCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
     var softDayCents: Int? { (defaults.object(forKey: "softAlertDayCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
     /// An amber pulse when spend crosses a user-set amount. It never blocks or stops an agent.
@@ -99,12 +112,21 @@ final class NotchLiveController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         let drop = DropView(frame: .zero)
         panel.contentView = drop
-        panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.backgroundColor = NSColor.black.cgColor  // always black, whatever the theme
-        panel.contentView?.layer?.cornerRadius = 14
-        panel.contentView?.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]  // bottom corners: the hardware curve
-        let track = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
-        panel.contentView?.addTrackingArea(track)
+        drop.wantsLayer = true
+        drop.layer?.addSublayer(shape)  // the black notch: always black, whatever the theme
+        panel.acceptsMouseMovedEvents = true
+        panel.ignoresMouseEvents = true  // clicks pass through everywhere but the notch itself
+        Motion.reduce = reduceMotion
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in
+            Motion.reduce = reduceMotion
+        }
+        NotchDriver.shared.attach(to: drop)
+        NotchDriver.shared.register(W, H, R, lean, squash, press, openness)
+        NotchDriver.shared.onFrame = { [weak self] in self?.applyFrame() }
+        // the pointer, wherever it is (mouse events need no permission): hover, lean and click-through
+        let moved: (NSEvent) -> Void = { [weak self] _ in self?.pointerMoved() }
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: moved) { moveMonitors.append(g) }
+        if let l = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { moved($0); return $0 }) { moveMonitors.append(l) }
         broker.onChange = { [weak self] in self?.update() }
         drop.onDragging = { [weak self] on in self?.dragging = on; self?.update() }
         drop.onScroll = { [weak self] e in self?.scrolled(e) }
@@ -117,16 +139,26 @@ final class NotchLiveController: NSObject {
                 self.hovered = true  // a click means the pointer is here, even inside the hover delay
                 self.pressStart = Date()
                 self.pressOnControl = self.interactive(at: e.locationInWindow)
-            } else { self.mouseUp() }
+                // the press dent; a button gives its own feedback, so only a press on the notch itself boops
+                self.press.animate(to: NotchFeel.pressScale, .press)
+                if !self.pressOnControl { Feel.haptic(.boop) }
+            } else {
+                self.press.animate(to: 1, .release)
+                self.mouseUp()
+            }
             return e
         }
         // a display plugged in or a resolution change moves the notch
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.layoutPanel()
             self?.place(animated: false)
         }
+        layoutPanel()
         place(animated: false)
         panel.orderFrontRegardless()
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.update() }
+        let clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.update() }
+        clock.tolerance = 0.2
+        scheduleIdleLife()
     }
 
     // MARK: State
@@ -152,7 +184,7 @@ final class NotchLiveController: NSObject {
     func update() {
         // the panel can shrink out from under the pointer (an answered approval folds the card), and then no
         // mouseExited comes; without this the run-over ticker stayed up for good instead of folding to rest
-        hovered = NotchLive.stillHovered(hovered, pointerInside: placed.insetBy(dx: -1, dy: -1).contains(NSEvent.mouseLocation),
+        hovered = NotchLive.stillHovered(hovered, pointerInside: hoverWanted(at: NSEvent.mouseLocation) != false,
                                          exitPending: hoverWork.map { !$0.isCancelled } ?? false)
         let s = NotchLive.resolve(inputs(), now: Date())
         if s != state {
@@ -168,6 +200,8 @@ final class NotchLiveController: NSObject {
             refreshContent()
         }
         if !(hovered && needsKeys) { giveBackKeyboard() }
+        passThrough()
+        SpriteClock.shared.visible = backend?.privacy.duck != .hidden
     }
 
     /// Hook events redraw at once (the timer only moves the clock), and done and the peek linger end on time.
@@ -197,13 +231,20 @@ final class NotchLiveController: NSObject {
 
     /// Tall states open below the camera housing. On a notched Mac a sentence in a short state would sit behind it, so
     /// offline and the new-egg note drop below as well.
+    /// Where the shape is heading: the state's size, hover's when the pointer rests on a small notch, idle life's.
+    var shapeSize: (w: Double, h: Double) {
+        if state == .rest, idleRow != nil, Date() < idleUntil { return NotchFeel.idleSize }
+        if hovered, Self.leans.contains(state) { return NotchFeel.hoverSize }
+        return NotchLive.size(state, agents: broker.queue.waiting.count)
+    }
+
     var belowNotch: Bool {
-        NotchLive.size(state, agents: broker.queue.waiting.count).h > 40
+        shapeSize.h > 40
             || notchHeight > 0 && (state == .offline || state == .egg && unlockNoteShowing)
     }
 
     func target() -> NSRect {
-        let sz = NotchLive.size(state, agents: broker.queue.waiting.count)
+        let sz = shapeSize
         let f = mainScreen.frame
         let rest = state == .rest && notchHeight > 0
         let w = rest ? max(CGFloat(sz.w), (mainScreen.auxiliaryTopRightArea.map { f.width - $0.width - (mainScreen.auxiliaryTopLeftArea?.width ?? 0) }) ?? CGFloat(sz.w)) : CGFloat(sz.w)
@@ -211,36 +252,147 @@ final class NotchLiveController: NSObject {
         return NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h).integral
     }
 
-    /// Old content goes at once, the shape blooms to its new size, then the new content fades in (spec R3 §2).
+    /// The panel stays put: wide and tall enough for the biggest state, centred on the notch, clear everywhere the
+    /// shape isn't. Only the path inside it moves.
+    func layoutPanel() {
+        let f = mainScreen.frame
+        let tallest = LiveState.allCases.map { NotchLive.size($0, agents: 4).h }.max() ?? 230
+        let h = notchHeight + CGFloat(tallest) + 60   // room for the depth shadow and the glow
+        let w: CGFloat = 820
+        panel.setFrame(NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h).integral, display: false)
+        shape.frame = panel.contentView?.bounds ?? .zero
+        applyFrame()
+    }
+
+    /// The shape springs to its new size (the open spring with a tap on the overshoot frame, or the close spring),
+    /// squashes, and the content rows stagger in behind it. Closing takes the old content out first (80 ms).
     func place(animated: Bool) {
         generation += 1
         let g = generation, frame = target(), s = state
+        let to = (w: Double(frame.width), h: Double(frame.height))
+        let opening = NotchFeel.isOpening(from: (W.target, H.target), to: to)
         placed = frame
         contentWidth = CGFloat(NotchLive.size(s, agents: broker.queue.waiting.count).w) - 36
-        panel.hasShadow = false  // a shadow recomputed every frame stutters; it comes back once the shape settles
-        border(nil)
-        settled = false
-        refreshContent(clear: true)
-        if s == .done { Feel.haptic(.tick) }
-        let settle = { [weak self] in
+        shape.rimColor = nsColor(hex: s == .done ? NotchFeel.doneColor : s == .stuck ? NotchFeel.failColor : NotchFeel.agentColor(run.agent))
+        shape.rimMode = NotchFeel.rim(s)
+        let swap = { [weak self] in
             guard let self, g == self.generation else { return }
-            self.settled = true
-            self.panel.hasShadow = frame.height > 40  // one shadow, on the open surface only
-            self.panel.invalidateShadow()
-            self.border(s == .think ? self.breathing() : nil)
-            NSAnimationContext.runAnimationGroup { c in
-                c.duration = reduceMotion ? 0.12 : 0.22
-                self.stack.animator().alphaValue = 1
-            }
-            if !reduceMotion && s == .knock { self.shake() }
-            if !reduceMotion && s == .done { self.confetti() }
+            self.refreshContent(clear: true, stagger: animated)
+            self.spring(to: to, opening: opening, animated: animated)
+            if animated && !reduceMotion && s == .knock { self.shake() }
+            if animated && !reduceMotion && s == .done { self.confetti() }
         }
-        guard animated, !reduceMotion, panel.frame != frame else { panel.setFrame(frame, display: true); settle(); return }
-        NSAnimationContext.runAnimationGroup({ c in
-            c.duration = 0.42  // bloom: cubic-bezier(.34, 1.4, .5, 1); Reduce Motion skips the resize and only fades
-            c.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.4, 0.5, 1)
-            self.panel.animator().setFrame(frame, display: true)
-        }, completionHandler: settle)
+        if animated, !opening, !Motion.reduce, !stack.arrangedSubviews.isEmpty {
+            swapPending = true
+            NSAnimationContext.runAnimationGroup { c in c.duration = NotchFeel.contentOut; stack.animator().alphaValue = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + NotchFeel.contentOut) { [weak self] in self?.swapPending = false; swap() }
+        } else { swapPending = false; swap() }
+    }
+
+    private func spring(to: (w: Double, h: Double), opening: Bool, animated: Bool) {
+        let big = Self.big.contains(state), r = NotchFeel.radius(state)
+        defer { wasBig = big }
+        if !Self.leans.contains(state) || hovered {  // only a small notch leans; a stale lean must not ride along
+            leanGrow = (0, 0)
+            lean.animate(to: 0, .lean)
+        }
+        guard animated else {
+            W.hold(at: to.w); H.hold(at: to.h); R.hold(at: r); openness.hold(at: big ? 1 : 0)
+            applyFrame()
+            return
+        }
+        let p: SpringParams = opening ? .open : .close
+        // a card opening gets the tap and the pop; the peek coming and going with every tool only moves
+        let felt = opening && to.h > 40
+        W.animate(to: to.w + leanGrow.w, p, onPeak: felt ? { [weak self] in self?.peakTap() } : nil)
+        H.animate(to: to.h + leanGrow.h, p.heavier)
+        R.animate(to: r, SpringParams(response: 0.4, damping: 0.9))
+        openness.animate(to: big ? 1 : 0, .close)
+        if !Motion.reduce { squash.kick(opening ? NotchFeel.squashOpen : NotchFeel.squashClose) }
+        if felt { SoundKit.shared.play(.pop) } else if wasBig && !big { SoundKit.shared.play(.close) }
+    }
+
+    /// #19: the snap lands with the frame that shows the overshoot.
+    private func peakTap() {
+        Feel.haptic(.snap, at: .drawCompleted)
+        #if DEBUG
+        print("notch: peak haptic on frame \(NotchDriver.shared.frame), width \(String(format: "%.1f", W.value)) for a target of \(String(format: "%.0f", W.target))")
+        #endif
+    }
+
+    /// Every display frame while something moves: the springs onto the path.
+    func applyFrame() {
+        guard let b = panel.contentView?.bounds, b.width > 0 else { return }
+        if shape.frame != b { shape.frame = b }
+        let g = NotchGeometry(width: W.value, height: H.value, radius: R.value, bulge: max(0, -squash.value) / 2.2)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)  // also when called outside the frame clock (layout, a jump)
+        shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value, open: openness.value)
+        CATransaction.commit()
+    }
+
+    /// The shape on screen right now (springs, not targets), so clicks land on what you see.
+    var shapeOnScreen: NSRect {
+        let f = mainScreen.frame
+        return NSRect(x: f.midX + lean.value - W.value / 2, y: f.maxY - H.value, width: W.value, height: H.value)
+    }
+
+    /// Clicks pass through the panel everywhere except the notch, so the menu bar and the windows under it still work.
+    func passThrough() {
+        let over = shapeOnScreen.union(placed).insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+        if panel.ignoresMouseEvents == over { panel.ignoresMouseEvents = !over }
+    }
+
+    /// true: the pointer wants hover (on the shape, or within 34 pt of the notch's top centre); false: it's gone
+    /// (off the shape and 70 pt away); nil: in between, so nothing changes.
+    func hoverWanted(at p: NSPoint) -> Bool? {
+        let f = mainScreen.frame
+        let l = NotchFeel.lean(dx: p.x - f.midX, dy: f.maxY - p.y)
+        let on = placed.insetBy(dx: -6, dy: -6).contains(p)
+        if on || l.distance < NotchFeel.hoverEnter { return true }
+        if l.distance > NotchFeel.hoverLeave { return false }
+        return nil
+    }
+
+    /// #4: the notch leans toward a nearby cursor and swells a little; hover comes and goes by distance.
+    func pointerMoved() {
+        let p = NSEvent.mouseLocation
+        passThrough()
+        switch hoverWanted(at: p) {
+        case true?: if !hovered { hover(true, after: 0.12) }
+        case false?: if hovered { hover(false, after: 0.3) }
+        case nil: break
+        }
+        let f = mainScreen.frame
+        let l = Self.leans.contains(state) && !Motion.reduce ? NotchFeel.lean(dx: p.x - f.midX, dy: f.maxY - p.y) : NotchFeel.lean(dx: 0, dy: 1000)
+        let grow = hovered ? (w: 0.0, h: 0.0) : (w: Double(l.growW), h: Double(l.growH))  // hover is its own size
+        guard abs(l.shift - lean.target) > 0.25 || abs(grow.w - leanGrow.w) > 0.5 else { return }  // far away: no frames
+        leanGrow = grow
+        lean.animate(to: l.shift, .lean)
+        let sz = target()
+        W.animate(to: Double(sz.width) + grow.w, .lean)
+        H.animate(to: Double(sz.height) + grow.h, .lean)
+    }
+
+    // MARK: Idle life (#16)
+
+    func scheduleIdleLife() {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: .random(in: NotchFeel.idleEvery), repeats: false) { [weak self] _ in
+            guard let self else { return }
+            if NotchFeel.idleAllowed(state: self.state, screenShared: silence.screenShared, inMeeting: silence.inMeeting, focus: self.backend?.privacy.focus != nil),
+               !Motion.reduce {
+                self.idleRow = NotchFeel.idleRow(hour: Calendar.current.component(.hour, from: Date()), pick: Int.random(in: 0..<4))
+                self.idleUntil = Date().addingTimeInterval(NotchFeel.idleHold)
+                self.place(animated: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + NotchFeel.idleHold + 0.05) { [weak self] in
+                    self?.idleRow = nil
+                    self?.update()
+                }
+            }
+            self.scheduleIdleLife()
+        }
+        idleTimer?.tolerance = 3
     }
 
     func shake() {
@@ -254,18 +406,23 @@ final class NotchLiveController: NSObject {
     func confetti() {
         guard let layer = panel.contentView?.layer, let accent = backend?.pet.skin.accent else { return }
         let colors = [accent, NSColor.white.cgColor, accent.copy(alpha: 0.6) ?? accent]
-        for i in 0..<46 {
+        let b = layer.bounds, w = CGFloat(W.target), bottom = b.maxY - CGFloat(H.target)
+        for i in 0..<(ProcessInfo.processInfo.isLowPowerModeEnabled ? 23 : 46) {  // half in Low Power Mode
             let bit = CALayer()
             bit.backgroundColor = colors[i % colors.count]
-            bit.frame = CGRect(x: CGFloat.random(in: 0...layer.bounds.width), y: layer.bounds.height, width: 4, height: 4)
+            bit.frame = CGRect(x: b.midX + CGFloat.random(in: -w / 2...w / 2), y: bottom, width: 4, height: 4)
             layer.addSublayer(bit)
             let fall = CABasicAnimation(keyPath: "position.y")
-            fall.toValue = -10
-            fall.duration = Double.random(in: 0.8...1.6)
-            fall.beginTime = CACurrentMediaTime() + Double(i) * 0.012
-            fall.isRemovedOnCompletion = false
-            fall.fillMode = .forwards
-            bit.add(fall, forKey: "fall")
+            fall.toValue = bottom - CGFloat.random(in: 30...80)
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.toValue = 0
+            let g = CAAnimationGroup()
+            g.animations = [fall, fade]
+            g.duration = Double.random(in: 0.8...1.6)
+            g.beginTime = CACurrentMediaTime() + Double(i) * 0.012
+            g.isRemovedOnCompletion = false
+            g.fillMode = .forwards
+            bit.add(g, forKey: "fall")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { bit.removeFromSuperlayer() }
         }
     }
@@ -275,7 +432,6 @@ final class NotchLiveController: NSObject {
     private var stack = NSStackView()
     /// Live values (clock, cost, counts, bars) set in place on every refresh; views are rebuilt only when the layout changes.
     private var ticks: [() -> Void] = []
-    private var settled = true
     private var contentWidth: CGFloat = 154
     var lastKey = ""
     var roomOpen = false
@@ -286,12 +442,12 @@ final class NotchLiveController: NSObject {
     /// and the pulse and the breathing edge don't restart every second.
     var layoutKey: String {
         "\(state)|\(broker.queue.waiting.map(\.id))|\(selected)|\(pinned)|\(dragging)|\(softAlert)|\(run.endedAt != nil && !run.steps.isEmpty)"
-            + "|\(backend?.hunt.stuckTrigger?.line ?? "")|\(unlockNoteShowing)|\(backend?.privacy.focus != nil)"
+            + "|\(backend?.hunt.stuckTrigger?.line ?? "")|\(unlockNoteShowing)|\(backend?.privacy.focus != nil)|\(idleRow != nil && Date() < idleUntil)"
     }
 
-    func refreshContent(clear: Bool = false) {
+    func refreshContent(clear: Bool = false, stagger: Bool = false) {
         let key = layoutKey
-        if !clear && key == lastKey { ticks.forEach { $0() }; return }
+        if !clear && (key == lastKey || swapPending) { ticks.forEach { $0() }; return }
         lastKey = key
         ticks = []
         stack.removeFromSuperview()
@@ -301,7 +457,7 @@ final class NotchLiveController: NSObject {
         stack.spacing = 6
         stack.edgeInsets = NSEdgeInsets(top: notchHeight > 0 && belowNotch ? notchHeight + 6 : 8, left: 18, bottom: 10, right: 18)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.alphaValue = settled ? 1 : 0
+        stack.alphaValue = 1
         guard let content = panel.contentView else { return }
         content.addSubview(stack)
         // centred at the final width, so the content stays put while the shape blooms around it
@@ -332,8 +488,12 @@ final class NotchLiveController: NSObject {
                 arc.strokeEnd = f.progress(Date())
                 label.stringValue = "focus \(f.label(Date()))"
             }
-        case .rest, .visitor: break
-        case .think: break  // the breathing accent edge says it
+        case .rest:
+            if let r = idleRow, Date() < idleUntil, let frames = backend?.pet.skin.loaded.strip(r)?.frames {
+                stack.addArrangedSubview(row([SpriteView(frames: frames, size: 30), spacer()]))
+            }
+        case .visitor: break
+        case .think: break  // the flowing rim says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))
         case .sleep:
             let icon = dreamIcon()
@@ -346,10 +506,12 @@ final class NotchLiveController: NSObject {
         case .queue: queueRows()
         }
         ticks.forEach { $0() }
+        if stagger { Stagger.rows(stack.arrangedSubviews) }
     }
 
     func ticker() {
-        let tool = text("", 13, .primary, mono: true), line = text("", 11, .secondary), cost = text("", 11, .secondary, mono: true)
+        let tool = text("", 13, .primary, mono: true)
+        let line = RollingLabel(size: 11, color: color(.secondary)), cost = RollingLabel(size: 11, color: color(.secondary))
         stack.addArrangedSubview(row([tool, spacer(), text(run.agent, 11, .secondary)]))
         stack.addArrangedSubview(row([line, spacer(), cost]))
         ticks.append { [weak self] in
@@ -357,7 +519,7 @@ final class NotchLiveController: NSObject {
             tool.stringValue = self.run.lastTool.isEmpty ? "waiting" : self.run.lastTool
             line.stringValue = self.scrubLabel ?? "\(self.run.tools) tools \u{00B7} \(self.clock(self.run.elapsed))"
             cost.stringValue = Prices.label(self.run.runUsage)
-            cost.textColor = self.color(self.softAlert ? .amber : .secondary)
+            cost.color = self.color(self.softAlert ? .amber : .secondary)
         }
         if run.endedAt != nil && !run.steps.isEmpty {
             let scrub = ScrubView()
@@ -456,7 +618,7 @@ final class NotchLiveController: NSObject {
 
     func done() {
         let answered = broker.approvalsAnswered - run.approvalsAtStart
-        let cost = text("", 11, .secondary, mono: true)
+        let cost = RollingLabel(size: 11, color: color(.secondary))
         stack.addArrangedSubview(row([text("Done in \(clock(run.elapsed))", 15, .primary), spacer(), cost]))
         stack.addArrangedSubview(text("\(run.tools) tools \u{00B7} \(answered) approvals \u{00B7} \(run.errors) errors \u{00B7} earned \u{2014}", 11, .secondary))
         ticks.append { [weak self] in cost.stringValue = Prices.label(self?.run.runUsage) }
@@ -511,16 +673,11 @@ final class NotchLiveController: NSObject {
         if primary, let accent = backend?.pet.skin.accent { b.bezelColor = NSColor(cgColor: accent); b.keyEquivalent = "" }
         return b
     }
+    /// The pet peeking from the notch, on the 8 fps sprite clock (frame 0 under Reduce Motion).
     func eyes(asleep: Bool = false) -> NSView {
-        let v = NSView()
-        v.wantsLayer = true
         let loaded = backend?.pet.skin.loaded
-        v.layer?.contents = asleep ? loaded?.frames[.idle]?[min(5, (loaded?.frames[.idle]?.count ?? 1) - 1)] : loaded?.frames[.peek]?.first
-        v.layer?.contentsGravity = .resizeAspect
-        v.layer?.magnificationFilter = .nearest
-        v.widthAnchor.constraint(equalToConstant: 26).isActive = true
-        v.heightAnchor.constraint(equalToConstant: 26).isActive = true
-        return v
+        let frames = asleep ? Array((loaded?.frames[.idle] ?? []).dropFirst(5).prefix(2)) : (loaded?.frames[.peek] ?? [])
+        return SpriteView(frames: frames, size: 26)
     }
     func pulse() -> NSView {
         let v = NSView()
@@ -556,23 +713,6 @@ final class NotchLiveController: NSObject {
         }
         CATransaction.commit()
     }
-    func border(_ anim: CAAnimation?) {
-        guard let l = panel.contentView?.layer else { return }
-        l.borderWidth = anim == nil ? 0 : 1.5
-        l.borderColor = backend?.pet.skin.accent
-        l.removeAnimation(forKey: "breathe")
-        if let anim { l.add(anim, forKey: "breathe") }
-    }
-    func breathing() -> CAAnimation? {
-        guard !reduceMotion else { return nil }
-        let a = CABasicAnimation(keyPath: "borderColor")
-        a.fromValue = backend?.pet.skin.accent
-        a.toValue = backend?.pet.skin.accent.copy(alpha: 0.15)
-        a.duration = 0.8
-        a.autoreverses = true
-        a.repeatCount = .infinity
-        return a
-    }
     func clock(_ t: TimeInterval) -> String { let s = Int(t); return s >= 3600 ? "\(s / 3600)h \(s % 3600 / 60)m" : "\(s / 60):\(String(format: "%02d", s % 60))" }
 
     // MARK: Input
@@ -596,22 +736,17 @@ final class NotchLiveController: NSObject {
         }
     }
 
-    @objc func mouseEntered(with e: NSEvent) { hover(true, after: 0.12) }
-    @objc func mouseExited(with e: NSEvent) { hover(false, after: 0.3) }
-
     /// Hover intent: it opens once the pointer rests for 120 ms (crossing the menu bar doesn't pop it) and folds 300 ms
-    /// after the pointer leaves (a wobble at the edge doesn't snap it shut). The pointer's real position decides, so the
-    /// enter and exit events a resize or a keyboard hand-back produce can't flap it.
+    /// after the pointer leaves (a wobble at the edge doesn't snap it shut). The pointer's real position decides.
     private func hover(_ on: Bool, after delay: TimeInterval) {
         hoverWork?.cancel()
         guard hovered != on else { return }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.panel.frame.contains(NSEvent.mouseLocation) == on else { return }
+            guard let self, self.hoverWanted(at: NSEvent.mouseLocation) == on else { return }
             self.hovered = on
-            let before = self.state
             if on && self.needsKeys { self.panel.makeKey() }
             self.update()
-            if on && self.state != before { Feel.haptic(.tick) }
+            if on { Feel.haptic(.tick) }  // paired with the notch swelling to hover
         }
         hoverWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
