@@ -52,6 +52,13 @@ public enum NotchFeel {
     /// #5 press dent.
     public static let pressScale = 0.955
 
+    /// On a Mac with a notch, the resting shape sits just inside the hardware notch (invisible), and the ears grow only
+    /// as the shape grows past its edges, so nothing pokes out around the real notch until something happens.
+    public static func ear(width: Double, hardwareWidth: Double) -> Double {
+        hardwareWidth > 0 ? max(0, min(10, (width - hardwareWidth) / 2)) : 10
+    }
+    public static func restSize(hardware: (w: Double, h: Double)) -> (w: Double, h: Double) { (hardware.w - 2, hardware.h - 1) }
+
     /// A size change counts as opening when the area grows by more than a sliver (it gets the open spring and the peak tap).
     public static func isOpening(from: (w: Double, h: Double), to: (w: Double, h: Double)) -> Bool { to.w * to.h > from.w * from.h + 200 }
 

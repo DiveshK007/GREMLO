@@ -56,7 +56,10 @@ final class ApprovalBroker {
 }
 
 final class NotchPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    /// Key only when there's something to type at (an approval, the pinned ticker, the room, quick actions), so a plain
+    /// click never takes the keyboard and the panel never has to blink out and back to return it.
+    var allowsKey: () -> Bool = { true }
+    override var canBecomeKey: Bool { allowsKey() }
 }
 
 final class NotchLiveController: NSObject {
@@ -117,6 +120,11 @@ final class NotchLiveController: NSObject {
     }
 
     var notchHeight: CGFloat { mainScreen.safeAreaInsets.top > 0 ? mainScreen.safeAreaInsets.top : 0 }
+    /// The camera housing's width, between the menu bar's two halves; 0 without a notch.
+    var hardwareNotchWidth: CGFloat {
+        guard notchHeight > 0, let l = mainScreen.auxiliaryTopLeftArea, let r = mainScreen.auxiliaryTopRightArea else { return 0 }
+        return mainScreen.frame.width - l.width - r.width
+    }
 
     init(broker: ApprovalBroker, run: RunTracker) {
         self.broker = broker
@@ -134,6 +142,7 @@ final class NotchLiveController: NSObject {
         drop.layer?.addSublayer(shape)  // the black notch: always black, whatever the theme
         panel.acceptsMouseMovedEvents = true
         panel.ignoresMouseEvents = true  // clicks pass through everywhere but the notch itself
+        panel.allowsKey = { [weak self] in self?.needsKeys ?? false }
         Motion.reduce = reduceMotion
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { _ in
             Motion.reduce = reduceMotion
@@ -173,9 +182,12 @@ final class NotchLiveController: NSObject {
                 self.hovered = true  // a click means the pointer is here, even inside the hover delay
                 self.pressStart = Date()
                 self.pressOnControl = self.interactive(at: e.locationInWindow)
-                // the press dent; a button gives its own feedback, so only a press on the notch itself boops
-                self.press.animate(to: NotchFeel.pressScale, .press)
-                if !self.pressOnControl { Feel.haptic(.boop) }
+                // the press dent and its boop belong to a press on the notch itself; a button gives its own feedback,
+                // and denting a whole card under it read as a jerk
+                if !self.pressOnControl {
+                    self.press.animate(to: NotchFeel.pressScale, .press)
+                    Feel.haptic(.boop)
+                }
                 self.dragStart = NSEvent.mouseLocation
                 self.dragged = false; self.overPull = false; self.dragSamples = []
                 // #9 without Force Touch: holding still opens the quick actions
@@ -268,7 +280,7 @@ final class NotchLiveController: NSObject {
     }
 
     /// Keys do something only with an approval waiting (⌥↩ ⌥⌫ ⌥↓) or the notch held open (esc).
-    var needsKeys: Bool { !broker.queue.waiting.isEmpty || pinned || roomOpen }
+    var needsKeys: Bool { !broker.queue.waiting.isEmpty || pinned || roomOpen || quickOpen }
 
     /// The panel holds the keyboard only while the pointer is on it. Ordering it out and back hands the keyboard to the
     /// app underneath, so an answer typed in the terminal always lands there (the terminal answer wins).
@@ -306,8 +318,12 @@ final class NotchLiveController: NSObject {
     func target() -> NSRect {
         let sz = shapeSize
         let f = mainScreen.frame
-        let rest = state == .rest && notchHeight > 0
-        let w = rest ? max(CGFloat(sz.w), (mainScreen.auxiliaryTopRightArea.map { f.width - $0.width - (mainScreen.auxiliaryTopLeftArea?.width ?? 0) }) ?? CGFloat(sz.w)) : CGFloat(sz.w)
+        // plain rest on a Mac with a notch: just inside the hardware notch, so nothing shows until something happens
+        if state == .rest, hardwareNotchWidth > 0, sz == NotchLive.size(.rest) {
+            let r = NotchFeel.restSize(hardware: (Double(hardwareNotchWidth), Double(notchHeight)))
+            return NSRect(x: f.midX - r.w / 2, y: f.maxY - r.h, width: r.w, height: r.h)
+        }
+        let w = CGFloat(sz.w)
         let h = CGFloat(sz.h) + (belowNotch ? notchHeight : 0)
         return NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h).integral
     }
@@ -390,7 +406,8 @@ final class NotchLiveController: NSObject {
     func applyFrame() {
         guard let b = panel.contentView?.bounds, b.width > 0 else { return }
         if shape.frame != b { shape.frame = b }
-        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value), radius: R.value, bulge: max(0, -squash.value) / 2.2)
+        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value), radius: R.value,
+                              ear: NotchFeel.ear(width: W.value, hardwareWidth: Double(hardwareNotchWidth)), bulge: max(0, -squash.value) / 2.2)
         CATransaction.begin()
         CATransaction.setDisableActions(true)  // also when called outside the frame clock (layout, a jump)
         shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value, open: openness.value)
@@ -916,7 +933,7 @@ final class NotchLiveController: NSObject {
     /// #9: a force click opens the quick actions (no haptic: the trackpad clicks itself); pressure deepens the dent.
     func pressure(_ e: NSEvent) {
         if e.stage >= 2 { if !quickOpen { openQuick() } }
-        else if e.stage == 1 { press.animate(to: NotchFeel.pressScale - 0.04 * Double(e.pressure), .press) }
+        else if e.stage == 1, !pressOnControl { press.animate(to: NotchFeel.pressScale - 0.04 * Double(e.pressure), .press) }
     }
 
     func openQuick() {

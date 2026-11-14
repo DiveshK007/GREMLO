@@ -143,4 +143,12 @@ import Testing
         #expect(quick, "10 a second is")
         #expect(MacMoment.volume(0.5).size == (330, 60) && MacMoment.trick(.backflip).hold == 2.4 && MacMoment.over.contains(.rest))
     }
+
+    @Test func theRestingShapeHidesInsideTheHardwareNotch() {
+        let rest = NotchFeel.restSize(hardware: (179, 32))
+        #expect(rest.w < 179 && rest.h < 32, "fully under the real notch")
+        #expect(NotchFeel.ear(width: rest.w, hardwareWidth: 179) == 0, "no ears at rest")
+        #expect(NotchFeel.ear(width: 199, hardwareWidth: 179) == 10 && NotchFeel.ear(width: 185, hardwareWidth: 179) == 3, "ears grow past its edges")
+        #expect(NotchFeel.ear(width: 190, hardwareWidth: 0) == 10, "no hardware notch: the drawn notch keeps its ears")
+    }
 }
