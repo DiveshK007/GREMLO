@@ -214,3 +214,15 @@ import Testing
     }
 }
 
+@Suite struct LocalLifeTests {
+    @Test func aPetTheServerCantVouchForStillLivesHere() {
+        #expect(LocalLife.why(error: "HTTP 404 {\"error\":\"unknown pet\"}") == .unregistered)
+        #expect(LocalLife.why(error: "HTTP 502 bad gateway") == .serverDown)
+        #expect(LocalLife.why(error: "The Internet connection appears to be offline.") == .serverDown)
+        #expect(LocalLife.bubble(.unregistered, pet: "mochi") == "mochi isn't registered yet")
+        #expect(LocalLife.bubble(.serverDown, pet: "mochi").count <= 30, "the bubble stays short")
+        // the local mood is no money tier: it walks at the normal rate with the awake idle frames
+        #expect(Rates.multiplier(mood: LocalLife.mood) == 1)
+        #expect(Sequence.frames(.idle, count: 8, mood: LocalLife.mood) == [0, 1, 2, 3])
+    }
+}

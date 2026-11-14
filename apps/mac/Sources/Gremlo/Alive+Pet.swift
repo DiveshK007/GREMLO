@@ -7,7 +7,6 @@ import GremloCore
 // first-session signature move and tool props. The rules live in GremloCore (Alive.swift) and are unit-tested;
 // this file only feeds them the clock, the cursor and the system state.
 
-let offlineReason = "Can't reach the network · sleeping safely"
 var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
 extension Pet {

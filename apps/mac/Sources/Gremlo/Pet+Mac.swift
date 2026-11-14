@@ -42,7 +42,7 @@ final class Pet {
     var signLinks = false // the current campaign has a link to open
     // Short speech bubble ("+0.0002 NEAR food"). Above the pet, or under the door while it is home.
     let bubblePanel = overlayPanel(CGSize(width: 10, height: 20), level: .statusBar)
-    let bubbleLabel = NSTextField(wrappingLabelWithString: "")
+    let bubble = BubbleView()
     var bubbleUntil = Date.distantPast
     // From GET /pets/:name. Asleep keeps the pet home with sleepNote under the door.
     var mood = "stable"
@@ -156,11 +156,7 @@ final class Pet {
             sprite.addSublayer(l)
             accLayers[slot] = l
         }
-        bubbleLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
-        bubbleLabel.textColor = .black
-        bubbleLabel.drawsBackground = true
-        bubbleLabel.backgroundColor = .white
-        bubblePanel.contentView?.addSubview(bubbleLabel)
+        bubblePanel.contentView?.addSubview(bubble)
         timers.append(Timer.scheduledTimer(withTimeInterval: 1 / tickHz, repeats: true) { [weak self] _ in self?.tick() })
         startContextMonitors()
     }
@@ -487,14 +483,8 @@ final class Pet {
 
     /// `you`: a bubble from the CLI or a shortcut is outlined and tagged "you" (model bubbles are filled).
     func setBubble(_ text: String, you: Bool = false) {
-        bubbleLabel.stringValue = you ? "you: \(text)" : text
-        bubbleLabel.backgroundColor = you ? NSColor(white: 0.97, alpha: 1) : .white
-        bubbleLabel.wantsLayer = true
-        bubbleLabel.layer?.borderWidth = you ? 1.5 : 0
-        bubbleLabel.layer?.borderColor = NSColor.black.cgColor
-        bubbleLabel.preferredMaxLayoutWidth = 220
-        bubbleLabel.frame.size = bubbleLabel.fittingSize
-        bubblePanel.setContentSize(bubbleLabel.frame.size)
+        bubble.outlined = you
+        bubblePanel.setContentSize(bubble.fit(you ? "you: \(text)" : text))
     }
 
     func say(_ text: String, for seconds: TimeInterval, you: Bool = false) {
@@ -513,7 +503,7 @@ final class Pet {
     func placeBubble() {
         if Date() >= bubbleUntil {
             guard let note = sleepNote ?? (working && path == .floor ? "\u{2026}" : nil) else { if bubblePanel.isVisible { bubblePanel.orderOut(nil) }; return }
-            if bubbleLabel.stringValue != note { setBubble(note) }
+            if bubble.text != note { setBubble(note) }
         }
         let w = bubblePanel.frame.width, h = bubblePanel.frame.height
         var x = pos.x + size.width / 2 - w / 2
@@ -521,6 +511,9 @@ final class Pet {
         if path == .home { x = door.center.x - w / 2; y = door.panel.frame.minY - h - 2 }
         if path == .ceiling { y = pos.y - h + skin.footPadding }
         x = min(max(x, leftX), mainScreen.visibleFrame.maxX - w)
+        // the tail points at the pet: down to it, or up when the bubble hangs under the door or the ceiling
+        bubble.tailUp = path == .home || path == .ceiling
+        bubble.tailX = (path == .home ? door.center.x : pos.x + size.width / 2) - x
         bubblePanel.setFrameOrigin(NSPoint(x: x, y: min(y, mainScreen.visibleFrame.maxY - h)))
         if !bubblePanel.isVisible && onHomeSpace { bubblePanel.orderFrontRegardless() }
     }
@@ -715,5 +708,61 @@ final class Pet {
             goHome(lock: true)
         default: break
         }
+    }
+}
+
+/// The speech bubble: rounded (10 pt), padded, the app's font and colours (light and dark), and a small tail toward
+/// the pet. Short text; it wraps at 220 pt.
+final class BubbleView: NSView {
+    static let radius: CGFloat = 10, padX: CGFloat = 9, padY: CGFloat = 5, tail: CGFloat = 5, maxWidth: CGFloat = 220
+    private let label = NSTextField(wrappingLabelWithString: "")
+    var text: String { label.stringValue }
+    var outlined = false { didSet { needsDisplay = true } }   // a line from the CLI or a shortcut ("you: ...")
+    var tailUp = false { didSet { if tailUp != oldValue { layoutLabel(); needsDisplay = true } } }
+    var tailX: CGFloat = 0 { didSet { if tailX != oldValue { needsDisplay = true } } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        label.font = UI.body(12, .medium)
+        label.textColor = UI.fg
+        label.drawsBackground = false
+        label.isBordered = false
+        addSubview(label)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Sets the text and sizes the bubble to it; returns the size, tail included.
+    func fit(_ s: String) -> NSSize {
+        label.stringValue = s
+        label.preferredMaxLayoutWidth = Self.maxWidth
+        label.frame.size = label.fittingSize
+        setFrameSize(NSSize(width: label.frame.width + Self.padX * 2, height: label.frame.height + Self.padY * 2 + Self.tail))
+        layoutLabel()
+        needsDisplay = true
+        return frame.size
+    }
+
+    private func layoutLabel() { label.setFrameOrigin(NSPoint(x: Self.padX, y: (tailUp ? 0 : Self.tail) + Self.padY)) }
+
+    override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = Self.radius, t = Self.tail
+        let b = NSRect(x: 0.5, y: (tailUp ? 0 : t) + 0.5, width: bounds.width - 1, height: bounds.height - t - 1)
+        let x = min(max(tailX, b.minX + r + t), b.maxX - r - t)
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: b.minX, y: b.midY))
+        p.appendArc(from: NSPoint(x: b.minX, y: b.minY), to: NSPoint(x: b.maxX, y: b.minY), radius: r)
+        if !tailUp { for pt in [(x - t, b.minY), (x, b.minY - t), (x + t, b.minY)] { p.line(to: NSPoint(x: pt.0, y: pt.1)) } }
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.minY), to: NSPoint(x: b.maxX, y: b.maxY), radius: r)
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.maxY), to: NSPoint(x: b.minX, y: b.maxY), radius: r)
+        if tailUp { for pt in [(x + t, b.maxY), (x, b.maxY + t), (x - t, b.maxY)] { p.line(to: NSPoint(x: pt.0, y: pt.1)) } }
+        p.appendArc(from: NSPoint(x: b.minX, y: b.maxY), to: NSPoint(x: b.minX, y: b.minY), radius: r)
+        p.close()
+        UI.surface.setFill()
+        p.fill()
+        (outlined ? UI.fg : UI.rule).setStroke()
+        p.lineWidth = outlined ? 1.5 : 1
+        p.stroke()
     }
 }

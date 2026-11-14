@@ -161,6 +161,7 @@ assert(near4("-5") == "\u{2014}" && near4("0x1f") == "\u{2014}" && near4(" 5") =
 assert(!staysHome(mood: "hungry", agentWorking: true) && !staysHome(mood: "hungry", agentWorking: false), "a hungry pet still shows the sign")
 assert(!staysHome(mood: "asleep", agentWorking: true) && staysHome(mood: "asleep", agentWorking: false), "only an idle, asleep pet stays home")
 assert(!staysHome(mood: "thriving", agentWorking: true) && !staysHome(mood: "stable", agentWorking: false))
+assert(!staysHome(mood: LocalLife.mood, agentWorking: false), "a pet the server can't vouch for still lives on the floor")
 assert(nearGain("5", "5") == nil && nearGain("5", "4") == nil && nearGain(nil, "5") == nil)
 do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt closes the open stretch
     var w = WaitClock(); let t0 = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())! // away from midnight

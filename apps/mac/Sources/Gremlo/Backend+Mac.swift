@@ -19,6 +19,9 @@ final class Backend: NSObject {
     var info: PetInfo?
     var lastThink = "no think yet"
     var serverError: String?
+    /// Why the server can't vouch for the pet right now (not registered, server or network down); nil when it can.
+    var localWhy: LocalLife.Why?
+    private var hinted: LocalLife.Why?
     var thinking = false
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
     var waited = WaitClock()
@@ -256,12 +259,10 @@ final class Backend: NSObject {
             guard seq > self.petApplied else { return }
             self.petApplied = seq
             if let err {
-                // No balance means no mood: sleep and say why instead of showing the last known one.
+                // No balance means no money mood. The pet still lives here; paid thinking and lines stop.
                 self.serverError = "pet \(self.petName): \(err)"
                 self.info = nil
-                // a 404 means the server answered but doesn't know this pet; only a network error is "can't reach"
-                self.pet.setMood("asleep", reason: err.hasPrefix("HTTP 404") ? "\(self.petName) isn't registered yet: get your pet on the web app"
-                    : err.hasPrefix("HTTP") ? "server error: \(err.prefix(60))" : "can't reach the \(productName) server")
+                self.goLocal(LocalLife.why(error: err))
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
                 // it eats when a settlement refills its onchain compute budget (real tx), or when its payout grows
@@ -271,6 +272,7 @@ final class Backend: NSObject {
                     self.pet.eat(gain + (new.seeded ? " [seeded]" : ""))
                 }
                 self.info = new
+                if !self.pet.offline { self.localWhy = nil; self.hinted = nil }
                 self.growth.meals(new.meals ?? [], seeded: new.seeded)
                 self.growth.mood(new.mood)
             }
@@ -320,12 +322,15 @@ final class Backend: NSObject {
         if (paused || pet.egg) && !demoMode {
             pet.setSign(nil)  // paused, or still an egg: no line
         } else if pet.offline && !demoMode {
-            // offline: sleeps, no lines, no meals, and says why (spec R2 §6)
+            // offline: no lines, no meals, no paid thinking; the pet still lives here and the panel says why
             pet.setSign(nil)
-            pet.setMood("asleep", reason: offlineReason)
-        } else if let i = info, !demoMode { pet.setMood(i.mood, reason: i.moodReason) }
+            goLocal(.offline)
+        } else if let i = info, !demoMode {
+            if localWhy == .offline { localWhy = nil; hinted = nil }  // back online, and the server knows the pet
+            pet.setMood(i.mood, reason: i.moodReason)
+        }
         if showingDemo { return }
-        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / 60) } ?? -1)|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)"
+        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / 60) } ?? -1)|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))"
         if key == shown { return }
         shown = key
         UI.setAccent(pet.skin.species)
@@ -349,7 +354,8 @@ final class Backend: NSObject {
         // what needs saying first
         var notes: [NSView] = []
         if seeded { notes.append(UI.notice("Seeded data, not real money", UI.amber, width: w)) }
-        if let e = serverError { notes.append(UI.notice("Server: \(e)", UI.text3, width: w)) }
+        if let why = localWhy { notes.append(UI.notice(LocalLife.panel(why, pet: petName), UI.text3, width: w)) }
+        if let e = serverError, localWhy != .unregistered { notes.append(UI.notice("Server: \(e)", UI.text3, width: w)) }
         // views count only from a paired Mac, so an unpaired one says so first and offers the one step that fixes it
         if info?.paired == false && !seeded {
             let pair = Btn("Pair", style: .primary, target: self, action: #selector(pairDevice)); pair.small = true
@@ -518,8 +524,16 @@ final class Backend: NSObject {
         defaults.set(quietHours, forKey: "quietHours")
         render()
     }
-    /** Hooks show only when opted in, outside quiet hours, and under the daily cap. */
-    var showHooks: Bool { sponsoredOn && !inQuietHours() && (info?.impressionsToday ?? 0) < dailyViewCap }
+    /** Hooks show only once the server knows the pet (an unregistered pet's views are never paid), when opted in,
+     *  outside quiet hours, and under the daily cap. */
+    var showHooks: Bool { info != nil && sponsoredOn && !inQuietHours() && (info?.impressionsToday ?? 0) < dailyViewCap }
+
+    /// The server can't vouch for the pet: it keeps living here (walks, hooks, approvals) and says why once.
+    func goLocal(_ why: LocalLife.Why) {
+        localWhy = why
+        pet.setMood(LocalLife.mood, reason: nil)
+        if hinted != why { hinted = why; pet.say(LocalLife.bubble(why, pet: petName), for: 6) }
+    }
 
     /** Asked once: sponsored hooks are opt-in. */
     func askSponsoredOnce() {
