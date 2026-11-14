@@ -17,6 +17,40 @@ The final run uses new accounts; the deploy, init and loop rows are filled from 
 | Operator (`get_operator`) | `operator.gremlo.testnet` | |
 | Code hash (sha256, base58) | `AeXXhh355asstWmnF9XzLHowUBoTXtAao7VR4WhF7gdb` (matches a local `cargo near build non-reproducible-wasm` of `contracts-near`) | |
 
+## The loop: FINAL RUN (15 Nov 2026)
+
+On `vault.gremlo.testnet`, 03:09 to 03:50 IST. Every hash below was checked on testnet RPC on 2026-11-15: each tx ended in `SuccessValue` with no failed receipt, and the events are the vault's own logs.
+
+Pet `mochi`: owner `owner.gremlo.testnet`, payout `owner.gremlo.testnet` (the payout field was left at its default, the owner; `byte.gremlo.testnet` wasn't used). Brand `notchi.testnet`, campaign 1.
+
+| # | Step | Tx | What the chain shows |
+|---|---|---|---|
+| 1 | Pet registered (`register_pet`, by the operator after the World ID check) | [`5xuUysyigMP4bARt3WdRHTW9byCyKiifiwi4oPd8fWho`](https://testnet.nearblocks.io/txns/5xuUysyigMP4bARt3WdRHTW9byCyKiifiwi4oPd8fWho) | `pet_registered` mochi, owner and payout `owner.gremlo.testnet` |
+| 2 | Pet verified (`set_verified`) | [`6EAhsDt7Ae6mqq1ipxBgP22Yra9ccWB1fSJ9sdsdzu9X`](https://testnet.nearblocks.io/txns/6EAhsDt7Ae6mqq1ipxBgP22Yra9ccWB1fSJ9sdsdzu9X) | `pet_verified` |
+| 3 | Brand funds campaign 1 (`create_campaign`, 0.1 NEAR attached, by `notchi.testnet`) | [`214EyrLM5Jwqsn2R2gDbGrnBYXsKQsLnZXvCXXTougn7`](https://testnet.nearblocks.io/txns/214EyrLM5Jwqsn2R2gDbGrnBYXsKQsLnZXvCXXTougn7) | `campaign_created` id 1, budget 0.09812 NEAR, 0.003 NEAR per view |
+| — | Compute budget before the first settlement | | 0 |
+| 4 | View 1 settled (`settle_impressions`) | [`FFdmieVQ26YyJcHwkvcSnSveA4EfG6SxYUE2JwWBQUQB`](https://testnet.nearblocks.io/txns/FFdmieVQ26YyJcHwkvcSnSveA4EfG6SxYUE2JwWBQUQB) | `impressions_settled`: 0.0024 NEAR paid to `owner.gremlo.testnet`, 0.0006 NEAR into the compute budget |
+| 5 | Smart-model call charged (`charge_compute`) | [`E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d`](https://testnet.nearblocks.io/txns/E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d) | `compute_charged` 0.0005 NEAR, completion `chatcmpl-cc26d4e5-abf1-4837-b10f-7543f37ce156`, budget left 0.0001 |
+| 6 | Cheap-model call charged (`charge_compute`) | [`GHMAHr4ad8hZKJf7jR9Mgz92K1wXKBh4srFTbanCrBzq`](https://testnet.nearblocks.io/txns/GHMAHr4ad8hZKJf7jR9Mgz92K1wXKBh4srFTbanCrBzq) | `compute_charged` 0.0001 NEAR, completion `cccbcb67e3e74cc9af1788f20c910d62`, budget left 0 |
+| 7 | Brand tops up campaign 1 (`top_up`, by `notchi.testnet`) | [`Akz9UDRZqkSM5AjjEubTZhfv6QD7U52kjsPQ63R4tNcr`](https://testnet.nearblocks.io/txns/Akz9UDRZqkSM5AjjEubTZhfv6QD7U52kjsPQ63R4tNcr) | `campaign_topped_up` +0.5 NEAR, campaign budget 0.59812 NEAR. The campaign's budget, not the pet's compute budget |
+| 8 | View 2 settled (`settle_impressions`) | [`CNvNmMvBLdgdXzCUFr852CRdjRCrWb43sVLjSuoUa95M`](https://testnet.nearblocks.io/txns/CNvNmMvBLdgdXzCUFr852CRdjRCrWb43sVLjSuoUa95M) | `impressions_settled`: 0.0024 NEAR paid, 0.0006 NEAR into the compute budget |
+| 9 | Smart-model call charged (`charge_compute`) | [`8gDVVjKkHYh7VkGWpwvJ5hS7AdpYUUAAWMRVZuWj1V9Z`](https://testnet.nearblocks.io/txns/8gDVVjKkHYh7VkGWpwvJ5hS7AdpYUUAAWMRVZuWj1V9Z) | `compute_charged` 0.0005 NEAR, completion `chatcmpl-5132d660-f00d-4cea-9ee6-832310f23900`, budget left 0.0001 |
+| 10 | Cheap-model call charged (`charge_compute`) | [`J6a5MxUP1EV5591XNVRV8i4B194hAuGnv8wW8eggU5cg`](https://testnet.nearblocks.io/txns/J6a5MxUP1EV5591XNVRV8i4B194hAuGnv8wW8eggU5cg) | `compute_charged` 0.0001 NEAR, completion `49b3f9cae70d48f8bca2aca2d7d97ae7`, budget left 0 |
+
+The budget moved exactly as the vault's rules say: 0 → +0.0006 (view 1) → −0.0005 smart → −0.0001 cheap → 0 → +0.0006 (view 2) → −0.0005 smart → −0.0001 cheap → 0. Every thought was paid from views; nothing was added to the pet's compute budget by hand.
+
+Vault state read after the run (`get_pet mochi`, `get_campaign 1`, `get_totals`):
+
+| What | Value |
+|---|---|
+| Pet `mochi` | verified, 2 views, earned 0.0048 NEAR, compute share 20%, compute budget 0, compute spent 0.0012 NEAR, daily cap 0.02 NEAR |
+| Campaign 1 | brand `notchi.testnet`, budget 0.59812 NEAR, spent 0.006 NEAR, open |
+| Totals | deposited 0.59812 NEAR, paid to pets 0.0048, compute charged 0.0012, remaining 0.59212, refunded 0 |
+
+Notes on the final run:
+- Pairing the Mac to the pet is a signed message (NEP-413) checked by the server, not a transaction, so it has no hash on chain. The vault's history has no other calls than the ones above.
+- The completion ids were not run through `npm run verify` in this run.
+
 ## Contract: DRY RUN (old accounts, before the rename)
 
 The dry run ran on the original testnet accounts, which keep their `notchi` names.

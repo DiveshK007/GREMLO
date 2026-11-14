@@ -106,7 +106,7 @@ Every env var name is listed in [HANDOFF.md](HANDOFF.md). Values live only in yo
 | Claim | Proof |
 |---|---|
 | The vault is deployed and initialised as `vault.gremlo.testnet`, with `operator.gremlo.testnet` as operator; its code hash matches a local build of `contracts-near` | [PROOF.md, final run](PROOF.md#final-run-accounts-gremlotestnet) · deploy tx [`12bj3uDk…J4bq`](https://testnet.nearblocks.io/txns/12bj3uDkB6ufrMmKS7m4s85xma9CC1zhgevS7eMbJ4bq) |
-| The full loop ran end to end: pet registered after the World ID check, verified, campaign funded, views settled, the compute budget refilled, NEAR AI calls charged against it with their completion ids | [PROOF.md, the loop (dry run, 12 Nov 2026)](PROOF.md#the-loop-dry-run-12-nov-2026), on the pre-rename `*.notchi.testnet` accounts |
+| The full loop ran end to end: pet registered after the World ID check, verified, campaign funded, views settled, the compute budget refilled, NEAR AI calls charged against it with their completion ids | [PROOF.md, the loop (final run, 15 Nov 2026)](PROOF.md#the-loop-final-run-15-nov-2026) on `vault.gremlo.testnet`: two views settled, four NEAR AI calls charged, each paid from the views' share of the budget. First pass: [dry run, 12 Nov](PROOF.md#the-loop-dry-run-12-nov-2026) |
 | A NEAR AI completion is signed by the attested TEE that served it (`npm run verify` in `apps/server`) | [PROOF.md, NEAR AI Cloud](PROOF.md#near-ai-cloud-private-inference-in-a-tee) |
 
 ### Built, simulator only
@@ -120,7 +120,6 @@ Every env var name is listed in [HANDOFF.md](HANDOFF.md). Values live only in yo
 | The pet's purse: a factory and a purse contract, with a Mac key limited to `pay_inference` and per-call and daily caps. The app side is wired: a pet with a purse pays for each thought from its own account, signed on the Mac, and the server counts a payment only once the chain shows it | `contracts-accounts` (14 tests), `apps/server/src/purse.ts` (tested), `GremloCore/Near.swift` (byte-identical to near-api-js). Not deployed; setup steps in [contracts-accounts/README.md](contracts-accounts/README.md). Pets without a purse use the vault's compute budget |
 
 ### Known limits
-- The final clean loop on the `*.gremlo.testnet` accounts hasn't run yet; the loop proof above is the dry run.
 - Not self-funded beyond the wording above: AI calls are charged against the pet's budget (or paid from its purse, once deployed) at a fixed per-tier rate, not the real USD bill, and the operator holds the NEAR AI credits.
 - The platform fee isn't published, so it shows as `—`.
 - A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom/system recording are).
