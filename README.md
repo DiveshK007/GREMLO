@@ -41,6 +41,33 @@ Claude Code hooks ──> Mac app (notch, menu bar, 127.0.0.1:47474)
    the TEE-signed completion id in the log. The operator holds the NEAR AI credits; the pet can't buy credits directly
    yet. Mood follows the real budget: thriving, stable, hungry, or asleep (no paid calls).
 
+## Install
+
+Needs macOS 13 or later and the Xcode Command Line Tools (`xcode-select --install`).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash
+```
+
+This builds Gremlo from source on your Mac (a few minutes the first time), puts it in `~/Applications/Gremlo.app` and
+starts it. Run the same line again to update. Because it's built on your Mac, macOS opens it without a warning.
+
+Or download the `.dmg` from [Releases](https://github.com/DiveshK007/GREMLO/releases) (none yet: the first appears when a
+`v*` tag is pushed) and do this the first time:
+
+1. Open the dmg and drag Gremlo onto Applications.
+2. Open Gremlo. When macOS says it was not opened, click Done.
+3. Open System Settings, Privacy & Security, scroll to Security, and click Open Anyway next to Gremlo. Confirm with your password, then click Open.
+
+Or, in Terminal, once: `xattr -dr com.apple.quarantine /Applications/Gremlo.app`
+
+The app isn't notarized yet: there's no Apple Developer account behind it. The dmg is ad hoc signed and built by this
+repo's release workflow from the tagged source, so macOS can't check who made it. That's what the steps above get past.
+
+There's no hosted server yet. The app talks to `http://localhost:8787` unless `GREMLO_SERVER` is set, so run the server
+from the Quickstart below. To set it, or your pet's name, for an app opened from Finder:
+`launchctl setenv GREMLO_SERVER <url>` and `launchctl setenv GREMLO_PET <name>`, then reopen it.
+
 ## Quickstart
 
 Needs macOS 13+ with Swift 5.9+, Node 22 (the version CI uses), and Rust only for the contracts. Steps 1 and 2 were
@@ -96,6 +123,7 @@ Every env var name is listed in [HANDOFF.md](HANDOFF.md). Values live only in yo
 - Community species can't be installed from the gallery yet.
 - The pet page shows the species and stage only after the Mac has thought once.
 - The redesigned menu bar, Settings and web pages haven't been watched running yet.
+- The Mac app isn't notarized (no Apple Developer account yet), and there's no hosted server; see Install.
 - Windows and Linux aren't built.
 
 ## Repo
