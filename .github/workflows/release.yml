@@ -1,0 +1,43 @@
+name: release
+# Pushing a tag like v0.3.0 builds the ad hoc signed, universal Gremlo dmg and attaches it to that tag's GitHub release.
+# Not notarized (no Apple Developer account yet): the release notes give the first-launch steps.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build && swift test
+        working-directory: apps/mac
+      - run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/release-mac.sh
+      - name: Attach the dmg to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dmg="apps/mac/dist/Gremlo-${GITHUB_REF_NAME#v}.dmg"
+          shasum -a 256 "$dmg" | sed 's|apps/mac/dist/||' > "$dmg.sha256"
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "Gremlo $GITHUB_REF_NAME" --notes "$(cat <<'EOF'
+          Gremlo for macOS 13 or later (Apple silicon and Intel).
+
+          This build isn't notarized yet: there's no Apple Developer account behind it. It is ad hoc signed and built by
+          this repo's release workflow from the tagged source. macOS will say it can't check it for malware the first time.
+
+          First launch:
+          1. Open the dmg and drag Gremlo onto Applications.
+          2. Open Gremlo. When macOS says it was not opened, click Done.
+          3. Open System Settings, Privacy & Security, scroll to Security, and click Open Anyway next to Gremlo. Confirm with your password, then click Open.
+
+          Or, in Terminal, once: `xattr -dr com.apple.quarantine /Applications/Gremlo.app`
+
+          To skip all of this, build it on your Mac instead: `curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash`
+          EOF
+          )"
+          fi
+          gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" --clobber

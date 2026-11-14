@@ -4,16 +4,20 @@
 #   NOTARY_PROFILE  a notarytool keychain profile, made once with:
 #                   xcrun notarytool store-credentials gremlo --apple-id you@x.com --team-id TEAMID --password <app-specific password>
 # Without SIGN_ID it signs ad hoc and skips notarization: fine for your own Mac, Gatekeeper blocks it elsewhere.
+#   ARCH=native     build for this Mac only (install.sh); default is universal (arm64 + x86_64)
+#   NO_DMG=1        stop after Gremlo.app (install.sh)
 set -euo pipefail
 cd "$(dirname "$0")/../apps/mac"
 VERSION="${VERSION:-0.2.0}"
 BUNDLE_ID="${BUNDLE_ID:-app.gremlo.mac}"
 OUT="$PWD/dist"
 SCRATCH="${TMPDIR:-/tmp}/gremlo-release-build" # never the .build a running `swift run` uses
-ARCHS=(--arch arm64 --arch x86_64)
+if [ "${ARCH:-universal}" = native ]; then ARCHS=""; else ARCHS="--arch arm64 --arch x86_64"; fi
 
-swift build -c release "${ARCHS[@]}" --scratch-path "$SCRATCH"
-BIN="$(swift build -c release "${ARCHS[@]}" --scratch-path "$SCRATCH" --show-bin-path)"
+# shellcheck disable=SC2086 # ARCHS is a flag list or empty
+swift build -c release $ARCHS --scratch-path "$SCRATCH"
+# shellcheck disable=SC2086
+BIN="$(swift build -c release $ARCHS --scratch-path "$SCRATCH" --show-bin-path)"
 APP="$OUT/Gremlo.app"
 rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/assets"
@@ -52,9 +56,14 @@ else
   codesign --force --sign - "$APP"
 fi
 codesign --verify --strict "$APP"
+if [ -n "${NO_DMG:-}" ]; then echo "built $APP"; exit 0; fi
 
+# the dmg window shows the app next to an Applications link, to drag it across
 DMG="$OUT/Gremlo-$VERSION.dmg"
-hdiutil create -quiet -volname Gremlo -srcfolder "$APP" -ov -format UDZO "$DMG"
+STAGE="$OUT/dmg"
+mkdir -p "$STAGE" && ditto "$APP" "$STAGE/Gremlo.app" && ln -s /Applications "$STAGE/Applications"
+hdiutil create -quiet -volname Gremlo -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
 if [ -n "${SIGN_ID:-}" ]; then
   codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
   xcrun notarytool submit "$DMG" --keychain-profile "${NOTARY_PROFILE:?set NOTARY_PROFILE (see the top of this script)}" --wait
