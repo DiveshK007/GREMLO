@@ -88,6 +88,10 @@ extension Backend {
                    Seg(titles, selected: soundLevel.rawValue, target: self, action: #selector(setSoundLevel(_:))), width: w),
             UI.row("Notch sounds", "Soft pops and ticks as the notch moves. Silent during screen shares and meetings.",
                    Seg(SoundKit.Level.allCases.map(\.title), selected: SoundKit.shared.level.rawValue, target: self, action: #selector(setNotchSound(_:))), width: w),
+            UI.row("Typing pace", "Off by default. A cheer when you type fast, a nap after 5 idle minutes. Needs Accessibility; keeps only when keys were pressed, never which.",
+                   Toggle(on: defaults.bool(forKey: "typingPace"), target: self, action: #selector(toggleTypingPace(_:)), label: "Typing pace"), width: w),
+            UI.row("Bops to music", "Off by default. Asks Music and Spotify what's playing every 5 s while on.",
+                   Toggle(on: defaults.bool(forKey: "musicBop"), target: self, action: #selector(toggleMusicBop(_:)), label: "Bops to music"), width: w),
             UI.row("Haptics", "Force Touch trackpad. Never for a sponsored line.",
                    Seg(["On", "Subtle", "Off"], selected: HapticLevel.allCases.firstIndex(of: hapticLevel) ?? 0, target: self, action: #selector(setHaptics(_:))), width: w),
         ], width: w)]
@@ -127,6 +131,14 @@ extension Backend {
     @objc func setSoundLevel(_ s: Seg) {
         soundLevel = SoundLevel(rawValue: s.selectedSegment) ?? .default
         defaults.set(soundLevel.rawValue, forKey: "soundLevel")
+    }
+    @objc func toggleTypingPace(_ sender: NSButton) {
+        defaults.set(sender.state == .on, forKey: "typingPace")
+        live.applyOptIns()
+    }
+    @objc func toggleMusicBop(_ sender: NSButton) {
+        defaults.set(sender.state == .on, forKey: "musicBop")
+        live.applyOptIns()
     }
     @objc func setNotchSound(_ s: Seg) {
         SoundKit.shared.level = SoundKit.Level(rawValue: max(0, s.selectedSegment)) ?? .subtle

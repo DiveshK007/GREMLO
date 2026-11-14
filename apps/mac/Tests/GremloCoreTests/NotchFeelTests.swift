@@ -118,4 +118,29 @@ import Testing
         #expect(NotchLive.resolve(i, now: Date()) == .quick, "asked for this moment, it sits over a waiting approval")
         #expect(Haptics.recipes[.heartbeat]?.count == 2)
     }
+
+    @Test func macEventsAndEasterEggs() {
+        var b = BatteryWatch()
+        #expect(b.update(percent: 50, onAC: false) == nil)
+        #expect(b.update(percent: 10, onAC: false) == .low(10) && b.update(percent: 8, onAC: false) == nil, "once per discharge")
+        #expect(b.update(percent: 8, onAC: true) == .pluggedIn && b.update(percent: 9, onAC: true) == nil)
+        #expect(b.update(percent: 9, onAC: false) == .low(9), "a new discharge warns again")
+        var fresh = BatteryWatch()
+        #expect(fresh.update(percent: 80, onAC: true) == nil, "launching on AC isn't a plug-in")
+
+        var k = Konami()
+        let code: [UInt16] = [126, 126, 125, 125, 123, 124, 123, 124, 11, 0]
+        var early: [Bool] = []
+        for key in [UInt16(53)] + code.dropLast() { early.append(k.feed(key)) }
+        let last = k.feed(0)
+        #expect(!early.contains(true) && last, "only the last key of the code fires")
+
+        var t = TypingPace(), slow: [Bool] = []
+        for i in 0..<9 { slow.append(t.key(at: Double(i) * 0.2)) }
+        #expect(!slow.contains(true), "5 a second isn't a sprint")
+        var fast = TypingPace(), quick = false
+        for i in 0..<12 { quick = fast.key(at: Double(i) * 0.1) }
+        #expect(quick, "10 a second is")
+        #expect(MacMoment.volume(0.5).size == (330, 60) && MacMoment.trick(.backflip).hold == 2.4 && MacMoment.over.contains(.rest))
+    }
 }

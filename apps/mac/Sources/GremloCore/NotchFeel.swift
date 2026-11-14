@@ -117,3 +117,72 @@ public enum NotchFeel {
         state == .rest && !screenShared && !inMeeting && !focus
     }
 }
+
+// MARK: - Mac events and personality (#24-27)
+
+/// Short moments the notch shows over a quiet state: the Mac's own events and the pet's personality.
+public enum MacMoment: Equatable, Sendable {
+    case volume(Double), battery(Int), charging, screenshot, trick(Row), typing, nap, music(String), home(String)
+
+    public var size: (w: Double, h: Double) {
+        switch self {
+        case .volume: return (330, 60)
+        case .battery, .screenshot: return (300, 44)
+        case .charging: return (300, 52)
+        case .trick: return (260, 56)
+        case .typing: return (250, 40)
+        case .nap: return (240, 46)
+        case .music: return (330, 44)
+        case .home: return (300, 46)
+        }
+    }
+    public var hold: Double {
+        switch self {
+        case .volume, .typing: return 1.8
+        case .trick: return 2.4
+        case .music: return 6        // renewed by every poll while the music plays
+        default: return 2.6
+        }
+    }
+    /// Shown only over states with nothing to say; cards and approvals always win.
+    public static let over: Set<LiveState> = [.rest, .think, .peek]
+}
+
+/// #24 battery: one warning at 10% or less per discharge, and the moment the Mac is plugged in.
+public struct BatteryWatch: Sendable {
+    public enum Event: Equatable, Sendable { case low(Int), pluggedIn }
+    var onAC: Bool?
+    var warned = false
+    public init() {}
+    public mutating func update(percent: Int, onAC ac: Bool) -> Event? {
+        defer { onAC = ac }
+        if ac { warned = false; return onAC == false ? .pluggedIn : nil }
+        if percent <= 10, !warned { warned = true; return .low(percent) }
+        return nil
+    }
+}
+
+/// #26 the Konami code, by key code: up up down down left right left right B A.
+public struct Konami: Sendable {
+    static let code: [UInt16] = [126, 126, 125, 125, 123, 124, 123, 124, 11, 0]
+    var keys: [UInt16] = []
+    public init() {}
+    public mutating func feed(_ k: UInt16) -> Bool {
+        keys.append(k)
+        if keys.count > Self.code.count { keys.removeFirst(keys.count - Self.code.count) }
+        if keys == Self.code { keys = []; return true }
+        return false
+    }
+}
+
+/// #25 typing pace: only timestamps from the last 1.5 s, never which keys. Over 6 keys a second is a cheer.
+public struct TypingPace: Sendable {
+    var stamps: [Double] = []
+    public init() {}
+    public mutating func key(at t: Double) -> Bool {
+        stamps.append(t)
+        stamps.removeAll { t - $0 > 1.5 }
+        return Double(stamps.count) / 1.5 > 6
+    }
+    public static let napAfter = 300.0
+}

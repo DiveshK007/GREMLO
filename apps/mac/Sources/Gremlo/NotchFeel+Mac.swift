@@ -213,6 +213,18 @@ final class NotchShapeLayer: CALayer {
         body.shadowOpacity = Float(0.45 * max(0, min(1, open)))
     }
 
+    /// The Konami disco: the rim cycles through the hues for 3.6 s, then goes back to what it was.
+    func disco() {
+        let hues = stride(from: 0.0, through: 1.0, by: 1.0 / 12).map { NSColor(hue: $0, saturation: 0.85, brightness: 1, alpha: 1).cgColor }
+        let a = CAKeyframeAnimation(keyPath: "colors")
+        a.values = hues.map { [$0, $0] }
+        a.duration = 3.6
+        let show = CABasicAnimation(keyPath: "opacity")
+        show.fromValue = 1; show.toValue = 1; show.duration = 3.6
+        rim.add(a, forKey: "disco")
+        rimBox.add(show, forKey: "disco")
+    }
+
     private func updateRim() {
         rim.removeAnimation(forKey: "flow")
         glow.shadowColor = rimColor.cgColor

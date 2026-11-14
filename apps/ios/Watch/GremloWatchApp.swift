@@ -26,7 +26,11 @@ struct GremloWatchApp: App {
     func poll() async {
         guard let p = Store.pairing, let s = await Relay.fetch(p) else { return }
         let fresh = s.waiting.filter { !seen.contains($0.id) }
-        if !fresh.isEmpty && !s.quiet { WKInterfaceDevice.current().play(.notification) }
+        if !fresh.isEmpty && !s.quiet {
+            // notch feel #23: the strong buzz is the Watch's, a notification then a click 0.4 s later
+            WKInterfaceDevice.current().play(.notification)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { WKInterfaceDevice.current().play(.click) }
+        }
         if let d = s.doneAt, d != lastDone, lastDone != nil, !s.quiet { WKInterfaceDevice.current().play(.success) }
         lastDone = s.doneAt
         seen.formUnion(s.waiting.map(\.id))

@@ -42,6 +42,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Gremlo</string><key>CFBundleURLSchemes</key><array><string>gremlo</string></array></dict></array>
+  <key>NSAppleEventsUsageDescription</key><string>Only if you turn on Bops to music: Gremlo asks Music and Spotify for the playing track's name.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Five minutes before a meeting the pet checks its watch. Event titles never leave this Mac.</string>
 </dict></plist>
 PLIST

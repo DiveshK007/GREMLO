@@ -100,6 +100,13 @@ final class NotchLiveController: NSObject {
     private var heartbeat: Timer?
     private var heartbeatStart = Date.distantPast
     var fingerDown = false
+    // phase C: Mac events, personality
+    var moment: MacMoment?
+    var momentUntil = Date.distantPast
+    private var konami = Konami()
+    private var flinging = false
+    lazy var events = MacEvents(live: self)
+    let typing = TypingWatch(), music = MusicWatch()
     static let leans: Set<LiveState> = [.rest, .think]
     var softRunCents: Int? { (defaults.object(forKey: "softAlertRunCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
     var softDayCents: Int? { (defaults.object(forKey: "softAlertDayCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
@@ -183,7 +190,7 @@ final class NotchLiveController: NSObject {
                 }
             } else {
                 self.press.animate(to: 1, .release)
-                self.mouseUp()
+                self.mouseUp(clicks: e.clickCount)
             }
             return e
         }
@@ -198,6 +205,11 @@ final class NotchLiveController: NSObject {
         let clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.update() }
         clock.tolerance = 0.2
         scheduleIdleLife()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            _ = self.events
+            self.applyOptIns()
+        }
     }
 
     // MARK: State
@@ -273,7 +285,14 @@ final class NotchLiveController: NSObject {
     /// Tall states open below the camera housing. On a notched Mac a sentence in a short state would sit behind it, so
     /// offline and the new-egg note drop below as well.
     /// Where the shape is heading: the state's size, hover's when the pointer rests on a small notch, idle life's.
+    /// A Mac event or personality moment showing right now (only over a quiet state).
+    var activeMoment: MacMoment? {
+        guard let m = moment, Date() < momentUntil, MacMoment.over.contains(state) else { return nil }
+        return m
+    }
+
     var shapeSize: (w: Double, h: Double) {
+        if let m = activeMoment { return m.size }
         if state == .rest, idleRow != nil, Date() < idleUntil { return NotchFeel.idleSize }
         if hovered, Self.leans.contains(state) { return NotchFeel.hoverSize }
         return NotchLive.size(state, agents: broker.queue.waiting.count)
@@ -313,9 +332,14 @@ final class NotchLiveController: NSObject {
         let to = (w: Double(frame.width), h: Double(frame.height))
         let opening = NotchFeel.isOpening(from: (W.target, H.target), to: to)
         placed = frame
-        contentWidth = CGFloat(NotchLive.size(s, agents: broker.queue.waiting.count).w) - 36
-        shape.rimColor = nsColor(hex: s == .done ? NotchFeel.doneColor : s == .stuck ? NotchFeel.failColor : NotchFeel.agentColor(run.agent))
-        shape.rimMode = NotchFeel.rim(s)
+        contentWidth = CGFloat(activeMoment?.size.w ?? NotchLive.size(s, agents: broker.queue.waiting.count).w) - 36
+        switch activeMoment {
+        case .battery?: shape.rimColor = nsColor(hex: NotchFeel.batteryColor); shape.rimMode = .solid
+        case .charging?: shape.rimColor = nsColor(hex: NotchFeel.doneColor); shape.rimMode = .solid
+        default:
+            shape.rimColor = nsColor(hex: s == .done ? NotchFeel.doneColor : s == .stuck ? NotchFeel.failColor : NotchFeel.agentColor(run.agent))
+            shape.rimMode = NotchFeel.rim(s)
+        }
         let swap = { [weak self] in
             guard let self, g == self.generation else { return }
             self.refreshContent(clear: true, stagger: animated)
@@ -472,7 +496,7 @@ final class NotchLiveController: NSObject {
     /// and the pulse and the breathing edge don't restart every second.
     var layoutKey: String {
         "\(state)|\(broker.queue.waiting.map(\.id))|\(selected)|\(pinned)|\(dragging)|\(softAlert)|\(run.endedAt != nil && !run.steps.isEmpty)"
-            + "|\(backend?.hunt.stuckTrigger?.line ?? "")|\(unlockNoteShowing)|\(backend?.privacy.focus != nil)|\(idleRow != nil && Date() < idleUntil)"
+            + "|\(backend?.hunt.stuckTrigger?.line ?? "")|\(unlockNoteShowing)|\(backend?.privacy.focus != nil)|\(idleRow != nil && Date() < idleUntil)|\(activeMoment.map { "\($0)" } ?? "")"
     }
 
     func refreshContent(clear: Bool = false, stagger: Bool = false) {
@@ -494,6 +518,12 @@ final class NotchLiveController: NSObject {
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
                                      stack.widthAnchor.constraint(equalToConstant: contentWidth + 36),
                                      stack.topAnchor.constraint(equalTo: content.topAnchor)])
+        if let m = activeMoment {
+            momentContent(m)
+            ticks.forEach { $0() }
+            if stagger { Stagger.rows(stack.arrangedSubviews) }
+            return
+        }
         switch state {
         case .egg:
             if unlockNoteShowing, let n = backend?.growth.unlockNote { stack.addArrangedSubview(text(n.text, 11, .primary)) }
@@ -782,6 +812,7 @@ final class NotchLiveController: NSObject {
     /// ⌥↩ allow once, ⌥⌫ deny, ⌥↓ next, esc folds. Risky requests get no shortcut.
     func key(_ e: NSEvent) -> Bool {
         guard panel.isKeyWindow else { return false }
+        if konami.feed(e.keyCode) { disco() }  // #26, while the notch has the keyboard
         if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; quickOpen = false; Feel.haptic(.tick); update(); return true }
         let items = broker.queue.waiting
         // ←/→ pick a waiting approval
@@ -822,9 +853,14 @@ final class NotchLiveController: NSObject {
 
     /// Click pins. Pulling the notch down past 130 pt opens the room; an upward flick dismisses a big state; holding
     /// still (or a force click) opened the quick actions. Clicks on buttons, the scrubber and the room are theirs.
-    func mouseUp() {
+    func mouseUp(clicks: Int = 1) {
         defer { pressStart = nil; dragStart = nil }
         holdWork?.cancel()
+        if flinging {  // #10: the pet was dragged out of the room; let it fly
+            flinging = false
+            backend?.pet.release(at: NSEvent.mouseLocation)
+            return
+        }
         guard pressStart != nil, !pressOnControl else { return }
         if overPull {
             overPull = false
@@ -841,6 +877,7 @@ final class NotchLiveController: NSObject {
             return
         }
         guard !dragged, state != .quick, state != .knock, state != .queue else { return }
+        if clicks >= 3 { trick(); return }  // #26: the first two clicks pinned and unpinned; the third is a trick
         pinned.toggle()
         Feel.haptic(.snap)
         update()
@@ -853,6 +890,15 @@ final class NotchLiveController: NSObject {
         if hypot(p.x - start.x, p.y - start.y) > 4 { dragged = true; holdWork?.cancel() }
         dragSamples.append((CACurrentMediaTime(), p.y))
         if dragSamples.count > 6 { dragSamples.removeFirst(dragSamples.count - 6) }
+        // #10: dragging out of the room takes the pet with you; it flies when you let go
+        if flinging { backend?.pet.drag(to: p); return }
+        if state == .room, let pet = backend?.pet, pet.path == .home, !placed.contains(p) {
+            flinging = true
+            roomOpen = false
+            pet.grabFromNotch(at: p)
+            update()
+            return
+        }
         guard ![.knock, .queue, .quick, .room].contains(state) else { return }
         let band = NotchFeel.band(start.y - p.y)
         pullSpring.hold(at: band)
@@ -913,6 +959,93 @@ final class NotchLiveController: NSObject {
     }
     @objc func muteHour() { quickOpen = false; backend?.pause(minutes: 60); update() }
     @objc func openRoomNow() { quickOpen = false; roomOpen = true; Feel.haptic(.snap); update() }
+
+    // MARK: Moments (#24-27)
+
+    /// Shows a moment for its hold time. The same moment again (the music still playing) just stays up longer.
+    func show(_ m: MacMoment) {
+        let same = activeMoment == m
+        moment = m
+        momentUntil = Date().addingTimeInterval(m.hold)
+        if !same { update() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + m.hold + 0.05) { [weak self] in self?.update() }
+    }
+
+    func batteryLow(_ percent: Int) {
+        show(.battery(percent))
+        burst(.sweat)
+        Feel.haptic(.knock)  // with the amber rim and the sweat
+    }
+    func pluggedIn() {
+        show(.charging)
+        SoundKit.shared.play(.chomp)
+        Feel.haptic(.boop)   // with the pet eating the bolt
+    }
+    func screenshot() {
+        show(.screenshot)
+        SoundKit.shared.play(.shutter)
+    }
+    /// #26 triple click: a random trick for 2.4 s.
+    func trick() {
+        show(.trick([Row.backflip, .juggle, .moonwalk].randomElement()!))
+        Feel.haptic(.snap)
+        SoundKit.shared.play(.boing)
+    }
+    /// #26 the Konami code: a disco rim, a moonwalk and confetti.
+    func disco() {
+        show(.trick(.moonwalk))
+        if !Motion.reduce { shape.disco() }
+        burst(.confetti)
+        SoundKit.shared.play(.chime)
+    }
+    func applyOptIns() {
+        typing.set(defaults.bool(forKey: "typingPace"), live: self)
+        music.set(defaults.bool(forKey: "musicBop"), live: self)
+    }
+
+    func frames(_ r: Row) -> [CGImage] { backend?.pet.skin.loaded.strip(r)?.frames ?? [] }
+
+    func momentContent(_ m: MacMoment) {
+        switch m {
+        case .volume(let v):
+            // the pet rides the fill
+            let track = NSView(), fill = CALayer()
+            track.wantsLayer = true
+            track.layer?.backgroundColor = NSColor(white: 1, alpha: 0.15).cgColor
+            track.layer?.cornerRadius = 3
+            let w = contentWidth - 34
+            fill.backgroundColor = backend?.pet.skin.accent
+            fill.cornerRadius = 3
+            fill.frame = CGRect(x: 0, y: 0, width: w * CGFloat(max(0, min(1, v))), height: 6)
+            track.layer?.addSublayer(fill)
+            track.widthAnchor.constraint(equalToConstant: w).isActive = true
+            track.heightAnchor.constraint(equalToConstant: 6).isActive = true
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.walk), size: 26), track]))
+            stack.addArrangedSubview(text("Volume \(Int((v * 100).rounded()))%", 11, .secondary))
+        case .battery(let p):
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.fail), size: 26), text("Battery \(p)% \u{00B7} plug me in", 12, .amber), spacer()]))
+        case .charging:
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.gulp), size: 30), text("\u{26A1}\u{FE0E} Charging, nom", 12, .primary), spacer()]))
+        case .screenshot:
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.greet), size: 26), text("Nice shot", 12, .primary), spacer()]))
+        case .trick(let r):
+            stack.addArrangedSubview(row([SpriteView(frames: frames(r), size: 36), spacer()]))
+        case .typing:
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.celebrate), size: 22), text("Look at you go", 11, .primary), spacer()]))
+        case .nap:
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.night), size: 30), text("zz", 11, .secondary), spacer()]))
+        case .music(let title):
+            let pet = SpriteView(frames: Array(frames(.idle).prefix(1)), size: 26)
+            if !Motion.reduce {  // a steady 2 Hz bop
+                let a = CABasicAnimation(keyPath: "transform.translation.y")
+                a.fromValue = 0; a.toValue = 3; a.duration = 0.25; a.autoreverses = true; a.repeatCount = .infinity
+                pet.layer?.add(a, forKey: "bop")
+            }
+            stack.addArrangedSubview(row([pet, text("\u{266A} " + title, 11, .primary), spacer()]))
+        case .home(let line):
+            stack.addArrangedSubview(row([SpriteView(frames: frames(.gulp), size: 30), text(line, 12, .primary), spacer()]))
+        }
+    }
 
     // MARK: Heartbeat (#21)
 

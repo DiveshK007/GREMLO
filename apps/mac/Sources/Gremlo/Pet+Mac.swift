@@ -82,6 +82,9 @@ final class Pet {
     var lastMouse = NSPoint.zero
     var lastMouseMove = Date.distantPast
     var grabOffset = CGPoint.zero
+    var flungHome = false, homing = false
+    /// Called when a pet thrown out of the notch has climbed back in.
+    var onHome: (() -> Void)?
     var dragSamples: [(Date, NSPoint)] = []
     var body: Physics.Body?
     var dizzy = false
@@ -157,7 +160,35 @@ final class Pet {
 
     func go(_ p: Path) {
         if p != path { logPath(to: p) }
+        let was = path
         path = p
+        // notch feel #10: thrown out of the notch, it sits 1.8 s where it lands, walks home and climbs in
+        if p == .floor, was != .floor, flungHome {
+            flungHome = false
+            homing = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+                guard let self, self.path == .floor, self.homing else { return }
+                self.goHome(lock: false)
+            }
+        }
+        if p == .home, was != .home, homing { homing = false; onHome?() }
+    }
+
+    /// Notch feel #10: the user drags the pet out of the room; it's held at the cursor until let go.
+    func grabFromNotch(at mouse: NSPoint) {
+        guard path == .home, !egg else { return }
+        pos = CGPoint(x: mouse.x - size.width / 2, y: mouse.y - size.height / 2)
+        grabOffset = CGPoint(x: size.width / 2, y: size.height / 2)
+        dragSamples = [(Date(), mouse)]
+        body = nil
+        panel.setFrameOrigin(pos)
+        panel.orderFrontRegardless()
+        door.open()
+        flungHome = true
+        go(.held)
+        set(.grabbed)
+        Feel.haptic(.snap)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.door.close(lock: false) }
     }
 
     /// One line per path change, for the home trip (toWall, climbing, ceiling, entering): where the sprite is going,

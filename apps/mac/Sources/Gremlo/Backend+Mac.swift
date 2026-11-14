@@ -118,6 +118,11 @@ final class Backend: NSObject {
         self.pet = pet
         super.init()
         run.onEnd = { RunLog.save($0) }  // the scrubber keeps each run for 7 days
+        pet.onHome = { [weak self] in
+            guard let self else { return }
+            self.live.show(.home("\(self.growth.petDisplayName.capitalized) is home"))
+            Feel.haptic(.boop)
+        }
         pet.onContextChange = { [weak self] in self?.shown = ""; self?.render() }
         growth.pet = pet
         growth.askModel = { [weak self] payload, done in
