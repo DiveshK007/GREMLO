@@ -32,7 +32,7 @@ test("refuses: forged signer, key not in the report, stale nonce, unknown kind, 
   const text = `${MODEL}:a:b`, signature = await tee.signMessage({ message: text });
   const base = { text, signature, signing_address: tee.address, signing_algo: "ecdsa", signature_kind: "provider_tee" };
   assert.match(checkSignature({ ...base, signing_address: gw.address }, report(), tee.address, NONCE).lines[0], /does not match/);
-  assert.match(checkSignature(base, report(gw.address), tee.address, NONCE).lines.at(-1)!, /not the one attested key/);
+  assert.match(checkSignature(base, report(gw.address), tee.address, NONCE).lines.at(-1)!, /not an attested key/);
   assert.match(checkSignature(base, report(tee.address, "00"), tee.address, NONCE).lines.at(-1)!, /nonce/);
   assert.match(checkSignature({ ...base, signature_kind: "other" }, report(), tee.address, NONCE).lines.at(-1)!, /unknown signature_kind/);
   const none = checkSignature({ error_code: "signature_unavailable", message: "expired" }, null, null, NONCE);
@@ -43,4 +43,13 @@ test("a gateway signature verifies against the gateway key and says what it bind
   const r = checkSignature({ text: "a:b", signature: "0x1", signing_address: gw.address, signing_algo: "ecdsa", signature_kind: "gateway" }, report(), gw.address, NONCE);
   assert.equal(r.ok, true);
   assert.match(r.lines.at(-1)!, /gateway, not to a model TEE/);
+});
+
+test("a signer listed more than once for the model (several TEE instances) still verifies; a key not listed still fails", async () => {
+  const text = `${MODEL}:${"1".repeat(64)}:${"2".repeat(64)}`;
+  const sig = { text, signature: await tee.signMessage({ message: text }), signing_address: tee.address, signing_algo: "ecdsa", signature_kind: "provider_tee" };
+  const other = privateKeyToAccount(generatePrivateKey()).address;
+  const twice = report(); twice.model_attestations!.push({ ...twice.model_attestations![0] }, { model_name: MODEL, signing_address: other, signing_algo: "ecdsa", request_nonce: NONCE });
+  assert.equal((await verifyCompletion("c1", { key: "k", nonce: NONCE, fetch: api(sig, twice) as typeof fetch })).ok, true);
+  assert.equal((await verifyCompletion("c1", { key: "k", nonce: NONCE, fetch: api(sig, report(other)) as typeof fetch })).ok, false);
 });

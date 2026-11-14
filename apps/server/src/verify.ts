@@ -28,7 +28,8 @@ export function checkSignature(sig: Signature, report: Report | null, recovered:
   if (sig.signature_kind === "provider_tee") {
     const model = signedModel(sig);
     match = (report?.model_attestations ?? []).filter((a) => a.model_name === model && same(a.signing_address, sig.signing_address) && a.signing_algo === "ecdsa");
-    if (match.length !== 1) return { ok: false, lines: [...lines, `signer is not the one attested key for ${model} (${match.length} matches)`] };
+    // the report can list the same key more than once (one entry per TEE instance serving the model)
+    if (match.length === 0) return { ok: false, lines: [...lines, `signer is not an attested key for ${model}`] };
     lines.push(`signer is the attested key of the NEAR TEE serving ${model}`);
   } else if (sig.signature_kind === "gateway") {
     const g = report?.gateway_attestation;
@@ -38,7 +39,7 @@ export function checkSignature(sig: Signature, report: Report | null, recovered:
   } else {
     return { ok: false, lines: [...lines, `unknown signature_kind: ${sig.signature_kind ?? "none"}`] };
   }
-  if (match[0].request_nonce !== nonce) return { ok: false, lines: [...lines, "attestation report did not echo our nonce"] };
+  if (!match.some((a) => a.request_nonce === nonce)) return { ok: false, lines: [...lines, "attestation report did not echo our nonce"] };
   return { ok: true, lines };
 }
 

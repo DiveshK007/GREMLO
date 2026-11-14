@@ -49,7 +49,7 @@ Vault state read after the run (`get_pet mochi`, `get_campaign 1`, `get_totals`)
 
 Notes on the final run:
 - Pairing the Mac to the pet is a signed message (NEP-413) checked by the server, not a transaction, so it has no hash on chain. The vault's history has no other calls than the ones above.
-- The completion ids were not run through `npm run verify` in this run.
+- `npm run verify chatcmpl-cc26d4e5-abf1-4837-b10f-7543f37ce156` (smart #1), 2026-11-15 04:09 IST: SIGNED. The signature recovers to `0xfe0071895500a9755c18044948ab4f4e1a7f337e`, an attested key of the NEAR TEE serving `deepseek-ai/DeepSeek-V4.1-Flash-1017`, the same key as in the dry run. The first try said NOT VERIFIED: the attestation report now lists that key twice for the model ("2 matches"), and the verifier wanted exactly one. It now accepts the signer if it is any attested key for that model, and still checks the nonce (`apps/server/src/verify.ts`, tested). The other three completion ids were not run through it.
 
 ## Contract: DRY RUN (old accounts, before the rename)
 
