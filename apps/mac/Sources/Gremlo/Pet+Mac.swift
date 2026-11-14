@@ -3,6 +3,9 @@ import AppKit
 import CryptoKit
 import Network
 import UserNotifications
+import os
+
+let petLog = Logger(subsystem: "app.gremlo.mac", category: "pet")
 
 // The pet: sprites, paths, the state machine and the sign (moved out of main.swift unchanged).
 
@@ -99,13 +102,15 @@ final class Pet {
             else { vy = 0; go(.falling); afterLanding = .walk }  // the window went away (or appeared): drop to the new floor
         }
     }
-    var floorY: CGFloat { perch.map { $0.maxY - skin.footPadding } ?? mainScreen.visibleFrame.minY - skin.footPadding }
-    var topY: CGFloat { mainScreen.visibleFrame.maxY - size.height }
-    var leftX: CGFloat { perch?.minX ?? mainScreen.visibleFrame.minX }
-    var rightX: CGFloat { perch.map { $0.maxX - size.width } ?? mainScreen.visibleFrame.maxX - size.width }
+    /// Floor, walls, ceiling and door from GremloCore's HomePath, so the tested geometry is the one on screen.
+    var home: HomePath { HomePath(screen: mainScreen.frame, visible: mainScreen.visibleFrame, sprite: size, footPadding: skin.footPadding) }
+    var floorY: CGFloat { perch.map { $0.maxY - skin.footPadding } ?? home.floorY }
+    var topY: CGFloat { home.ceilingY }
+    var leftX: CGFloat { home.walls(perch: perch).left }
+    var rightX: CGFloat { home.walls(perch: perch).right }
     /// Walk to an x and then do something (catching a bug). Cleared by anything that takes the pet off the floor.
     var target: (x: CGFloat, done: () -> Void)?
-    var doorX: CGFloat { door.center.x - size.width / 2 }
+    var doorX: CGFloat { home.doorX(doorCenterX: door.center.x) }
 
     init(skin: Skin, door: Door) {
         self.skin = skin
@@ -151,8 +156,20 @@ final class Pet {
     }
 
     func go(_ p: Path) {
-        if p != path { print("path \(path.rawValue) -> \(p.rawValue)") }
+        if p != path { logPath(to: p) }
         path = p
+    }
+
+    /// One line per path change, for the home trip (toWall, climbing, ceiling, entering): where the sprite is going,
+    /// where the window really is, the row and frame drawn, and whether macOS shows it. Also in Console:
+    /// log stream --predicate 'subsystem == "app.gremlo.mac" AND category == "pet"'
+    func logPath(to p: Path) {
+        let f = panel.frame
+        let line = "path \(path.rawValue) -> \(p.rawValue): sprite at \(Int(pos.x)),\(Int(pos.y)) window \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))x\(Int(f.height))"
+            + " row \(strip.row.rawValue) frame \(sheetFrame) visible \(panel.isVisible) alpha \(panel.alphaValue) occluded \(!panel.occlusionState.contains(.visible))"
+            + " level \(panel.level.rawValue) inside \(home.keepsInside(pos)) screen \(Int(mainScreen.frame.width))x\(Int(mainScreen.frame.height)) top \(Int(mainScreen.visibleFrame.maxY))"
+        print(line)
+        petLog.notice("\(line, privacy: .public)")
     }
 
     func set(_ s: PetState, then after: PetState? = nil) {
@@ -275,8 +292,9 @@ final class Pet {
             if pos.x >= rightX { pos.x = rightX; set(.climb); go(.climbing) }
         case .climbing:
             pos.y += 140 * dt
-            // Upside down on the top edge: the flipped sprite's feet are footPadding below its top, so lift it by that.
-            if pos.y >= topY { pos.y = topY + skin.footPadding; dir = -1; set(.walk); go(.ceiling) }
+            // Upside down under the menu bar. It used to be lifted by footPadding so the feet touched, which put the
+            // sprite's top into the menu bar band; now the whole sprite stays below it (HomePath, tested).
+            if pos.y >= topY { pos.y = topY; dir = -1; set(.walk); go(.ceiling) }
         case .ceiling:
             pos.x -= 140 * dt
             if pos.x <= doorX { pos.x = doorX; door.open(); go(.entering) }
@@ -574,7 +592,7 @@ final class Pet {
         CATransaction.commit()
         switch path {
         case .floor: pos.y -= floorDelta
-        case .ceiling: pos.y = topY + s.footPadding
+        case .ceiling: pos.y = topY
         case .climbing: pos.x = rightX
         default: break
         }
