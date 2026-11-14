@@ -117,6 +117,7 @@ final class Backend: NSObject {
     init(pet: Pet) {
         self.pet = pet
         super.init()
+        run.onEnd = { RunLog.save($0) }  // the scrubber keeps each run for 7 days
         pet.onContextChange = { [weak self] in self?.shown = ""; self?.render() }
         growth.pet = pet
         growth.askModel = { [weak self] payload, done in

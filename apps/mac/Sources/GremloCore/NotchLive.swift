@@ -78,6 +78,12 @@ public enum NotchLive {
     public static func toolShowing(running: Bool, lastToolEnd: Date?, runEnded: Bool, now: Date) -> Bool {
         running || (!runEnded && lastToolEnd.map { now.timeIntervalSince($0) < peekLinger } ?? false)
     }
+
+    /// Hover holds only while the pointer is really there (or its 300 ms fold is still pending). The panel can shrink
+    /// out from under the pointer, after an approval answered with a click, and then no mouseExited ever comes.
+    public static func stillHovered(_ hovered: Bool, pointerInside: Bool, exitPending: Bool) -> Bool {
+        hovered && (pointerInside || exitPending)
+    }
 }
 
 // MARK: - Approvals
@@ -189,6 +195,14 @@ public struct Usage: Sendable, Equatable {
         u.input = a.input + b.input; u.output = a.output + b.output
         u.cacheWrite = a.cacheWrite + b.cacheWrite; u.cacheRead = a.cacheRead + b.cacheRead
         u.model = b.model ?? a.model
+        return u
+    }
+    /// What was added since `base` (a run's share of a session's running total), never negative.
+    public func since(_ base: Usage) -> Usage {
+        var u = Usage()
+        u.input = max(0, input - base.input); u.output = max(0, output - base.output)
+        u.cacheWrite = max(0, cacheWrite - base.cacheWrite); u.cacheRead = max(0, cacheRead - base.cacheRead)
+        u.model = model
         return u
     }
 }

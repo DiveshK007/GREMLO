@@ -118,3 +118,87 @@ import Testing
         #expect(!SoftAlert.due(costMicroCents: nil, limitCents: 100) && !SoftAlert.due(costMicroCents: 10, limitCents: nil))
     }
 }
+
+@Suite struct RunEndTests {
+    func hook(_ ev: String, tool: String? = nil, transcript: String? = nil) -> [String: Any] {
+        var h: [String: Any] = ["hook_event_name": ev, "session_id": "s1"]
+        if let tool { h["tool_name"] = tool; h["tool_input"] = ["file_path": "/tmp/\(tool).txt"] }
+        if let transcript { h["transcript_path"] = transcript }
+        return h
+    }
+
+    /// The notch's inputs as the app builds them, with hover re-checked against the pointer.
+    func state(_ run: RunTracker, _ queue: ApprovalQueue, hovered: Bool, pointerInside: Bool, at now: Date) -> LiveState {
+        var i = NotchLive.Inputs()
+        i.waiting = queue.waiting.count
+        i.doneUntil = run.doneUntil
+        i.hoverOrPin = NotchLive.stillHovered(hovered, pointerInside: pointerInside, exitPending: false) && run.started != nil
+        i.toolRunning = NotchLive.toolShowing(running: run.toolRunning, lastToolEnd: run.lastToolEnd, runEnded: run.endedAt != nil, now: now)
+        i.thinking = run.thinking
+        return NotchLive.resolve(i, now: now)
+    }
+
+    @Test func runEndsWithTheDoneCardAfterTwoApprovalsAnsweredFromTheNotch() throws {
+        let run = RunTracker()
+        var saved: [Step]?
+        run.onEnd = { saved = $0 }
+        var queue = ApprovalQueue()
+        var answered = 0
+        run.event(hook("UserPromptSubmit"), approvalsAnswered: answered)
+        for n in 1...2 {
+            run.event(hook("PreToolUse", tool: "Write"), approvalsAnswered: answered)
+            let r = ApprovalRequest.from(id: "a\(n)", payload: ["tool_name": "Write", "session_id": "s1", "tool_input": ["file_path": "/tmp/\(n)"]], now: Date())
+            queue.add(r)
+            run.event(hook("PermissionRequest", tool: "Write"), approvalsAnswered: answered)
+            #expect(state(run, queue, hovered: true, pointerInside: true, at: Date()) == .knock)
+            queue.remove(r.id); answered += 1  // the user clicked Allow on the notch
+            run.event(hook("PostToolUse", tool: "Write"), approvalsAnswered: answered)
+            #expect(queue.sawEvent(session: "s1", tool: "Write", event: "PostToolUse").isEmpty, "an answered request isn't released again")
+        }
+        run.event(hook("Stop"), approvalsAnswered: answered)
+        #expect(queue.sawEvent(session: "s1", tool: nil, event: "Stop").isEmpty)
+
+        let end = try #require(run.endedAt)
+        #expect(!run.thinking && !run.toolRunning && run.tools == 2 && run.errors == 0)
+        #expect(answered - run.approvalsAtStart == 2, "the done card counts both notch answers")
+        #expect(saved?.filter { $0.kind == .approval }.count == 2)
+        // the click left `hovered` set; the panel then shrank away from the pointer and no mouseExited came
+        #expect(state(run, queue, hovered: true, pointerInside: false, at: end.addingTimeInterval(1)) == .done, "Done card first")
+        #expect(state(run, queue, hovered: true, pointerInside: false, at: end.addingTimeInterval(NotchLive.doneHold + 0.1)) == .rest,
+                "then back to rest, not stuck on the ticker")
+        #expect(state(run, queue, hovered: true, pointerInside: true, at: end.addingTimeInterval(NotchLive.doneHold + 0.1)) == .ticker,
+                "the run-over ticker shows only while the pointer is really on the notch")
+        #expect(NotchLive.stillHovered(true, pointerInside: false, exitPending: true), "the 300 ms fold still gets its delay")
+        #expect(!NotchLive.stillHovered(false, pointerInside: true, exitPending: false), "hover intent still decides opening")
+    }
+
+    @Test func costIsThisRunsShareNotTheWholeSession() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("gremlo-run-\(UUID().uuidString).jsonl").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        func line(_ input: Int, _ output: Int) -> String {
+            #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":\#(input),"output_tokens":\#(output)}}}"# + "\n"
+        }
+        func append(_ s: String) throws { let h = try #require(FileHandle(forWritingAtPath: path)); h.seekToEndOfFile(); h.write(Data(s.utf8)); try h.close() }
+        // a long session before this run: 20M input and 1M output tokens
+        try (line(10_000_000, 500_000) + line(10_000_000, 500_000)).write(toFile: path, atomically: true, encoding: .utf8)
+
+        let run = RunTracker()
+        run.event(hook("SessionStart", transcript: path), approvalsAnswered: 0)
+        #expect(run.runUsage == nil && Prices.label(run.runUsage) == "\u{2014}", "no prompt seen yet: a dash, never the session total")
+
+        run.event(hook("UserPromptSubmit", transcript: path), approvalsAnswered: 0)
+        try append(line(1_000_000, 100_000))
+        run.event(hook("PostToolUse", tool: "Write", transcript: path), approvalsAnswered: 0)
+        try append(line(500_000, 50_000))
+        run.event(hook("Stop", transcript: path), approvalsAnswered: 0)
+
+        let u = try #require(run.runUsage)
+        #expect(u.input == 1_500_000 && u.output == 150_000 && u.model == "claude-opus-5-5")
+        #expect(Prices.label(u) == "$9.00 est", "1.5M in x $4 + 150k out x $20")
+        #expect(run.reader.usage.input == 21_500_000, "the session total is still tracked, just not shown as the run's cost")
+
+        // the next run starts from zero again
+        run.event(hook("UserPromptSubmit", transcript: path), approvalsAnswered: 0)
+        #expect(run.runUsage?.total == 0)
+    }
+}
