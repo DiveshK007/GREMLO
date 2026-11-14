@@ -205,7 +205,7 @@ final class NotchShapeLayer: CALayer {
         rim.bounds = CGRect(x: 0, y: 0, width: side, height: side)
         rim.position = CGPoint(x: cx, y: top - g.height / 2)
         // squash and stretch around the top centre, times the press dent
-        let sx = (1 - squash * NotchFeel.squashScale) * press, sy = (1 + squash * NotchFeel.squashScale) * press
+        let (sx, sy) = NotchFeel.stretch(squash: squash, press: press)
         var t = CATransform3DMakeTranslation(cx, top, 0)
         t = CATransform3DScale(t, sx, sy, 1)
         t = CATransform3DTranslate(t, -cx, -top, 0)
@@ -387,6 +387,11 @@ final class SoundKit {
     enum Sound: String, CaseIterable { case pop, close, tick, chomp, whoosh, shutter, chime, thud, boing, fail }
     static let files: [Sound: String] = [.pop: "door-open", .close: "door-close", .tick: "tick", .chomp: "meal", .whoosh: "whoosh",
                                          .shutter: "shutter", .chime: "celebrate", .thud: "thud", .boing: "boing", .fail: "fail"]
+    /// How much of each file to keep. The pet recordings have long tails; the notch only wants the attack.
+    private static let keep: [Sound: Double] = [.pop: 0.12, .chomp: 0.20, .chime: 0.36, .boing: 0.16, .fail: 0.20, .whoosh: 0.16]
+    /// Tick is a 20 ms click, so it sits a little hotter than the longer hits or Subtle swallows it.
+    private static let gain: [Sound: Float] = [.pop: 0.8, .close: 0.9, .tick: 1.35, .chomp: 0.75, .whoosh: 0.85,
+                                               .shutter: 1, .chime: 0.6, .thud: 0.9, .boing: 0.55, .fail: 0.7]
 
     var level = Level(rawValue: defaults.object(forKey: "notchSound") as? Int ?? Level.subtle.rawValue) ?? .subtle {
         didSet { defaults.set(level.rawValue, forKey: "notchSound"); engine?.mainMixerNode.outputVolume = level.volume }
@@ -405,8 +410,12 @@ final class SoundKit {
             guard let f = try? AVAudioFile(forReading: url),
                   let b = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)) else { continue }
             try? f.read(into: b)
-            buffers[s] = b
+            buffers[s] = Self.shaped(b, keep: Self.keep[s])
         }
+        // The notch and the door get their own clicks, in the same format as the kit so the engine can play them.
+        let kit = buffers.values.first?.format
+        if let pop = Self.blip(freq: 620, seconds: 0.07, noise: 0.35, format: kit) { buffers[.pop] = pop }
+        if let close = Self.blip(freq: 360, seconds: 0.08, noise: 0.12, format: kit) { buffers[.close] = close }
         guard let fmt = buffers.values.first?.format else { return nil }
         let e = AVAudioEngine()
         for _ in 0..<6 {
@@ -421,17 +430,75 @@ final class SoundKit {
         return e
     }
 
+    /// Starts the engine before the first gesture, so the first tick isn't waiting on file reads.
+    func warm() {
+        guard level != .off, let e = prepare(), !e.isRunning else { return }
+        try? e.start()
+        armIdle()
+    }
+
     func play(_ s: Sound) {
         guard level != .off, !silence.silent, let e = prepare(), let b = buffers[s] else { return }
         if !e.isRunning { do { try e.start() } catch { return } }
-        let p = players[next]
+        let p = players.first { !$0.isPlaying } ?? players[next]
         next = (next + 1) % players.count
-        p.stop()
+        if p.isPlaying { p.stop() }   // only when every voice is busy; a free voice is never cut
+        p.volume = Self.gain[s] ?? 1
         p.scheduleBuffer(b, at: nil)
         p.play()
+        armIdle()
+    }
+
+    private func armIdle() {
         idle?.invalidate()
         idle = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in self?.engine?.pause() }
         idle?.tolerance = 2
+    }
+
+    /// Keeps the attack and fades the last 8 ms, so a trimmed file doesn't click at the cut.
+    private static func shaped(_ b: AVAudioPCMBuffer, keep: Double?) -> AVAudioPCMBuffer {
+        guard let keep, let src = b.floatChannelData else { return b }
+        let rate = b.format.sampleRate
+        let frames = AVAudioFrameCount(min(Double(b.frameLength), keep * rate))
+        guard frames > 0, frames < b.frameLength, let out = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: frames) else { return b }
+        out.frameLength = frames
+        let n = Int(frames)
+        let fade = min(n, Int(0.008 * rate))
+        for c in 0..<Int(b.format.channelCount) {
+            let from = src[c]
+            let to = out.floatChannelData![c]
+            for i in 0..<n { to[i] = from[i] }
+            if fade > 1 {
+                for i in 0..<fade {
+                    to[n - fade + i] *= Float(fade - i) / Float(fade)
+                }
+            }
+        }
+        return out
+    }
+
+    /// A short click: a falling sine plus a few milliseconds of noise. One buffer, built once.
+    private static func blip(freq: Double, seconds: Double, noise: Double, format: AVAudioFormat?) -> AVAudioPCMBuffer? {
+        let fmt = format ?? AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)
+        guard let fmt else { return nil }
+        let n = Int(seconds * fmt.sampleRate)
+        guard n > 0, let b = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(n)) else { return nil }
+        b.frameLength = AVAudioFrameCount(n)
+        var seed: UInt32 = 0x6d2b79f5
+        func sample(_ i: Int) -> Double {
+            seed = seed &* 1664525 &+ 1013904223
+            let white = Double(Int32(bitPattern: seed)) / Double(Int32.max)
+            let t = Double(i) / fmt.sampleRate
+            let env = exp(-t * 36)
+            let grit = i < 120 ? white * noise * exp(-Double(i) / 22) : 0
+            return (sin(2 * .pi * freq * t) * 0.62 + grit) * env
+        }
+        if let ch = b.floatChannelData {
+            for c in 0..<Int(fmt.channelCount) { for i in 0..<n { ch[c][i] = Float(sample(i)) } }
+        } else if let ch = b.int16ChannelData {
+            for c in 0..<Int(fmt.channelCount) { for i in 0..<n { ch[c][i] = Int16(max(-1, min(1, sample(i))) * 32767) } }
+        }
+        return b
     }
 }
 

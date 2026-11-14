@@ -52,6 +52,12 @@ public enum NotchFeel {
     /// #5 press dent.
     public static let pressScale = 0.955
 
+    /// Squash and the press dent, as one scale around the top centre. The shape and the rows inside it share this,
+    /// so the text rides the jelly instead of sitting still while the black body wobbles.
+    public static func stretch(squash: CGFloat, press: CGFloat) -> (x: CGFloat, y: CGFloat) {
+        ((1 - squash * squashScale) * press, (1 + squash * squashScale) * press)
+    }
+
     /// On a Mac with a notch, the resting shape sits just inside the hardware notch (invisible), and the ears grow only
     /// as the shape grows past its edges, so nothing pokes out around the real notch until something happens.
     public static func ear(width: Double, hardwareWidth: Double) -> Double {
@@ -99,6 +105,15 @@ public enum NotchFeel {
     /// dismisses a big state.
     public static func band(_ dy: CGFloat) -> CGFloat { dy <= 0 ? 0 : dy * 0.55 / (1 + dy / 320) * 2 }
     public static let pullThreshold: CGFloat = 130, flickSpeed: CGFloat = 500
+
+    /// What a finished pull does. The band has to pass 130 before the room opens; a short pull springs back.
+    /// `upwardSpeed` is positive when the finger flicks up. A flick faster than 500 pt/s dismisses a big notch.
+    public enum PullEnd: Equatable, Sendable { case openRoom, dismiss, release }
+    public static func pullEnd(band: CGFloat, upwardSpeed: CGFloat, big: Bool, roomOpen: Bool) -> PullEnd {
+        if band > pullThreshold, !roomOpen { return .openRoom }
+        if upwardSpeed > flickSpeed, big { return .dismiss }
+        return .release
+    }
     /// #8 one detent per 40 pt of scroll; the content slides 30 pt the same way.
     public static let detent: CGFloat = 40, detentSlide: CGFloat = 30
     /// #9 without Force Touch, holding this long opens the quick actions.

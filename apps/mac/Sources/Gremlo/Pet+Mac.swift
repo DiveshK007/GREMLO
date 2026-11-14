@@ -554,7 +554,7 @@ final class Pet {
         if flipped { t = t.scaledBy(x: -1, y: 1) }
         if state == .annoy && annoyance >= 5 && frame % 2 == 1 { t = t.translatedBy(x: 0, y: -2) }  // the stomp
         // Body only: the sign and bubbles are separate windows, so they stay upright.
-        if path == .ceiling { t = t.scaledBy(x: 1, y: -1) }
+        // The trip home walks the top edge right side up, facing the notch. It does not flip onto the ceiling.
         // v6 climb frames are pre-rotated for the right wall; walk standing in for climb is turned onto it.
         if strip.rotated { t = t.rotated(by: .pi / 2) }
         let phase = Double(frame) + animClock

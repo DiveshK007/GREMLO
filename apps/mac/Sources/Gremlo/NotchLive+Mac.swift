@@ -78,7 +78,9 @@ final class NotchLiveController: NSObject {
     private var pressOnControl = false
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
-    private var hoverWork: DispatchWorkItem?
+    private var clickWork: DispatchWorkItem?
+    private var dwellWork: DispatchWorkItem?
+    var dwelling = false
     private var placed = NSRect.zero     // the shape's target, in screen points
     private var generation = 0           // a newer transition cancels an older one's content swap
     // Notch feel: the notch is one spring-driven path in a fixed, transparent panel (NotchFeel+Mac.swift).
@@ -87,14 +89,19 @@ final class NotchLiveController: NSObject {
     let lean = Spring(0, .lean), squash = Spring(0, .squash), press = Spring(1, .press), openness = Spring(0, .close)
     private var leanGrow: (w: Double, h: Double) = (0, 0)
     private var wasBig = false
+    private var skipClose = false   // a flick already played its whoosh; the close spring stays quiet
     private var swapPending = false      // closing: the old content is fading out, the new waits
     var idleRow: Row?
     var idleUntil = Date.distantPast
     private var idleTimer: Timer?
     private var moveMonitors: [Any] = []
     static let big: Set<LiveState> = [.ticker, .knock, .queue, .room, .stuck, .drop, .done, .quick]
+    /// A pull opens the room from these. Approvals, the quick card, a drop and the room itself don't stretch.
+    static let pullable: Set<LiveState> = Set(LiveState.allCases).subtracting([.knock, .queue, .quick, .drop, .room])
     // phase B: pull, flick, force click, heartbeat
     let pullSpring = Spring(0, .pull)
+    /// Extra drop of the notch while the pet is leaving or coming home. The door is this shape, not a second window.
+    let mouth = Spring(0, .open)
     var quickOpen = false
     private var dragStart: NSPoint?
     private var dragged = false, overPull = false
@@ -148,7 +155,11 @@ final class NotchLiveController: NSObject {
             Motion.reduce = reduceMotion
         }
         NotchDriver.shared.attach(to: drop)
-        NotchDriver.shared.register(W, H, R, lean, squash, press, openness, pullSpring)
+        NotchDriver.shared.register(W, H, R, lean, squash, press, openness, pullSpring, mouth)
+        NotificationCenter.default.addObserver(forName: .gremloPetMouth, object: nil, queue: .main) { [weak self] n in
+            let open = (n.userInfo?["open"] as? Bool) == true
+            self?.mouth.animate(to: open ? 22 : 0, open ? .open : .close)
+        }
         drop.onTouches = { [weak self] n in self?.fingerDown = n > 0 }
         // #11: ⌥⌘N opens or folds the notch from anywhere
         HotKeys.register(3, keyCode: UInt32(kVK_ANSI_N), mods: UInt32(cmdKey | optionKey)) { [weak self] in self?.toggleNotch() }
@@ -162,7 +173,7 @@ final class NotchLiveController: NSObject {
             guard let self, self.dragging != on else { return }
             self.dragging = on
             // #12: the mouth opens with a snap; leaving without dropping ticks (a drop has its own boop)
-            if on { Feel.haptic(.snap) } else if Date() >= self.toastUntil { Feel.haptic(.tick) }
+            if on { self.blip(.snap, sound: .tick) } else if Date() >= self.toastUntil { self.blip() }
             self.update()
         }
         drop.onScroll = { [weak self] e in self?.scrolled(e) }
@@ -178,15 +189,18 @@ final class NotchLiveController: NSObject {
             if e.type == .leftMouseDragged { self.dragMoved(); return e }
             if e.type == .pressure { self.pressure(e); return e }
             if e.type == .leftMouseDown {
-                self.hoverWork?.cancel()
-                self.hovered = true  // a click means the pointer is here, even inside the hover delay
+                self.clickWork?.cancel()
+                self.hovered = true  // a click means the pointer is here
                 self.pressStart = Date()
                 self.pressOnControl = self.interactive(at: e.locationInWindow)
                 // the press dent and its boop belong to a press on the notch itself; a button gives its own feedback,
                 // and denting a whole card under it read as a jerk
                 if !self.pressOnControl {
-                    self.press.animate(to: NotchFeel.pressScale, .press)
-                    Feel.haptic(.boop)
+                    // the boop lands on the deepest frame of the dent, with the pixels
+                    self.press.animate(to: NotchFeel.pressScale, .press, onPeak: { [weak self] in
+                        guard self?.pressStart != nil else { return }
+                        self?.blip(.boop)
+                    })
                 }
                 self.dragStart = NSEvent.mouseLocation
                 self.dragged = false; self.overPull = false; self.dragSamples = []
@@ -214,6 +228,7 @@ final class NotchLiveController: NSObject {
         layoutPanel()
         place(animated: false)
         panel.orderFrontRegardless()
+        SoundKit.shared.warm()
         let clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.update() }
         clock.tolerance = 0.2
         scheduleIdleLife()
@@ -230,7 +245,10 @@ final class NotchLiveController: NSObject {
         var i = NotchLive.Inputs()
         i.waiting = broker.queue.waiting.count
         i.doneUntil = run.doneUntil
-        i.hoverOrPin = (hovered || pinned) && run.started != nil
+        // A nearby cursor only swells the small notch. The live card opens when the user pins it (a click),
+        // so brushing the menu bar during a run doesn't throw the big card open.
+        // A click pins the card. Resting on the shape for a moment during a run opens it too.
+        i.hoverOrPin = (pinned || dwelling) && run.started != nil
         i.toolRunning = NotchLive.toolShowing(running: run.toolRunning, lastToolEnd: run.lastToolEnd, runEnded: run.endedAt != nil, now: Date())
         i.thinking = run.thinking
         i.dragging = dragging || Date() < toastUntil
@@ -249,7 +267,7 @@ final class NotchLiveController: NSObject {
         // the panel can shrink out from under the pointer (an answered approval folds the card), and then no
         // mouseExited comes; without this the run-over ticker stayed up for good instead of folding to rest
         hovered = NotchLive.stillHovered(hovered, pointerInside: hoverWanted(at: NSEvent.mouseLocation) != false,
-                                         exitPending: hoverWork.map { !$0.isCancelled } ?? false)
+                                         exitPending: false)
         let s = NotchLive.resolve(inputs(), now: Date())
         if s != state {
             print("notch: \(state.rawValue) -> \(s.rawValue)")
@@ -257,16 +275,18 @@ final class NotchLiveController: NSObject {
             if s != .queue { selected = 0 }
             state = s
             place(animated: true)
-            if hovered && needsKeys { panel.makeKey() }
+            if state == .knock || state == .queue { panel.makeKey() }
         } else if target() != placed {
             place(animated: true)  // same state, new size: another agent joined the queue, or a note dropped below the notch
         } else {
             refreshContent()
         }
-        if !(hovered && needsKeys) { giveBackKeyboard() }
+        // Resign the keyboard without ordering the panel out. Ordering it out and back was a visible jerk on every click.
+        if panel.isKeyWindow, state != .knock, state != .queue, NSEvent.pressedMouseButtons == 0 { panel.resignKey() }
         passThrough()
         SpriteClock.shared.visible = backend?.privacy.duck != .hidden
         heartbeatTick()
+        considerDwell(at: NSEvent.mouseLocation)
     }
 
     /// Hook events redraw at once (the timer only moves the clock), and done and the peek linger end on time.
@@ -282,14 +302,6 @@ final class NotchLiveController: NSObject {
     /// Keys do something only with an approval waiting (⌥↩ ⌥⌫ ⌥↓) or the notch held open (esc).
     var needsKeys: Bool { !broker.queue.waiting.isEmpty || pinned || roomOpen || quickOpen }
 
-    /// The panel holds the keyboard only while the pointer is on it. Ordering it out and back hands the keyboard to the
-    /// app underneath, so an answer typed in the terminal always lands there (the terminal answer wins).
-    func giveBackKeyboard() {
-        guard panel.isKeyWindow, NSEvent.pressedMouseButtons == 0 else { return }  // never mid-click on a button
-        panel.orderOut(nil)
-        panel.orderFrontRegardless()
-    }
-
     // MARK: Layout and motion
 
     var unlockNoteShowing: Bool { backend?.growth.unlockNote.map { Date() < $0.until } ?? false }
@@ -303,11 +315,18 @@ final class NotchLiveController: NSObject {
         return m
     }
 
+    /// The lab's widths are for a 190 pt housing. A wider or narrower notch scales them, capped so a card can't run off the screen.
+    var notchScale: Double {
+        let w = Double(hardwareNotchWidth)
+        return w > 40 ? min(1.2, max(0.84, w / 190)) : 1
+    }
+    func fit(_ s: (w: Double, h: Double)) -> (w: Double, h: Double) { (s.w * notchScale, s.h) }
+
     var shapeSize: (w: Double, h: Double) {
-        if let m = activeMoment { return m.size }
-        if state == .rest, idleRow != nil, Date() < idleUntil { return NotchFeel.idleSize }
-        if hovered, Self.leans.contains(state) { return NotchFeel.hoverSize }
-        return NotchLive.size(state, agents: broker.queue.waiting.count)
+        if let m = activeMoment { return fit((m.size.w, m.size.h)) }
+        if state == .rest, idleRow != nil, Date() < idleUntil { return fit(NotchFeel.idleSize) }
+        if hovered, Self.leans.contains(state) { return fit(NotchFeel.hoverSize) }
+        return fit(NotchLive.size(state, agents: broker.queue.waiting.count))
     }
 
     var belowNotch: Bool {
@@ -319,7 +338,7 @@ final class NotchLiveController: NSObject {
         let sz = shapeSize
         let f = mainScreen.frame
         // plain rest on a Mac with a notch: just inside the hardware notch, so nothing shows until something happens
-        if state == .rest, hardwareNotchWidth > 0, sz == NotchLive.size(.rest) {
+        if state == .rest, hardwareNotchWidth > 0, idleRow == nil, !hovered {
             let r = NotchFeel.restSize(hardware: (Double(hardwareNotchWidth), Double(notchHeight)))
             return NSRect(x: f.midX - r.w / 2, y: f.maxY - r.h, width: r.w, height: r.h)
         }
@@ -374,7 +393,7 @@ final class NotchLiveController: NSObject {
     private func spring(to: (w: Double, h: Double), opening: Bool, animated: Bool) {
         let big = Self.big.contains(state), r = NotchFeel.radius(state)
         defer { wasBig = big }
-        if !Self.leans.contains(state) || hovered {  // only a small notch leans; a stale lean must not ride along
+        if !Self.leans.contains(state) {  // a card doesn't lean; the small notch keeps following the cursor, hover included
             leanGrow = (0, 0)
             lean.animate(to: 0, .lean)
         }
@@ -384,40 +403,71 @@ final class NotchLiveController: NSObject {
             return
         }
         let p: SpringParams = opening ? .open : .close
-        // a card opening gets the tap and the pop; the peek coming and going with every tool only moves
-        let felt = opening && to.h > 40
-        W.animate(to: to.w + leanGrow.w, p, onPeak: felt ? { [weak self] in self?.peakTap() } : nil)
+        // a card opening gets the snap and the pop on the overshoot frame; a small hover gets a tick there too.
+        // the peek coming and going with every tool only moves
+        let felt = opening && to.h > 40 && state != .quick   // quick actions already clicked the trackpad; they get the boing only
+        let hover = opening && !felt && hovered && Self.leans.contains(state)
+        let closing = wasBig && !big
+        let cue: (() -> Void)? = felt ? { [weak self] in self?.peakTap() }
+            : hover ? { [weak self] in self?.hoverTap() }
+            : closing && !skipClose ? { SoundKit.shared.play(.close) } : nil
+        if closing { skipClose = false }
+        W.animate(to: to.w + leanGrow.w, p, onPeak: cue)
         H.animate(to: to.h + leanGrow.h, p.heavier)
         R.animate(to: r, SpringParams(response: 0.4, damping: 0.9))
         openness.animate(to: big ? 1 : 0, .close)
         if !Motion.reduce { squash.kick(opening ? NotchFeel.squashOpen : NotchFeel.squashClose) }
-        if felt { SoundKit.shared.play(.pop) } else if wasBig && !big { SoundKit.shared.play(.close) }
     }
 
-    /// #19: the snap lands with the frame that shows the overshoot.
+    /// #19: the snap and the pop land together, on the frame that shows the overshoot.
     private func peakTap() {
         Feel.haptic(.snap, at: .drawCompleted)
+        SoundKit.shared.play(.pop)
         #if DEBUG
         print("notch: peak haptic on frame \(NotchDriver.shared.frame), width \(String(format: "%.1f", W.value)) for a target of \(String(format: "%.0f", W.target))")
         #endif
+    }
+
+    /// The small swell: a tick with the frame it arrives, not with the cursor crossing the line.
+    private func hoverTap() {
+        Feel.haptic(.tick, at: .drawCompleted)
+        SoundKit.shared.play(.tick)
+    }
+
+    /// A touch that should be heard as well as felt. `sound` defaults to the short tick.
+    private func blip(_ h: Haptic = .tick, sound: SoundKit.Sound = .tick, at time: NSHapticFeedbackManager.PerformanceTime = .now) {
+        Feel.haptic(h, at: time)
+        SoundKit.shared.play(sound)
     }
 
     /// Every display frame while something moves: the springs onto the path.
     func applyFrame() {
         guard let b = panel.contentView?.bounds, b.width > 0 else { return }
         if shape.frame != b { shape.frame = b }
-        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value), radius: R.value,
+        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value) + max(0, mouth.value), radius: R.value,
                               ear: NotchFeel.ear(width: W.value, hardwareWidth: Double(hardwareNotchWidth)), bulge: max(0, -squash.value) / 2.2)
         CATransaction.begin()
         CATransaction.setDisableActions(true)  // also when called outside the frame clock (layout, a jump)
         shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value, open: openness.value)
+        ride(in: b, path: g.path(centerX: b.midX, top: b.maxY))
         CATransaction.commit()
+    }
+
+    /// Rows stay put while the shape squishes. Scaling the text with the press was a jump on every click.
+    /// A pull still slides them down inside the mask, with the rubber band.
+    private func ride(in b: CGRect, path: CGPath) {
+        guard stage.superview != nil else { return }
+        if stage.frame != b { stage.frame = b }
+        let drop = max(0, pullSpring.value) + max(0, mouth.value)
+        stack.layer?.transform = CATransform3DMakeTranslation(lean.value, -drop * 0.85, 0)
+        if stage.layer?.mask == nil { stage.layer?.mask = CAShapeLayer() }
+        (stage.layer?.mask as? CAShapeLayer)?.path = path
     }
 
     /// The shape on screen right now (springs, not targets), so clicks land on what you see.
     var shapeOnScreen: NSRect {
         let f = mainScreen.frame
-        let h = H.value + max(0, pullSpring.value)
+        let h = H.value + max(0, pullSpring.value) + max(0, mouth.value)
         return NSRect(x: f.midX + lean.value - W.value / 2, y: f.maxY - h, width: W.value, height: h)
     }
 
@@ -439,24 +489,60 @@ final class NotchLiveController: NSObject {
         return nil
     }
 
-    /// #4: the notch leans toward a nearby cursor and swells a little; hover comes and goes by distance.
+    /// #4: the notch leans toward a nearby cursor and swells a little. Crossing 34 pt enters hover on that
+    /// frame; passing 70 pt leaves it. The 34/70 gap is the debounce, so there is no extra delay.
     func pointerMoved() {
         let p = NSEvent.mouseLocation
         passThrough()
-        switch hoverWanted(at: p) {
-        case true?: if !hovered { hover(true, after: 0.12) }
-        case false?: if hovered { hover(false, after: 0.3) }
-        case nil: break
+        if Self.leans.contains(state) {
+            switch hoverWanted(at: p) {
+            case true?: if !hovered { setHover(true) }
+            case false?: if hovered { setHover(false) }
+            case nil: break
+            }
+        } else if hovered, hoverWanted(at: p) == false {
+            hovered = false
         }
+        considerDwell(at: p)
         let f = mainScreen.frame
         let l = Self.leans.contains(state) && !Motion.reduce ? NotchFeel.lean(dx: p.x - f.midX, dy: f.maxY - p.y) : NotchFeel.lean(dx: 0, dy: 1000)
         let grow = hovered ? (w: 0.0, h: 0.0) : (w: Double(l.growW), h: Double(l.growH))  // hover is its own size
         guard abs(l.shift - lean.target) > 0.25 || abs(grow.w - leanGrow.w) > 0.5 else { return }  // far away: no frames
         leanGrow = grow
         lean.animate(to: l.shift, .lean)
+        guard !hovered else { return }  // the hover size is the open spring's; don't retarget it every move
         let sz = target()
         W.animate(to: Double(sz.width) + grow.w, .lean)
         H.animate(to: Double(sz.height) + grow.h, .lean)
+    }
+
+    /// Resting on the shape during a run opens the live card. Crossing the menu bar does not: the pointer has to be on it.
+    private func considerDwell(at p: NSPoint) {
+        let on = shapeOnScreen.insetBy(dx: -2, dy: -2).contains(p)
+        let can = run.started != nil && !pinned && [.rest, .think, .peek, .sleep, .focus, .meeting, .egg].contains(state)
+        if on, can, !dwelling {
+            guard dwellWork == nil else { return }
+            let w = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.dwellWork = nil
+                guard self.run.started != nil, !self.pinned else { return }
+                self.dwelling = true
+                self.update()
+            }
+            dwellWork = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: w)
+        } else if !on {
+            dwellWork?.cancel()
+            dwellWork = nil
+            if dwelling { dwelling = false; update() }
+        }
+    }
+
+    /// The small hover, now. A tick lands with the swell.
+    private func setHover(_ on: Bool) {
+        guard hovered != on else { return }
+        hovered = on
+        update()   // the tick fires from the spring, on the frame the swell arrives
     }
 
     // MARK: Idle life (#16)
@@ -501,13 +587,17 @@ final class NotchLiveController: NSObject {
     // MARK: Content
 
     private var stack = NSStackView()
+    /// Fills the panel. Its layer scales with the notch body; the rows are laid out inside it, untransformed.
+    private let stage = NSView()
     /// Live values (clock, cost, counts, bars) set in place on every refresh; views are rebuilt only when the layout changes.
     private var ticks: [() -> Void] = []
     private var contentWidth: CGFloat = 154
     var lastKey = ""
     var roomOpen = false
-    private var pull: CGFloat = 0
     private var swipe: CGFloat = 0
+    private var scrolling = false
+    private var scrollTravel: CGFloat = 0
+    private var scrollSamples: [(t: CFTimeInterval, y: CGFloat)] = []
 
     /// What decides the layout. Everything else is a live value, so buttons are never recreated under the pointer
     /// and the pulse and the breathing edge don't restart every second.
@@ -530,11 +620,15 @@ final class NotchLiveController: NSObject {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.alphaValue = 1
         guard let content = panel.contentView else { return }
-        content.addSubview(stack)
+        if stage.superview == nil {
+            stage.wantsLayer = true
+            content.addSubview(stage)
+        }
+        stage.addSubview(stack)
         // centred at the final width, so the content stays put while the shape blooms around it
-        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
                                      stack.widthAnchor.constraint(equalToConstant: contentWidth + 36),
-                                     stack.topAnchor.constraint(equalTo: content.topAnchor)])
+                                     stack.topAnchor.constraint(equalTo: stage.topAnchor)])
         if let m = activeMoment {
             momentContent(m)
             ticks.forEach { $0() }
@@ -627,31 +721,55 @@ final class NotchLiveController: NSObject {
         }
     }
 
-    /// A two-finger pull down on the notch opens the room; a pull up closes it.
+    /// Two fingers on an open queue switch agents, one detent per 40 pt. A vertical drag is the same rubber
+    /// band as a mouse pull: it follows, resists, and only opens the room if it is still past 130 pt when the
+    /// fingers lift. Inertia after the lift is ignored, and a short flick no longer snaps the room open.
     func scrolled(_ e: NSEvent) {
-        // a sideways swipe moves between waiting agents in the queue
+        if e.momentumPhase != [] { return }
         if state == .queue, abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) {
             swipe += e.scrollingDeltaX
-            if abs(swipe) > 40 {
+            if abs(swipe) > NotchFeel.detent {
                 let n = min(broker.queue.waiting.count, 4)
                 selected = (selected + (swipe < 0 ? 1 : n - 1)) % max(n, 1)
                 let dir: CGFloat = swipe < 0 ? -1 : 1
                 swipe = 0
-                Feel.haptic(.tick)
-                SoundKit.shared.play(.tick)
+                blip()
                 refreshContent(clear: true)
                 slide(dir * NotchFeel.detentSlide)
             }
-            if e.phase == .ended { swipe = 0 }
+            if e.phase == .ended || e.phase == .cancelled { swipe = 0 }
             return
         }
-        let dy = e.isDirectionInvertedFromDevice ? e.scrollingDeltaY : -e.scrollingDeltaY
-        pull += dy
-        if e.phase == .ended || e.phase == .cancelled || abs(pull) > 40 {
-            if pull > 30, !roomOpen { roomOpen = true; Feel.haptic(.snap); update() }
-            else if pull < -30, roomOpen { roomOpen = false; update() }
-            pull = 0
+        // a mouse wheel ticks with no phase; that is not a pull
+        guard e.phase != [] else { return }
+        if e.phase == .began || !scrolling {
+            scrolling = true
+            scrollTravel = 0
+            overPull = false
+            scrollSamples = []
         }
+        // positive travel pulls the notch down (a finger moving down)
+        let dy = e.isDirectionInvertedFromDevice ? e.scrollingDeltaY : -e.scrollingDeltaY
+        scrollTravel += dy
+        scrollSamples.append((CACurrentMediaTime(), scrollTravel))
+        if scrollSamples.count > 6 { scrollSamples.removeFirst(scrollSamples.count - 6) }
+        if scrollTravel > 0, Self.pullable.contains(state) {
+            let band = NotchFeel.band(scrollTravel)
+            pullSpring.hold(at: band)
+            NotchDriver.shared.wake()
+            let over = band > NotchFeel.pullThreshold
+            if over != overPull { overPull = over; blip() }
+        }
+        if e.phase == .ended || e.phase == .cancelled {
+            scrolling = false
+            commitPull(band: pullSpring.value, upwardSpeed: scrollUpSpeed())
+        }
+    }
+
+    /// Upward speed of this scroll, points per second. Positive is a flick up.
+    private func scrollUpSpeed() -> CGFloat {
+        guard let a = scrollSamples.first, let b = scrollSamples.last, b.t > a.t else { return 0 }
+        return -(b.y - a.y) / CGFloat(b.t - a.t)
     }
 
     /// The content arrives from the side it was scrolled from, on the release spring.
@@ -701,7 +819,7 @@ final class NotchLiveController: NSObject {
         stack.addArrangedSubview(row([ignore, nudge, show, spacer()]))
     }
     @objc func stuckIgnore() { backend?.hunt.ignoreRun() }
-    @objc func stuckNudge() { backend?.hunt.copyNudge(); Feel.haptic(.tick) }
+    @objc func stuckNudge() { backend?.hunt.copyNudge(); blip() }
     @objc func stuckShow() { backend?.approveInTerminal() }
 
     /// One dream icon per interval from today's events; hover tells what it's dreaming about (R4 §7).
@@ -830,13 +948,13 @@ final class NotchLiveController: NSObject {
     func key(_ e: NSEvent) -> Bool {
         guard panel.isKeyWindow else { return false }
         if konami.feed(e.keyCode) { disco() }  // #26, while the notch has the keyboard
-        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; quickOpen = false; Feel.haptic(.tick); update(); return true }
+        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; quickOpen = false; blip(); update(); return true }
         let items = broker.queue.waiting
         // ←/→ pick a waiting approval
         if (e.keyCode == 123 || e.keyCode == 124), items.count > 1 {
             let n = min(items.count, 4)
             selected = (selected + (e.keyCode == 124 ? 1 : n - 1)) % n
-            Feel.haptic(.tick)
+            blip()
             refreshContent(clear: true)
             return true
         }
@@ -846,30 +964,13 @@ final class NotchLiveController: NSObject {
         switch e.keyCode {
         case 36: if ApprovalQueue.shortcutAllowed(r) { broker.answer(r.id, .allowOnce) }; return true
         case 51: if ApprovalQueue.shortcutAllowed(r) { broker.answer(r.id, .deny) }; return true
-        case 125: selected = (selected + 1) % min(items.count, 4); Feel.haptic(.tick); refreshContent(clear: true); return true
+        case 125: selected = (selected + 1) % min(items.count, 4); blip(); refreshContent(clear: true); return true
         default: return false
         }
     }
 
-    /// Hover intent: it opens once the pointer rests for 120 ms (crossing the menu bar doesn't pop it) and folds 300 ms
-    /// after the pointer leaves (a wobble at the edge doesn't snap it shut). The pointer's real position decides.
-    private func hover(_ on: Bool, after delay: TimeInterval) {
-        hoverWork?.cancel()
-        guard hovered != on else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.hoverWanted(at: NSEvent.mouseLocation) == on else { return }
-            self.hovered = on
-            if !on { self.quickOpen = false }
-            if on && self.needsKeys { self.panel.makeKey() }
-            self.update()
-            if on { Feel.haptic(.tick) }  // paired with the notch swelling to hover
-        }
-        hoverWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-
-    /// Click pins. Pulling the notch down past 130 pt opens the room; an upward flick dismisses a big state; holding
-    /// still (or a force click) opened the quick actions. Clicks on buttons, the scrubber and the room are theirs.
+    /// Click opens or folds. The toggle waits a beat so a triple-click is one trick, not an open and a close
+    /// and then a trick. Pulling past 130 pt opens the room; an upward flick dismisses a big state.
     func mouseUp(clicks: Int = 1) {
         defer { pressStart = nil; dragStart = nil }
         holdWork?.cancel()
@@ -879,25 +980,58 @@ final class NotchLiveController: NSObject {
             return
         }
         guard pressStart != nil, !pressOnControl else { return }
-        if overPull {
-            overPull = false
-            pullSpring.animate(to: 0, .pull)
-            roomOpen = true
-            Feel.haptic(.snap)  // with the room opening
-            update()
+        if dragged || overPull || pullSpring.value > 0.5 {
+            commitPull(band: pullSpring.value, upwardSpeed: flickSpeed() ?? 0)
             return
         }
-        if pullSpring.value > 0.5 { pullSpring.animate(to: 0, .pull) }
-        if let v = flickSpeed(), v > NotchFeel.flickSpeed, Self.big.contains(state) {
-            SoundKit.shared.play(.whoosh)
+        guard state != .quick, state != .knock, state != .queue else { return }
+        noteClick(clicks)
+    }
+
+    /// One click opens or folds, after the double-click window. The third click is a trick and cancels that.
+    private func noteClick(_ clicks: Int) {
+        clickWork?.cancel()
+        if clicks >= 3 { trick(); return }
+        guard clicks == 1 else { return }
+        let work = DispatchWorkItem { [weak self] in self?.toggleFromClick() }
+        clickWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    /// A click on a running agent pins the live card. With nothing running it opens the room. A click on a card
+    /// the user opened folds it. Approvals are not in here: they stay until they're answered.
+    private func toggleFromClick() {
+        if Self.big.contains(state), state != .knock, state != .queue {
             fold()
             return
         }
-        guard !dragged, state != .quick, state != .knock, state != .queue else { return }
-        if clicks >= 3 { trick(); return }  // #26: the first two clicks pinned and unpinned; the third is a trick
-        pinned.toggle()
-        Feel.haptic(.snap)
-        update()
+        if run.started != nil {
+            pinned = true
+        } else {
+            roomOpen = true
+        }
+        update()   // the snap and the pop come from the opening spring's peak
+    }
+
+    /// Finger up on a pull. The room opens only past the threshold; anything shorter springs back.
+    private func commitPull(band: CGFloat, upwardSpeed: CGFloat) {
+        let end = NotchFeel.pullEnd(band: band, upwardSpeed: upwardSpeed, big: Self.big.contains(state), roomOpen: roomOpen)
+        overPull = false
+        scrollTravel = 0
+        scrollSamples = []
+        switch end {
+        case .openRoom:
+            pullSpring.animate(to: 0, .pull)
+            roomOpen = true
+            update()   // snap and pop land on the peak, not on the finger lifting
+        case .dismiss:
+            pullSpring.animate(to: 0, .pull)
+            skipClose = true
+            SoundKit.shared.play(.whoosh)
+            fold()
+        case .release:
+            if pullSpring.value > 0.5 { pullSpring.animate(to: 0, .pull) }
+        }
     }
 
     /// #7: the rubber band follows a downward drag, then resists; a tick each way across the threshold.
@@ -916,12 +1050,12 @@ final class NotchLiveController: NSObject {
             update()
             return
         }
-        guard ![.knock, .queue, .quick, .room].contains(state) else { return }
+        guard Self.pullable.contains(state) else { return }
         let band = NotchFeel.band(start.y - p.y)
         pullSpring.hold(at: band)
         NotchDriver.shared.wake()
         let over = band > NotchFeel.pullThreshold
-        if over != overPull { overPull = over; Feel.haptic(.tick) }  // paired with the shape crossing the line
+        if over != overPull { overPull = over; blip() }  // paired with the shape crossing the line
     }
 
     /// Upward speed from the last few drag samples, in points per second.
@@ -952,10 +1086,9 @@ final class NotchLiveController: NSObject {
 
     /// #11 ⌥⌘N: open the notch (the live run, or the room when nothing runs), or fold it.
     func toggleNotch() {
-        if Self.big.contains(state) && state != .knock && state != .queue { fold() }
+        if Self.big.contains(state) && state != .knock && state != .queue { blip(); fold() }
         else if run.started != nil { pinned = true; update() }
         else { roomOpen = true; update() }
-        Feel.haptic(.tick)
     }
 
     /// The quick actions card.
@@ -975,7 +1108,7 @@ final class NotchLiveController: NSObject {
         update()
     }
     @objc func muteHour() { quickOpen = false; backend?.pause(minutes: 60); update() }
-    @objc func openRoomNow() { quickOpen = false; roomOpen = true; Feel.haptic(.snap); update() }
+    @objc func openRoomNow() { quickOpen = false; roomOpen = true; update() }
 
     // MARK: Moments (#24-27)
 
@@ -992,6 +1125,7 @@ final class NotchLiveController: NSObject {
         show(.battery(percent))
         burst(.sweat)
         Feel.haptic(.knock)  // with the amber rim and the sweat
+        SoundKit.shared.play(.fail)
     }
     func pluggedIn() {
         show(.charging)

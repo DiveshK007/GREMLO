@@ -57,7 +57,7 @@ final class MacEvents {
     private func volumeChanged(_ dev: AudioObjectID) {
         guard let v = volume(of: dev), v != lastVolume else { return }
         lastVolume = v
-        live.show(.volume(Double(v)))  // the pet rides the fill for 1.8 s; no sound, no haptic
+        // The Mac draws its own volume overlay. The notch stays out of it.
     }
 
     // MARK: Battery: IOKit power-source notifications
@@ -131,38 +131,8 @@ final class TypingWatch {
 /// #27, opt-in: AppleScript asks Music and Spotify what's playing every 5 s while it's on (Automation consent), and
 /// the pet bops at a steady 2 Hz under the track name. No beat detection, no MediaRemote.
 final class MusicWatch {
-    private var timer: Timer?
-    private let script = """
-    if application "Music" is running then
-        tell application "Music" to if player state is playing then return name of current track
-    end if
-    if application "Spotify" is running then
-        tell application "Spotify" to if player state is playing then return name of current track
-    end if
-    return ""
-    """
-
     func set(_ on: Bool, live: NotchLiveController) {
-        timer?.invalidate()
-        timer = nil
-        guard on else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self, weak live] _ in
-            guard let self else { return }
-            let source = self.script
-            // osascript in its own process: an Apple event can take a while, and NSAppleScript belongs on the main thread
-            DispatchQueue.global(qos: .utility).async {
-                let p = Process(), out = Pipe()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                p.arguments = ["-e", source]
-                p.standardOutput = out
-                p.standardError = FileHandle.nullDevice
-                guard (try? p.run()) != nil else { return }
-                p.waitUntilExit()
-                let title = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                DispatchQueue.main.async { if !title.isEmpty { live?.show(.music(String(title.prefix(60)))) } }
-            }
-        }
-        t.tolerance = 1
-        timer = t
+        _ = (on, live)
+        // The track name used to sit in the notch for as long as something was playing. The Mac already shows that.
     }
 }
