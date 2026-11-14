@@ -1,0 +1,606 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Gremlo Notch Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Notch Lab: a MacBook screen on the left you can poke, the controls on the right, the spring scope and haptic log underneath. Dark desk by default, real light theme. */
+@property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+:root {
+  --bg: #0B0B0B; --surface: #141414; --surface-2: #1F1F1F; --fg: #F4F2ED; --text-2: rgba(244,242,237,.62); --text-3: rgba(244,242,237,.42); --rule: rgba(244,242,237,.12);
+  --accent: #FF5A3C; --accent-text: #FF5A3C;
+  --display: 'Bricolage Grotesque', 'Arial Narrow', Inter, sans-serif; --body: Inter, system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #F4F2ED; --surface: #E9E6DF; --surface-2: #DEDAD1; --fg: #0B0B0B; --text-2: rgba(11,11,11,.66); --text-3: rgba(11,11,11,.5); --rule: rgba(11,11,11,.14); --accent-text: #C1442D; color-scheme: light; } }
+:root[data-theme="light"] { --bg: #F4F2ED; --surface: #E9E6DF; --surface-2: #DEDAD1; --fg: #0B0B0B; --text-2: rgba(11,11,11,.66); --text-3: rgba(11,11,11,.5); --rule: rgba(11,11,11,.14); --accent-text: #C1442D; color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 15px/1.5 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 60px; }
+.top { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.top h1 { font: 800 clamp(40px, 6vw, 76px)/.9 var(--display); font-variation-settings: 'wdth' 80, 'opsz' 96; letter-spacing: -.04em; margin: 8px 0 0; text-wrap: balance; }
+.eyebrow { font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text); }
+.top p { margin: 0; max-width: 56ch; color: var(--text-2); font-size: 14.5px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+/* ---------- the screen ---------- */
+.screenbox { position: relative; width: 100%; aspect-ratio: 1100 / 660; border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 0 0 10px #1A1A1C, 0 0 0 11px #2E2E33, 0 30px 80px rgba(0,0,0,.45); margin: 11px; width: calc(100% - 22px); touch-action: none; user-select: none; -webkit-user-select: none; }
+.stage { position: absolute; left: 0; top: 0; width: 1100px; height: 660px; transform-origin: 0 0; overflow: hidden; background: radial-gradient(120% 90% at 20% 110%, #3B2A55 0%, transparent 55%), radial-gradient(90% 80% at 90% 100%, #1D4D5C 0%, transparent 60%), linear-gradient(#141A2E, #0C0E16); font-family: var(--body); color: #F4F2ED; }
+.stage.night { background: radial-gradient(60% 50% at 80% 20%, #1C2340, transparent 60%), linear-gradient(#05060B, #0A0C14); }
+.menubar { position: absolute; left: 0; right: 0; top: 0; height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font: 500 12.5px/1 var(--body); color: rgba(244,242,237,.82); background: rgba(10,10,14,.35); backdrop-filter: blur(14px); }
+.menubar .l, .menubar .r { display: flex; gap: 18px; align-items: center; }
+.win { position: absolute; left: 70px; top: 120px; width: 520px; height: 300px; border-radius: 12px; background: rgba(22,22,28,.86); box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 50px rgba(0,0,0,.5); padding: 40px 18px 14px; font: 12.5px/1.75 var(--mono); color: rgba(244,242,237,.55); overflow: hidden; }
+.win::before { content: ""; position: absolute; left: 14px; top: 14px; width: 11px; height: 11px; border-radius: 50%; background: #FF5F57; box-shadow: 18px 0 #FEBC2E, 36px 0 #28C840; }
+.win b { color: #F4F2ED; font-weight: 500; }
+.file { position: absolute; left: 860px; top: 420px; width: 74px; display: flex; flex-direction: column; align-items: center; gap: 6px; font: 500 11.5px/1.2 var(--body); color: #F4F2ED; text-align: center; cursor: grab; z-index: 6; }
+.file i { width: 52px; height: 64px; border-radius: 6px; background: linear-gradient(135deg, #F4F2ED 0 72%, #C9C5BB 72%); position: relative; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+.file i::after { content: "PNG"; position: absolute; left: 6px; bottom: 8px; font: 700 10px/1 var(--mono); color: #4C8DFF; }
+.file.drag { cursor: grabbing; transition: none; }
+.shade { position: absolute; left: 50%; top: 0; width: 800px; height: 400px; transform: translateX(-50%); background: radial-gradient(50% 55% at 50% 0%, rgba(0,0,0,.55), transparent 70%); opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 2; }
+.shade.on { opacity: 1; }
+.blurhalo { position: absolute; left: 50%; top: 0; transform: translateX(-50%); border-radius: 0 0 40px 40px; backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); pointer-events: none; z-index: 3; opacity: 0; transition: opacity .3s; }
+.blurhalo.on { opacity: 1; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 30; }
+#fx { position: absolute; left: 0; top: 0; z-index: 8; pointer-events: none; }
+
+/* the notch */
+.notch-wrap { position: absolute; left: 550px; top: 0; z-index: 10; transform-origin: 50% 0; }
+.notch { position: relative; background: #000; border-radius: 0 0 var(--r) var(--r); transform-origin: 50% 0; cursor: pointer; }
+.notch::before, .notch::after { content: ""; position: absolute; top: 0; width: 10px; height: 10px; }
+.notch::before { left: -10px; background: radial-gradient(circle at 0 100%, transparent 10px, #000 10.5px); }
+.notch::after { right: -10px; background: radial-gradient(circle at 100% 100%, transparent 10px, #000 10.5px); }
+.rim { position: absolute; inset: -2px -2px -2px -2px; border-radius: 0 0 calc(var(--r) + 2px) calc(var(--r) + 2px); z-index: -1; opacity: 0; transition: opacity .3s; background: var(--agent, #FF5A3C); }
+.rim.on { opacity: 1; }
+.rim.flow { background: conic-gradient(from var(--a) at 50% 0%, transparent 0 15%, var(--agent) 30%, transparent 45% 65%, var(--agent) 80%, transparent 95%); animation: flow 2.2s linear infinite; }
+@keyframes flow { to { --a: 360deg; } }
+.glow { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 0 0 0 transparent; transition: box-shadow .4s; }
+.glow.on { box-shadow: 0 6px 28px -6px var(--agent), 0 2px 0 0 var(--agent); }
+.content { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+.row { display: flex; align-items: center; gap: 10px; }
+.st { opacity: 0; transform: translateY(-6px); transition: opacity .18s ease, transform .32s cubic-bezier(.34,1.4,.5,1); }
+.in .st { opacity: 1; transform: none; }
+.mono { font-family: var(--mono); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--agent); flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 7px; font: 500 11.5px/1 var(--mono); padding: 6px 9px; border-radius: 999px; background: #161616; }
+.btn { min-height: 30px; padding: 0 14px; border-radius: 15px; border: 0; background: #1E1E1E; color: #F4F2ED; font: 600 12.5px/1 var(--body); cursor: pointer; transition: transform .2s cubic-bezier(.34,1.4,.5,1), background .2s; }
+.btn:hover { transform: translateY(-1px); background: #2A2A2A; }
+.btn.go { background: #8FD14F; color: #0B0B0B; }
+.btn[aria-selected="true"] { box-shadow: 0 0 0 2px #F4F2ED; }
+.odo { display: inline-flex; font: 500 12px/1 var(--mono); height: 14px; overflow: hidden; color: rgba(244,242,237,.82); }
+.odo span { display: flex; flex-direction: column; transition: transform .45s cubic-bezier(.34,1.3,.5,1); }
+.odo span i { font-style: normal; height: 14px; line-height: 14px; }
+.track { position: relative; height: 54px; border-radius: 10px; background: #0E0E10; overflow: hidden; }
+.track .fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--agent) 35%, transparent)); }
+.track .walker { position: absolute; bottom: 2px; }
+.bars { display: flex; gap: 3px; align-items: flex-end; height: 26px; cursor: ew-resize; touch-action: none; }
+.bars i { flex: 1; border-radius: 2px; background: #4A4A4E; transition: background .1s, transform .15s; }
+.bars i.on { background: var(--agent); transform: scaleY(1.25); transform-origin: bottom; }
+.eq { display: flex; gap: 2px; align-items: flex-end; height: 14px; }
+.eq i { width: 3px; background: #8FD14F; animation: eq .5s ease-in-out infinite alternate; }
+@keyframes eq { from { height: 3px; } to { height: 14px; } }
+.drop { position: absolute; width: 4px; height: 7px; border-radius: 0 50% 50% 50%; background: #7CC8FF; transform: rotate(45deg); }
+.petfree { position: absolute; left: 0; top: 0; z-index: 9; cursor: grab; touch-action: none; }
+
+/* ---------- panel ---------- */
+.panel { background: var(--surface); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.grp { display: flex; flex-direction: column; gap: 8px; }
+.grp h3 { margin: 0; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 32px; padding: 0 11px; border-radius: 999px; border: 0; background: var(--surface-2); color: var(--fg); font: 600 12.5px/1 var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.chip:hover { filter: brightness(1.15); }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; }
+.chip small { font: 500 10px/1 var(--mono); opacity: .55; }
+textarea { width: 100%; min-height: 56px; border-radius: 10px; border: 1.5px solid var(--rule); background: var(--bg); color: var(--fg); padding: 10px 12px; font: 13px/1.5 var(--mono); resize: vertical; }
+textarea:focus, .chip:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.hint { font-size: 12.5px; color: var(--text-2); margin: 0; }
+.pad { display: flex; gap: 12px; align-items: center; }
+.trackpad { width: 86px; height: 56px; border-radius: 9px; background: var(--surface-2); position: relative; flex: none; box-shadow: inset 0 0 0 1px var(--rule); overflow: hidden; }
+.trackpad .rip { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.trackpad .rip.go { animation: rip .42s ease-out; }
+@keyframes rip { from { transform: scale(.5); opacity: 1; } to { transform: scale(7); opacity: 0; } }
+.trackpad.finger::after { content: ""; position: absolute; left: 54%; top: 42%; width: 16px; height: 16px; border-radius: 50%; background: var(--fg); opacity: .2; }
+.hlab { font: 500 12px/1.4 var(--mono); }
+.hlab b { color: var(--accent-text); font-weight: 500; }
+
+.below { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .9fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 1100px) { .below { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border-radius: 16px; padding: 16px; min-width: 0; }
+.card h3 { margin: 0 0 10px; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); display: flex; justify-content: space-between; gap: 10px; }
+#scope { width: 100%; height: 150px; display: block; }
+.log { list-style: none; margin: 0; padding: 0; font: 12px/1.6 var(--mono); color: var(--text-2); height: 150px; overflow: hidden; }
+.log li b { color: var(--fg); font-weight: 500; }
+.log li em { font-style: normal; color: var(--accent-text); }
+.perf { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.perf div { display: flex; flex-direction: column; gap: 4px; }
+.perf span { font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.perf b { font: 800 30px/1 var(--display); font-variation-settings: 'wdth' 80, 'opsz' 96; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 18px; font: 12px/1.5 var(--body); color: var(--text-2); }
+.legend b { color: var(--fg); font-weight: 600; }
+.watch { width: 64px; height: 76px; border-radius: 18px; background: #111; box-shadow: 0 0 0 3px #2C2C30; display: grid; place-items: center; flex: none; transition: transform .1s; }
+.watch span { font: 600 10px/1.2 var(--body); color: #F4F2ED; text-align: center; }
+.watch.buzz { animation: buzz .32s linear 2; }
+@keyframes buzz { 25% { transform: translateX(-2px) rotate(-2deg); } 75% { transform: translateX(2px) rotate(2deg); } }
+.themebtn { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; background: var(--surface); color: var(--text-2); border: 0; border-radius: 999px; padding: 9px 12px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .st, .odo span { transition: none; } .rim.flow, .eq i { animation: none; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div><div class="eyebrow">Gremlo · notch feel</div><h1>The Notch Lab</h1></div>
+    <p>Every idea from the list, playable. Hover near the notch, click it, pull it down, scroll on it, hold it, drag the file in, throw the pet out. The scope underneath shows each spring and the frame every haptic fires on.</p>
+    <button type="button" class="themebtn" id="themeBtn">Theme · system</button>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="screenbox" id="box">
+        <div class="stage" id="stage">
+          <div class="menubar"><div class="l"><b style="font-weight: 700"></b><span>Terminal</span><span>Shell</span><span>Edit</span><span>View</span></div><div class="r"><span id="mbBatt">87%</span><span>Sat 14 Nov</span><span id="mbClock">9:41</span></div></div>
+          <div class="win" id="term"><div>⏺ <b>claude</b> › refactor the vault withdraw path</div><div>⏺ Read src/vault.ts</div><div>⏺ Edit src/vault.ts (+18 −6)</div><div>⏺ Bash npm test</div><div style="color: #8FD14F">✓ 41 passed</div></div>
+          <div class="file" id="file"><i></i>shot.png</div>
+          <div class="shade" id="shade"></div>
+          <div class="blurhalo" id="halo"></div>
+          <canvas id="fx" width="1100" height="660"></canvas>
+          <div class="notch-wrap" id="nw"><div class="notch" id="notch" role="button" tabindex="0" aria-label="Gremlo notch. Click to open, pull down for the room, hold for quick actions."><div class="rim" id="rim"></div><div class="glow" id="glow"></div><div class="content" id="content"></div></div></div>
+          <div class="flash" id="flash"></div>
+        </div>
+      </div>
+      <div class="legend"><span><b>Hover</b> near it · lean</span><span><b>Click</b> open/close</span><span><b>Pull down</b> room (rubber band)</span><span><b>Flick up</b> dismiss</span><span><b>Scroll</b> on it · switch agent</span><span><b>Hold</b> · quick actions</span><span><b>Triple-click</b> · trick</span><span><b>Drag</b> shot.png in · gulp</span><span><b>Drag the pet</b> out · fling</span><span><b>N</b> toggle · <b>←→</b> pick · <b>Enter</b> allow · <b>Esc</b></span></div>
+    </div>
+
+    <aside class="panel" aria-label="Controls">
+      <div class="grp"><h3>Agent</h3><div class="chips" id="agents"></div></div>
+      <div class="grp"><h3>What the agent does</h3><div class="chips">
+        <button class="chip" data-act="think">Thinking</button><button class="chip" data-act="approval">Needs approval</button><button class="chip" data-act="done">Done</button><button class="chip" data-act="fail">Tests fail</button><button class="chip" data-act="merge">PR merged</button><button class="chip" data-act="rest">Idle</button>
+      </div></div>
+      <div class="grp"><h3>Mac events</h3><div class="chips">
+        <button class="chip" data-act="vol">Volume ↑</button><button class="chip" data-act="batt">Battery 9%</button><button class="chip" data-act="charge">Plug in</button><button class="chip" data-act="shot">Screenshot</button><button class="chip" data-act="music" aria-pressed="false">Now playing</button><button class="chip" data-act="night" aria-pressed="false">Night</button>
+      </div></div>
+      <div class="grp"><h3>Typing pace <small class="mono" style="letter-spacing: 0; text-transform: none">· only the rate is read</small></h3><textarea id="typing" placeholder="Type fast here: it cheers. Stop: it naps." aria-label="Typing pace test"></textarea></div>
+      <div class="grp"><h3>Feel</h3><div class="chips">
+        <button class="chip" data-tog="sound" aria-pressed="true">Sound · subtle</button><button class="chip" data-tog="finger" aria-pressed="true">Finger on pad</button><button class="chip" data-tog="rm" aria-pressed="false">Reduce motion</button><button class="chip" data-tog="lp" aria-pressed="false">Low power</button>
+      </div></div>
+      <div class="grp"><h3>Haptic (Mac trackpad · Watch)</h3><div class="pad"><div class="trackpad finger" id="pad"><span class="rip" id="rip"></span></div><div class="hlab" id="hlab">waiting for the first tap</div><div class="watch" id="watch"><span>⌚︎</span></div></div><p class="hint">Mac taps are only felt with a finger on a Force Touch trackpad. The Watch takes the strong buzz.</p></div>
+    </aside>
+  </div>
+
+  <div class="below">
+    <div class="card"><h3><span>Spring scope · notch width</span><span>tick = haptic on that frame</span></h3><canvas id="scope" width="900" height="150"></canvas></div>
+    <div class="card"><h3><span>Haptic log</span><span id="hcount">0 taps</span></h3><ul class="log" id="log"></ul></div>
+    <div class="card"><h3><span>Perf</span><span id="mode">idle</span></h3><div class="perf"><div><span>Frames this second</span><b id="fps">0</b></div><div><span>Driver</span><b id="drv" style="font-size: 20px">idle</b></div><div><span>Particles</span><b id="pc">0</b></div><div><span>Springs moving</span><b id="sm">0</b></div></div><p class="hint" style="margin-top: 12px">Nothing ticks when nothing moves. Sprites alone run at their own 8 fps; springs get every display frame.</p></div>
+  </div>
+</div>
+
+<script>
+(() => {
+/* ================= setup ================= */
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), box = $('#box'), notch = $('#notch'), nw = $('#nw'), content = $('#content'), rim = $('#rim'), glow = $('#glow');
+const fx = $('#fx'), fctx = fx.getContext('2d');
+let K = 1; const fit = () => { K = box.clientWidth / 1100; stage.style.transform = 'scale(' + K + ')'; }; fit(); addEventListener('resize', fit);
+const OS_RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const T = { sound: true, finger: true, rm: OS_RM, lp: false };
+if (OS_RM) document.querySelector('[data-tog="rm"]').setAttribute('aria-pressed', 'true');
+const toStage = e => { const r = box.getBoundingClientRect(); return { x: (e.clientX - r.left) / K, y: (e.clientY - r.top) / K }; };
+
+/* theme */
+const themes = ['system', 'light', 'dark']; let ti = 0;
+try { const t = localStorage.getItem('gremlo.theme'); if (themes.includes(t)) ti = themes.indexOf(t); } catch (e) {}
+const applyTheme = () => { const t = themes[ti]; if (t === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t; $('#themeBtn').textContent = 'Theme · ' + t; };
+applyTheme(); $('#themeBtn').onclick = () => { ti = (ti + 1) % 3; try { localStorage.setItem('gremlo.theme', themes[ti]); } catch (e) {} applyTheme(); };
+
+/* agents (rim colour per agent; colours only, no logos) */
+const AGENTS = [{ id: 'claude', name: 'Claude Code', c: '#D97757', task: 'refactor vault withdraw', tools: 23 }, { id: 'codex', name: 'Codex', c: '#10A37F', task: 'add rate limiter', tools: 9 }, { id: 'cursor', name: 'Cursor', c: '#4C8DFF', task: 'fix flaky test', tools: 14 }];
+let ai = 0;
+const agentsEl = $('#agents');
+AGENTS.forEach((a, i) => { const b = document.createElement('button'); b.className = 'chip'; b.innerHTML = '<i style="background:' + a.c + '"></i>' + a.name; b.setAttribute('aria-pressed', i === ai); b.onclick = () => setAgent(i); agentsEl.appendChild(b); });
+function setAgent(i, dir = 0) { ai = (i + AGENTS.length) % AGENTS.length; notch.style.setProperty('--agent', AGENTS[ai].c); agentsEl.querySelectorAll('.chip').forEach((b, k) => b.setAttribute('aria-pressed', k === ai)); if (mode === 'open') render(dir); }
+
+/* ================= sound (synthesised, ~0 KB) ================= */
+let AC = null;
+const ac = () => AC || (AC = new (window.AudioContext || window.webkitAudioContext)());
+function snd(kind) {
+  if (!T.sound) return;
+  try {
+    const a = ac(), t = a.currentTime, g = a.createGain(); g.connect(a.destination); const v = .12;
+    const osc = (f1, f2, d, type = 'sine') => { const o = a.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + d); o.connect(g); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.start(t); o.stop(t + d + .02); };
+    const noise = (d, f = 1800, q = 1, at = 0) => { const b = a.createBuffer(1, a.sampleRate * d, a.sampleRate), ch = b.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / ch.length); const s = a.createBufferSource(); s.buffer = b; const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q; s.connect(bp); bp.connect(g); g.gain.setValueAtTime(v * 1.4, t + at); s.start(t + at); };
+    if (kind === 'pop') osc(320, 760, .07); else if (kind === 'close') osc(700, 260, .08);
+    else if (kind === 'tick') osc(2200, 1800, .018, 'square');
+    else if (kind === 'chomp') { noise(.06, 900, 2); noise(.06, 700, 2, .12); }
+    else if (kind === 'whoosh') noise(.22, 1200, .7);
+    else if (kind === 'shutter') { noise(.03, 3000, 1); noise(.04, 2200, 1, .07); }
+    else if (kind === 'chime') { osc(880, 880, .25); setTimeout(() => snd('chime2'), 90); }
+    else if (kind === 'chime2') osc(1320, 1320, .3);
+    else if (kind === 'thud') osc(140, 60, .12);
+    else if (kind === 'boing') osc(220, 520, .16, 'triangle');
+    else if (kind === 'fail') osc(300, 160, .2, 'triangle');
+  } catch (e) {}
+}
+
+/* ================= haptics (simulated Mac patterns + Watch) ================= */
+const RECIPE = { tick: ['alignment'], snap: ['levelChange'], boop: ['generic'], knock: ['generic', 'generic@120'], thud: ['levelChange', 'generic@40'], heartbeat: ['generic', 'generic@140'], allow: ['levelChange'], deny: ['generic', 'generic@80'], stage2: ['levelChange'], purr: ['alignment', 'alignment@90', 'alignment@180', 'alignment@270'] };
+let lastTap = 0, taps = 0; const scopeTaps = [];
+function hap(name, why = '') {
+  const now = performance.now();
+  if (now - lastTap < 100 && name !== 'tick') return;   // rate limit (ticks may be texture)
+  lastTap = now; taps++;
+  scopeTaps.push({ t: now, name });
+  const felt = T.finger;
+  const rip = $('#rip'); (RECIPE[name] || ['generic']).forEach(step => { const d = +(step.split('@')[1] || 0); setTimeout(() => { rip.classList.remove('go'); void rip.offsetWidth; if (felt) rip.classList.add('go'); }, d); });
+  $('#hlab').innerHTML = '<b>' + name + '</b> · ' + (RECIPE[name] || ['generic']).join(' + ') + (felt ? '' : '<br>not felt: no finger');
+  const li = document.createElement('li'); li.innerHTML = '<b>' + name.padEnd(9) + '</b> ' + (why ? '<em>' + why + '</em>' : '') + (felt ? '' : ' · skipped');
+  const log = $('#log'); log.prepend(li); while (log.children.length > 9) log.lastChild.remove();
+  $('#hcount').textContent = taps + ' taps';
+  if (navigator.vibrate && felt) try { navigator.vibrate(name === 'tick' ? 6 : name === 'heartbeat' ? [10, 120, 10] : 14); } catch (e) {}
+}
+function watchBuzz() { const w = $('#watch'); w.classList.remove('buzz'); void w.offsetWidth; w.classList.add('buzz'); }
+
+/* ================= springs ================= */
+const ALL = [];
+class Spring {
+  constructor(x, resp = .4, damp = .75) { this.x = x; this.v = 0; this.t = x; this.set(resp, damp); this.peak = null; ALL.push(this); }
+  set(r, z) { if (T.rm) { r = Math.min(r, .2); z = 1; } this.k = Math.pow(2 * Math.PI / r, 2); this.c = 4 * Math.PI * z / r; }
+  to(t, r, z, onPeak) { if (r) this.set(r, z); this.t = t; this.peak = onPeak || null; this.sgn = Math.sign(t - this.x); wake(); }
+  kick(v) { this.v += v; wake(); }
+  step(dt) {
+    const pv = this.v;
+    const a = -this.k * (this.x - this.t) - this.c * this.v; this.v += a * dt; this.x += this.v * dt;
+    // peak = velocity flips sign while past the target: that frame is when the overshoot is biggest → fire the haptic there
+    if (this.peak && Math.sign(pv) === this.sgn && Math.sign(this.v) !== this.sgn && (this.x - this.t) * this.sgn > 0) { const p = this.peak; this.peak = null; p(); }
+    if (this.peak && this.rest) { const p = this.peak; this.peak = null; p(); }
+  }
+  get rest() { return Math.abs(this.x - this.t) < .08 && Math.abs(this.v) < .08; }
+  snap() { this.x = this.t; this.v = 0; }
+}
+const W = new Spring(190), H = new Spring(32), R = new Spring(12), LX = new Spring(0, .25, .8), SQ = new Spring(0, .22, .45), PR = new Spring(1, .18, .5), PULL = new Spring(0, .35, .7), HALO = new Spring(0, .3, 1);
+
+/* ================= modes ================= */
+const SIZE = {
+  rest: [190, 32, 12], hover: [236, 38, 14], think: [214, 34, 13], open: [560, 168, 28], approval: [440, 140, 28], done: [330, 44, 18], fail: [330, 44, 18], merge: [330, 44, 18],
+  drop: [320, 92, 30], gulp: [300, 46, 18], room: [680, 330, 34], vol: [330, 60, 20], batt: [300, 44, 18], charge: [300, 52, 20], shot: [300, 44, 18], music: [330, 44, 18], quick: [460, 62, 24], peekout: [240, 46, 18], trick: [260, 56, 20], typing: [250, 40, 16]
+};
+let mode = 'rest', base = 'rest', pinned = false, backT = null, sel = 1;
+const BIG = ['open', 'approval', 'room', 'quick', 'drop'];
+function go(m, o = {}) {
+  clearTimeout(backT);
+  const was = mode; mode = m;
+  const [w, h, r] = SIZE[m];
+  const opening = w * h > W.x * H.x + 200;
+  const spring = opening ? [.42, .7] : [.32, .88];
+  W.to(w, spring[0], spring[1], opening && !T.rm ? () => hap('snap', 'on the overshoot frame') : null);
+  H.to(h, spring[0] + .03, spring[1]); R.to(r, .4, .9);
+  if (opening && !T.rm) SQ.kick(-2.2); else if (!T.rm) SQ.kick(1.4);
+  if (opening) snd('pop'); else if (BIG.includes(was) && !BIG.includes(m)) snd('close');
+  const big = BIG.includes(m);
+  $('#shade').classList.toggle('on', big); $('#halo').classList.toggle('on', big);
+  rim.className = 'rim' + (['think', 'approval', 'open'].includes(m) ? ' on' + (m === 'think' ? ' flow' : '') : (['done', 'merge', 'fail', 'batt', 'charge'].includes(m) ? ' on' : ''));
+  rim.style.background = m === 'fail' ? '#FF5A3C' : m === 'batt' ? '#FFB020' : m === 'charge' ? '#8FD14F' : m === 'merge' ? '#B48CFF' : m === 'done' ? '#8FD14F' : '';
+  glow.className = 'glow' + (['think', 'approval', 'done', 'merge'].includes(m) ? ' on' : '');
+  render(o.dir || 0, o);
+  if (o.back) backT = setTimeout(() => go(base), o.back);
+}
+const BACK = 2600;
+
+/* ================= notch content ================= */
+let petEls = [];
+function petCanvas(row, o = {}) { return '<canvas class="pc" data-row="' + row + '" data-s="' + (o.s || .19) + '"' + (o.frames ? ' data-frames="' + o.frames + '"' : '') + (o.fps ? ' data-fps="' + o.fps + '"' : '') + (o.style ? ' style="' + o.style + '"' : '') + '></canvas>'; }
+function odo(str) { return '<span class="odo">' + String(str).split('').map(ch => /\d/.test(ch) ? '<span data-d="' + ch + '">' + '0123456789'.split('').map(d => '<i>' + d + '</i>').join('') + '</span>' : '<i style="font-style:normal">' + (ch === ' ' ? '&nbsp;' : ch) + '</i>').join('') + '</span>'; }
+function settleOdo(root) { root.querySelectorAll('.odo span[data-d]').forEach(s => { s.style.transform = 'translateY(-' + (+s.dataset.d * 14) + 'px)'; }); }
+let elapsed = 252, run = 0.38;
+const fmt = s => Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+function render(dir = 0, o = {}) {
+  const A = AGENTS[ai];
+  let h = '';
+  const pad = 'padding: 0 16px;';
+  switch (mode) {
+    case 'rest': h = ''; break;
+    case 'think': h = '<div class="row" style="height:100%;' + pad + 'justify-content:space-between"><span class="st" style="width:30px;height:30px;overflow:hidden;position:relative">' + petCanvas('peek', { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)' }) + '</span><span class="st row" style="gap:4px">' + '<i class="tdot"></i>'.repeat(3) + '</span><span class="st">' + odo(fmt(elapsed)) + '</span></div>'; break;
+    case 'hover': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:32px;overflow:hidden;position:relative">' + petCanvas('peek', { style: 'position:absolute;left:50%;top:0;transform:translateX(-50%)' }) + '</span><span class="st dot"></span><span class="st mono" style="font-size:11.5px;color:rgba(244,242,237,.75)">' + A.name + '</span><span class="st" style="margin-left:auto">' + odo(fmt(elapsed)) + '</span></div>'; break;
+    case 'open': {
+      const tools = A.tools;
+      h = '<div style="padding:16px 22px 14px;display:flex;flex-direction:column;gap:12px;height:100%;transform:translateX(' + (dir * 30) + 'px);transition:transform .35s cubic-bezier(.34,1.3,.5,1)" class="slide">'
+        + '<div class="row st"><span class="pill"><span class="dot"></span>' + A.name + '</span><span class="mono" style="font-size:12px;color:rgba(244,242,237,.6);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + A.task + '</span>' + odo(fmt(elapsed)) + '<span class="mono" style="font-size:11px;color:rgba(244,242,237,.45)">·</span>' + odo(tools + ' tools') + '</div>'
+        + '<div class="track st"><div class="fill" style="width:' + Math.round(run * 100) + '%"></div><span class="walker" style="left:calc(' + Math.round(run * 100) + '% - 24px)">' + petCanvas('walk', { s: .24, fps: 9 }) + '</span><span class="mono" style="position:absolute;right:10px;top:8px;font-size:11px;color:rgba(244,242,237,.55)">' + Math.round(run * 100) + '%</span></div>'
+        + '<div class="row st" style="gap:12px"><span class="mono" style="font-size:10.5px;color:rgba(244,242,237,.45)">SCRUB</span><div class="bars" id="bars">' + Array.from({ length: 28 }, (_, i) => '<i style="height:' + (6 + (i * 37 % 20)) + 'px"></i>').join('') + '</div></div></div>';
+      break;
+    }
+    case 'approval': h = '<div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px"><div class="row st"><span style="width:30px;height:30px;overflow:hidden;position:relative">' + petCanvas('flag', { style: 'position:absolute;left:50%;top:-4px;transform:translateX(-50%)' }) + '</span><b style="font-size:14px">' + A.name + ' wants to run</b><span class="dot" style="margin-left:auto;animation:pulse 1.2s infinite"></span></div><code class="st mono" style="font-size:12.5px;background:#141414;padding:7px 10px;border-radius:8px;color:rgba(244,242,237,.85)">npm test -- --watch=false</code><div class="row st" style="justify-content:flex-end;gap:6px"><button class="btn" data-ch="0" aria-selected="' + (sel === 0) + '">Deny</button><button class="btn go" data-ch="1" aria-selected="' + (sel === 1) + '">Allow ⏎</button></div></div>'; break;
+    case 'done': case 'merge': case 'fail': {
+      const t = mode === 'done' ? ['Done in ' + fmt(elapsed), '✓', '#8FD14F', 'celebrate'] : mode === 'merge' ? ['PR #212 merged', '⑂', '#B48CFF', 'celebrate'] : ['2 tests failed', '✗', '#FF5A3C', 'fail'];
+      h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:40px;overflow:hidden;position:relative">' + petCanvas(t[3], { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)' }) + '</span><span class="st" style="font-size:13px;font-weight:600">' + t[0] + '</span><span class="st mono" style="margin-left:auto;color:' + t[2] + ';font-size:15px">' + t[1] + '</span></div>'; break;
+    }
+    case 'drop': h = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px"><span class="st">' + petCanvas('gulp', { s: .3, frames: '0', style: '' }) + '</span><span class="st mono" style="font-size:11px;color:rgba(244,242,237,.6);margin-top:-4px">drop to copy the path</span></div>'; break;
+    case 'gulp': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:42px;overflow:hidden;position:relative">' + petCanvas('gulp', { style: 'position:absolute;left:50%;top:-4px;transform:translateX(-50%)', fps: 9 }) + '</span><span class="st" style="font-size:13px;font-weight:600">' + (o.label || 'Ready to paste') + '</span><span class="st mono" style="margin-left:auto;color:#8FD14F">✓</span></div>'; break;
+    case 'room': h = '<div style="position:absolute;inset:0;background:linear-gradient(#211C2B 0 64%,#3A2C22 64%)"><span class="st mono" style="position:absolute;left:22px;top:18px;font-size:11px;color:rgba(244,242,237,.6)">MOCHI’S ROOM · pull up to close</span><span class="st" style="position:absolute;left:50%;bottom:22px;transform:translateX(-50%)">' + petCanvas('sit', { s: .6, fps: 3 }) + '</span><span style="position:absolute;left:30%;right:30%;bottom:14px;height:12px;border-radius:6px;background:#7A3B3B"></span></div>'; break;
+    case 'vol': h = '<div class="row" style="height:100%;' + pad + 'gap:12px;padding-top:16px"><span class="st mono" style="font-size:13px">🔊</span><div class="st" style="flex:1;position:relative;height:6px;border-radius:3px;background:#2A2A2A"><div id="volFill" style="position:absolute;left:0;top:0;bottom:0;width:' + vol + '%;background:#F4F2ED;border-radius:3px;transition:width .3s cubic-bezier(.34,1.4,.5,1)"></div><span id="volPet" style="position:absolute;left:calc(' + vol + '% - 14px);bottom:2px;transition:left .3s cubic-bezier(.34,1.4,.5,1)">' + petCanvas('hold', { s: .14, fps: 5 }) + '</span></div><span class="st mono" style="font-size:11px">' + vol + '</span></div>'; break;
+    case 'batt': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:40px;overflow:hidden;position:relative">' + petCanvas('fail', { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)', fps: 4 }) + '</span><span class="st" style="font-size:13px;font-weight:600">Battery 9%</span><span class="st mono" style="margin-left:auto;color:#FFB020">▁</span></div>'; break;
+    case 'charge': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:34px;height:46px;overflow:hidden;position:relative">' + petCanvas('gulp', { style: 'position:absolute;left:50%;top:0;transform:translateX(-50%)', fps: 8 }) + '</span><span class="st" style="font-size:13px;font-weight:600">Charging · yum</span><span class="st" style="margin-left:auto;color:#8FD14F;font-size:18px">⚡︎</span></div>'; break;
+    case 'shot': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:40px;overflow:hidden;position:relative">' + petCanvas('celebrate', { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)', frames: '2', fps: 1 }) + '</span><span class="st" style="font-size:13px;font-weight:600">Screenshot saved</span><span class="st mono" style="margin-left:auto;font-size:11px;color:rgba(244,242,237,.6)">cheese</span></div>'; break;
+    case 'music': h = '<div class="row" style="height:100%;' + pad + '"><span class="st bop" style="width:30px;height:40px;overflow:hidden;position:relative">' + petCanvas('idle', { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)', fps: 8 }) + '</span><span class="st" style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Lo-fi beats to refactor to</span><span class="st eq" style="margin-left:auto"><i></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.1s"></i></span></div>'; break;
+    case 'quick': h = '<div class="row" style="height:100%;padding:0 14px;gap:6px;justify-content:center"><button class="btn st" data-q="safe">Approve safe calls</button><button class="btn st" data-q="mute">Mute 1h</button><button class="btn st" data-q="room">Open room</button></div>'; break;
+    case 'peekout': h = '<div class="row" style="height:100%;justify-content:center"><span class="st">' + petCanvas(o.row || 'yawn', { s: .2, fps: 5 }) + '</span></div>'; break;
+    case 'trick': h = '<div class="row" style="height:100%;justify-content:center"><span class="st">' + petCanvas(o.row || 'backflip', { s: .24, fps: 8 }) + '</span></div>'; break;
+    case 'typing': h = '<div class="row" style="height:100%;' + pad + '"><span class="st" style="width:30px;height:38px;overflow:hidden;position:relative">' + petCanvas(o.row || 'celebrate', { style: 'position:absolute;left:50%;top:-2px;transform:translateX(-50%)', fps: 9 }) + '</span><span class="st mono" style="font-size:11.5px;color:rgba(244,242,237,.75)">' + (o.label || 'go go go') + '</span></div>'; break;
+  }
+  content.classList.remove('in'); content.innerHTML = h;
+  content.querySelectorAll('.st').forEach((el, i) => el.style.transitionDelay = (T.rm ? 0 : 60 + i * 45) + 'ms');   // content follows the shape, staggered
+  petEls = [...content.querySelectorAll('canvas.pc')].map(mkPet);
+  requestAnimationFrame(() => { content.classList.add('in'); setTimeout(() => settleOdo(content), 80); });
+  if (mode === 'open') wireBars();
+  content.querySelectorAll('[data-ch]').forEach(b => b.onclick = e => { e.stopPropagation(); choose(+b.dataset.ch); });
+  content.querySelectorAll('[data-q]').forEach(b => b.onclick = e => { e.stopPropagation(); hap('tick', 'quick action'); const q = b.dataset.q; if (q === 'room') go('room'); else { base = 'rest'; go('gulp', { back: BACK, label: q === 'mute' ? 'Muted for 1 hour' : '3 safe calls approved' }); } });
+}
+function choose(c) { sel = c; hap(c ? 'allow' : 'deny', c ? 'allowed' : 'denied'); watchBuzz(); snd(c ? 'chime' : 'fail'); base = 'think'; go(c ? 'think' : 'think'); }
+
+/* ================= sprites (own 8 fps clock, not the display link) ================= */
+const ROWS = [6,8,8,4,5,8,6,6,6,4,6,4,6,6,4, 4,6,5,4,4,4,4,4,6,6,6,4,4,6, 6,8, 6,6,4,4,6,4,4,4];
+const RW = { eat:0, walk:1, climb:2, greet:3, celebrate:4, idle:5, sign:6, flag:7, fail:8, hover:9, annoy:10, special:11, evolve:12, wardrobe:13, peek:14, turn:15, startstop:16, gaze:17, sit:18, edgepeek:19, yawn:20, grabbed:21, thrown:22, land:23, social:24, tools:25, night:26, focus:27, hold:28, hatch:30, chase:31, gulp:32, covereyes:33, tangled:34, backflip:35, juggle:36, moonwalk:37, wrist:38 };
+const IMG = new Image(); IMG.src = 'sprites/gremlo.webp'; IMG.onload = () => { petEls.forEach(drawPet); if (free) drawPet(free.p); };
+function mkPet(cv, row) {
+  const s = +(cv.dataset.s || .19), d = Math.min(2, devicePixelRatio || 1);
+  cv.width = 192 * s * d; cv.height = 208 * s * d; cv.style.width = 192 * s + 'px'; cv.style.height = 208 * s + 'px'; cv.style.imageRendering = 'pixelated';
+  const p = { cv, ctx: cv.getContext('2d'), s, d, row: RW[row || cv.dataset.row], frames: cv.dataset.frames ? cv.dataset.frames.split(',').map(Number) : null, fps: +(cv.dataset.fps || 6), t0: performance.now(), flip: 1, last: '' };
+  drawPet(p); return p;
+}
+function drawPet(p, now = performance.now()) {
+  if (!IMG.complete || !IMG.naturalWidth) return;
+  const fr = p.frames || [...Array(ROWS[p.row]).keys()];
+  const f = fr[T.rm ? 0 : Math.floor((now - p.t0) / 1000 * p.fps) % fr.length];
+  const key = p.row + '.' + f + '.' + p.flip; if (key === p.last) return; p.last = key;
+  const c = p.ctx, k = p.s * p.d; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, p.cv.width, p.cv.height); c.imageSmoothingEnabled = false;
+  if (p.flip < 0) { c.translate(p.cv.width, 0); c.scale(-1, 1); }
+  c.drawImage(IMG, f * 192, p.row * 208, 192, 208, 0, 0, 192 * k, 208 * k);
+}
+setInterval(() => { const now = performance.now(); petEls.forEach(p => drawPet(p, now)); if (free) drawPet(free.p, now); spriteFrames++; }, 125);
+let spriteFrames = 0;
+
+/* ================= the frame loop: runs only while something moves ================= */
+let running = false, lastT = 0, frames = 0, parts = [];
+function wake() { if (!running) { running = true; lastT = performance.now(); requestAnimationFrame(loop); } }
+function moving() { return ALL.filter(s => !s.rest).length; }
+const hist = [];
+function loop(now) {
+  let dt = Math.min(.033, (now - lastT) / 1000); lastT = now;
+  if (T.lp && now - (loop.l || 0) < 16) { requestAnimationFrame(loop); return; } loop.l = now;   // low power: cap at 60
+  const steps = Math.max(1, Math.ceil(dt / .004)), h = dt / steps;
+  for (let i = 0; i < steps; i++) ALL.forEach(s => s.step(h));
+  apply(); stepParts(dt); stepFree(dt);
+  frames++;
+  hist.push({ t: now, w: W.x, tw: W.t }); while (hist.length && now - hist[0].t > 2200) hist.shift();
+  drawScope(now);
+  if (moving() || parts.length || (free && !free.idle)) requestAnimationFrame(loop);
+  else { running = false; ALL.forEach(s => { if (s.rest) s.snap(); }); apply(); drawScope(now); }
+}
+function apply() {
+  const w = W.x + LX.x * 0, h = H.x + Math.max(0, PULL.x), r = R.x;
+  // squash & stretch from the squash spring, plus the press dent
+  const sq = SQ.x * .03;
+  notch.style.width = w + 'px'; notch.style.height = h + 'px'; notch.style.setProperty('--r', r + 'px');
+  nw.style.transform = 'translateX(' + (-w / 2 + LX.x) + 'px) scale(' + ((1 - sq) * PR.x).toFixed(4) + ',' + ((1 + sq) * PR.x).toFixed(4) + ')';
+  const halo = $('#halo'); halo.style.width = (w + 60) + 'px'; halo.style.height = (h + 30) + 'px';
+}
+
+/* ================= particles (capped) ================= */
+function emit(kind) {
+  if (T.rm) return;
+  const cap = T.lp ? 50 : 140, n = { confetti: 60, sparks: 36, smoke: 14, sweat: 6, bolt: 1 }[kind] * (T.lp ? .5 : 1);
+  const cx = 550, y = H.x, w = W.x;
+  const cols = ['#FF5A3C', '#FFC93C', '#8FD14F', '#2ED3B7', '#4CC9FF', '#B48CFF', '#FF7AB6'];
+  for (let i = 0; i < n && parts.length < cap; i++) {
+    const side = i % 2 ? 1 : -1, ox = cx + side * (w / 2 - 6);
+    if (kind === 'confetti') parts.push({ k: 'c', x: ox, y: y - 6, vx: side * (60 + Math.random() * 180), vy: -80 + Math.random() * 140, r: Math.random() * 6, vr: (Math.random() - .5) * 14, c: cols[i % 7], life: 2.2, g: 520 });
+    if (kind === 'sparks') { const a = Math.PI * (.05 + Math.random() * .9); parts.push({ k: 's', x: cx + (Math.random() - .5) * w * .6, y: y, vx: Math.cos(a) * 320 * (Math.random() + .4) * (Math.random() < .5 ? -1 : 1), vy: Math.sin(a) * 260, c: '#E8D5FF', life: .7, g: 300 }); }
+    if (kind === 'smoke') parts.push({ k: 'm', x: cx + (Math.random() - .5) * w * .7, y: y - 4, vx: (Math.random() - .5) * 30, vy: 20 + Math.random() * 30, r: 6 + Math.random() * 8, life: 1.6, g: -20 });
+    if (kind === 'sweat') parts.push({ k: 'd', x: cx + (Math.random() - .5) * 40, y: y - 8, vx: (Math.random() - .5) * 60, vy: 40, life: .9, g: 600 });
+  }
+  wake();
+}
+function stepParts(dt) {
+  fctx.clearRect(0, 0, 1100, 660);
+  parts = parts.filter(p => (p.life -= dt) > 0);
+  for (const p of parts) {
+    p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .985;
+    fctx.globalAlpha = Math.min(1, p.life * 1.5);
+    if (p.k === 'c') { p.r += p.vr * dt; fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.r); fctx.fillStyle = p.c; fctx.fillRect(-4, -2, 8, 4 * Math.abs(Math.cos(p.r * 2))); fctx.restore(); }
+    if (p.k === 's') { fctx.strokeStyle = p.c; fctx.lineWidth = 2; fctx.beginPath(); fctx.moveTo(p.x, p.y); fctx.lineTo(p.x - p.vx * .03, p.y - p.vy * .03); fctx.stroke(); }
+    if (p.k === 'm') { p.r += 14 * dt; fctx.fillStyle = 'rgba(160,160,170,.35)'; fctx.beginPath(); fctx.arc(p.x, p.y, p.r, 0, 7); fctx.fill(); }
+    if (p.k === 'd') { fctx.fillStyle = '#7CC8FF'; fctx.beginPath(); fctx.ellipse(p.x, p.y, 2.5, 4, 0, 0, 7); fctx.fill(); }
+  }
+  fctx.globalAlpha = 1;
+}
+
+/* ================= the free pet: fling it out of the notch ================= */
+let free = null;
+function spawnFree(x, y) {
+  const cv = document.createElement('canvas'); cv.className = 'petfree'; cv.dataset.s = '.42'; cv.dataset.row = 'grabbed'; cv.dataset.fps = '6'; stage.appendChild(cv);
+  free = { cv, p: mkPet(cv), x, y, vx: 0, vy: 0, held: true, idle: false, walkT: 0 };
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); free.held = true; free.idle = false; free.p.row = RW.grabbed; free.p.last = ''; hap('snap', 'grabbed'); cv.setPointerCapture(e.pointerId); trackFree(e); });
+  placeFree(); return free;
+}
+let fhist = [];
+function trackFree(e) { const pt = toStage(e); fhist.push({ t: performance.now(), x: pt.x, y: pt.y }); if (fhist.length > 6) fhist.shift(); free.x = pt.x - 40; free.y = pt.y - 30; placeFree(); }
+addEventListener('pointermove', e => { if (free && free.held && e.buttons) trackFree(e); });
+addEventListener('pointerup', () => {
+  if (!free || !free.held) return; free.held = false;
+  const a = fhist[0], b = fhist[fhist.length - 1], dt = Math.max(16, b ? b.t - a.t : 16);
+  free.vx = b ? (b.x - a.x) / dt * 1000 : 0; free.vy = b ? (b.y - a.y) / dt * 1000 : 0; fhist = [];
+  free.p.row = RW.thrown; free.p.last = ''; snd('whoosh'); wake();
+});
+function placeFree() { free.cv.style.transform = 'translate(' + free.x.toFixed(1) + 'px,' + free.y.toFixed(1) + 'px)'; }
+function stepFree(dt) {
+  if (!free || free.held) return;
+  const floor = 660 - 90;
+  if (free.walkT > 0) {                      // walking back home
+    const dx = 510 - free.x; free.p.flip = dx < 0 ? -1 : 1;
+    free.x += Math.sign(dx) * Math.min(Math.abs(dx), 140 * dt);
+    if (Math.abs(dx) < 2) { free.cv.remove(); free = null; go('gulp', { back: BACK, label: 'Mochi is home' }); snd('chomp'); hap('boop', 'pet climbed back in'); return; }
+    placeFree(); return;
+  }
+  free.vy += 2200 * dt; free.x += free.vx * dt; free.y += free.vy * dt; free.vx *= .995;
+  if (free.x < 0) { free.x = 0; free.vx *= -.6; } if (free.x > 1020) { free.x = 1020; free.vx *= -.6; }
+  if (free.y >= floor) {
+    free.y = floor;
+    if (Math.abs(free.vy) > 240) { free.vy *= -.35; free.vx *= .7; hap('thud', 'landed'); snd('thud'); if (Math.abs(free.vy) > 200) SQ.kick(1.5); }
+    else { free.vy = 0; free.vx = 0; if (!free.idle) { free.idle = true; free.p.row = RW.land; free.p.last = ''; free.p.frames = null; setTimeout(() => { if (!free) return; free.p.row = RW.walk; free.p.last = ''; free.p.fps = 9; free.walkT = 1; free.idle = false; wake(); }, 1800); } }
+  }
+  placeFree();
+}
+
+/* ================= gestures on the notch ================= */
+let down = null, clicks = 0, clickT = 0, holdT = null;
+notch.addEventListener('pointerdown', e => {
+  if (e.target.closest('[data-ch],[data-q],#bars')) return;
+  e.preventDefault(); notch.setPointerCapture(e.pointerId);
+  const pt = toStage(e); down = { y0: pt.y, x0: pt.x, t: performance.now(), lastY: pt.y, lastT: performance.now(), vy: 0, moved: false };
+  PR.to(.955, .14, .6); hap('boop', 'press'); // press dent
+  holdT = setTimeout(() => { if (down && !down.moved) { down.held = true; hap('stage2', 'force click'); snd('boing'); go('quick'); PR.to(1, .2, .5); } }, 480);
+  // grabbing the pet inside an open notch throws it out
+  if (e.target.closest('.walker, canvas.pc') && ['open', 'room'].includes(mode)) { clearTimeout(holdT); down = null; PR.to(1); go('rest'); spawnFree(pt.x - 40, pt.y); notch.releasePointerCapture(e.pointerId); }
+});
+notch.addEventListener('pointermove', e => {
+  if (!down) return; const pt = toStage(e); const dy = pt.y - down.y0;
+  const now = performance.now(); down.vy = (pt.y - down.lastY) / Math.max(1, now - down.lastT) * 1000; down.lastY = pt.y; down.lastT = now;
+  if (Math.abs(dy) > 6) { down.moved = true; clearTimeout(holdT); }
+  if (dy > 0) { const rb = dy * .55 / (1 + dy / 320) * 2; PULL.x = rb; PULL.t = rb; PULL.v = 0; wake();
+    if (rb > 130 && !down.over) { down.over = true; hap('tick', 'past the threshold'); } if (rb < 130 && down.over) { down.over = false; hap('tick', 'back under'); } }
+});
+notch.addEventListener('pointerup', e => {
+  clearTimeout(holdT); PR.to(1, .22, .45);
+  if (!down) return; const d = down; down = null;
+  if (d.held) return;
+  if (d.over) { PULL.to(0, .4, .8); go('room'); hap('snap', 'room open'); return; }
+  if (PULL.x > 1) PULL.to(0, .35, .6);
+  if (d.vy < -500 && BIG.includes(mode)) { pinned = false; snd('whoosh'); go('rest'); return; }     // flick up: dismiss
+  if (d.moved) return;
+  const now = performance.now(); clicks = now - clickT < 380 ? clicks + 1 : 1; clickT = now;
+  if (clicks >= 3) { clicks = 0; const tr = ['backflip', 'juggle', 'moonwalk'][Math.floor(Math.random() * 3)]; go('trick', { row: tr, back: 2400 }); hap('snap', 'triple click · ' + tr); snd('boing'); return; }
+  setTimeout(() => { if (clicks !== 1) return; toggleOpen(); }, 200);
+});
+function toggleOpen() { if (BIG.includes(mode)) { pinned = false; go(base); } else { pinned = true; go(mode === 'approval' ? 'approval' : 'open'); } }
+notch.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOpen(); } });
+
+/* scroll on the notch: switch agents with detents */
+let wacc = 0;
+notch.addEventListener('wheel', e => { e.preventDefault(); if (mode !== 'open') return; wacc += e.deltaX || e.deltaY; if (Math.abs(wacc) > 60) { const dir = Math.sign(wacc); wacc = 0; setAgent(ai + dir, -dir); hap('tick', 'detent · ' + AGENTS[ai].name); snd('tick'); } }, { passive: false });
+
+/* texture taps while scrubbing the session */
+function wireBars() {
+  const bars = $('#bars'); if (!bars) return; let lastI = -1;
+  const at = e => { const r = bars.getBoundingClientRect(); const i = Math.max(0, Math.min(27, Math.floor((e.clientX - r.left) / r.width * 28))); if (i !== lastI) { lastI = i; bars.querySelectorAll('i').forEach((b, k) => b.classList.toggle('on', k === i)); hap('tick', 'scrub · event ' + (i + 1)); snd('tick'); } };
+  bars.addEventListener('pointerdown', e => { e.stopPropagation(); bars.setPointerCapture(e.pointerId); at(e); });
+  bars.addEventListener('pointermove', e => { if (e.buttons) at(e); });
+}
+
+/* hover: lean toward the cursor before you even touch it */
+stage.addEventListener('pointermove', e => {
+  if (down || (free && free.held) || dragFile) return;
+  const pt = toStage(e); const dx = pt.x - 550, dy = pt.y;
+  const d = Math.hypot(dx * .6, dy), near = Math.max(0, 1 - d / 140);
+  if (['rest', 'think', 'hover'].includes(mode)) {
+    LX.to(Math.max(-1, Math.min(1, dx / 200)) * 8 * near, .25, .8);
+    if (d < 34 && mode !== 'hover') { go('hover'); hap('tick', 'hover'); }
+    else if (d > 70 && mode === 'hover') go(base);
+    else if (mode !== 'hover') { W.to(SIZE[mode][0] + 18 * near, .3, .8); H.to(SIZE[mode][1] + 4 * near, .3, .8); }
+  }
+  petEls.forEach(p => { if (p.row === RW.peek) { const f = dx < -30 ? -1 : 1; if (f !== p.flip) { p.flip = f; p.last = ''; drawPet(p); } } });
+});
+stage.addEventListener('pointerleave', () => { LX.to(0); if (mode === 'hover') go(base); });
+
+/* keyboard */
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'n' || e.key === 'N' || (e.key === 'n' && e.altKey && e.metaKey)) { toggleOpen(); hap('tick', 'keyboard'); }
+  if (e.key === 'Escape' && mode !== 'rest') { pinned = false; go(base); }
+  if (mode === 'approval' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { sel = e.key === 'ArrowLeft' ? 0 : 1; content.querySelectorAll('[data-ch]').forEach(b => b.setAttribute('aria-selected', +b.dataset.ch === sel)); hap('tick', 'pick'); snd('tick'); }
+  if (mode === 'approval' && e.key === 'Enter') choose(sel);
+  if (mode === 'open' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { const d = e.key === 'ArrowLeft' ? -1 : 1; setAgent(ai + d, -d); hap('tick', 'agent'); }
+  // konami
+  kon.push(e.key); kon = kon.slice(-10); if (kon.join(',') === 'ArrowUp,ArrowUp,ArrowDown,ArrowDown,ArrowLeft,ArrowRight,ArrowLeft,ArrowRight,b,a') { disco(); }
+});
+let kon = [];
+function disco() { let h = 0; const id = setInterval(() => { h = (h + 40) % 360; notch.style.setProperty('--agent', 'hsl(' + h + ' 90% 60%)'); }, 120); go('trick', { row: 'moonwalk', back: 3600 }); emit('confetti'); hap('snap', 'konami'); setTimeout(() => { clearInterval(id); setAgent(ai); }, 3600); }
+
+/* drag a file into the notch: it opens a mouth and gulps it */
+const file = $('#file'); let dragFile = null;
+file.addEventListener('pointerdown', e => { e.preventDefault(); file.setPointerCapture(e.pointerId); const pt = toStage(e); dragFile = { ox: pt.x - file.offsetLeft, oy: pt.y - file.offsetTop, home: [file.offsetLeft, file.offsetTop], near: false }; file.classList.add('drag'); });
+file.addEventListener('pointermove', e => {
+  if (!dragFile) return; const pt = toStage(e); file.style.left = (pt.x - dragFile.ox) + 'px'; file.style.top = (pt.y - dragFile.oy) + 'px';
+  const near = Math.hypot(pt.x - 550, pt.y - 40) < 170;
+  if (near && !dragFile.near) { dragFile.near = true; go('drop'); hap('snap', 'drop zone accepts'); }
+  if (!near && dragFile.near) { dragFile.near = false; go(base); hap('tick', 'left the zone'); }
+});
+file.addEventListener('pointerup', () => {
+  if (!dragFile) return; const d = dragFile; dragFile = null; file.classList.remove('drag');
+  if (d.near) { file.style.transition = 'left .25s ease-in, top .25s ease-in, transform .25s ease-in, opacity .25s'; file.style.left = '513px'; file.style.top = '10px'; file.style.transform = 'scale(.2)'; file.style.opacity = '0';
+    setTimeout(() => { snd('chomp'); hap('boop', 'gulp'); go('gulp', { back: BACK, label: 'Path copied · ready to paste' }); }, 230);
+    setTimeout(() => { file.style.transition = 'none'; file.style.left = d.home[0] + 'px'; file.style.top = d.home[1] + 'px'; file.style.transform = ''; requestAnimationFrame(() => { file.style.transition = 'opacity .4s'; file.style.opacity = '1'; }); }, 1800);
+  } else { file.style.transition = 'left .35s cubic-bezier(.34,1.4,.5,1), top .35s cubic-bezier(.34,1.4,.5,1)'; file.style.left = d.home[0] + 'px'; file.style.top = d.home[1] + 'px'; setTimeout(() => file.style.transition = '', 400); }
+});
+// real files from your own desktop work too
+addEventListener('dragover', e => { e.preventDefault(); if (mode !== 'drop') go('drop'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget && mode === 'drop') go(base); });
+addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; snd('chomp'); hap('boop', 'gulp'); go('gulp', { back: BACK, label: (f ? f.name : 'File') + ' · path copied' }); });
+
+/* ================= panel actions ================= */
+let vol = 50, music = false, night = false, heartT = null;
+document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act, b)));
+function act(a, b) {
+  clearInterval(heartT);
+  if (a === 'think') { base = 'think'; go('think'); }
+  if (a === 'rest') { base = 'rest'; go('rest'); }
+  if (a === 'approval') { base = 'think'; sel = 1; go('approval'); hap('knock', 'needs you'); watchBuzz(); snd('pop');
+    heartT = setInterval(() => { if (mode === 'approval') hap('heartbeat', 'still waiting · finger on pad'); else clearInterval(heartT); }, 1400); }
+  if (a === 'done') { base = 'rest'; go('done', { back: 3200 }); setTimeout(() => { emit('confetti'); snd('chime'); }, 120); watchBuzz(); }
+  if (a === 'merge') { base = 'rest'; go('merge', { back: 3200 }); setTimeout(() => { emit('sparks'); snd('chime'); }, 120); }
+  if (a === 'fail') { base = 'rest'; go('fail', { back: 3200 }); setTimeout(() => { emit('smoke'); snd('fail'); }, 120); }
+  if (a === 'vol') { vol = Math.min(100, vol + 12); if (mode === 'vol') { const f = $('#volFill'), p = $('#volPet'); f.style.width = vol + '%'; p.style.left = 'calc(' + vol + '% - 14px)'; content.querySelector('.st.mono:last-child').textContent = vol; clearTimeout(backT); backT = setTimeout(() => go(base), 1800); } else go('vol', { back: 1800 }); hap('tick', 'volume'); snd('tick'); }
+  if (a === 'batt') { go('batt', { back: 3000 }); $('#mbBatt').textContent = '9%'; const id = setInterval(() => emit('sweat'), 500); setTimeout(() => clearInterval(id), 2600); hap('knock', 'battery low'); }
+  if (a === 'charge') { go('charge', { back: 2600 }); $('#mbBatt').textContent = '9% ⚡︎'; snd('chomp'); hap('boop', 'plugged in'); }
+  if (a === 'shot') { const f = $('#flash'); f.animate([{ opacity: .85 }, { opacity: 0 }], { duration: T.rm ? 1 : 380 }); snd('shutter'); go('shot', { back: 2200 }); hap('tick', 'screenshot'); }
+  if (a === 'music') { music = !music; b.setAttribute('aria-pressed', music); base = music ? 'music' : 'rest'; go(base); }
+  if (a === 'night') { night = !night; b.setAttribute('aria-pressed', night); stage.classList.toggle('night', night); if (night) go('peekout', { row: 'night', back: 2600 }); }
+}
+document.querySelectorAll('[data-tog]').forEach(b => b.addEventListener('click', () => { const k = b.dataset.tog; T[k] = !T[k]; b.setAttribute('aria-pressed', T[k]); if (k === 'finger') $('#pad').classList.toggle('finger', T.finger); if (k === 'sound' && T.sound) snd('tick'); }));
+
+/* typing pace: only the rate */
+let keysT = [], napT = null;
+$('#typing').addEventListener('input', () => {
+  const now = performance.now(); keysT.push(now); keysT = keysT.filter(t => now - t < 1500);
+  const cps = keysT.length / 1.5;
+  clearTimeout(napT); napT = setTimeout(() => { if (['rest', 'typing'].includes(mode)) go('typing', { row: 'night', label: 'zzz', back: 2600 }); }, 6000);
+  if (cps > 6 && mode !== 'typing' && !BIG.includes(mode)) go('typing', { row: 'celebrate', label: Math.round(cps) + ' keys/s · go go', back: 1800 });
+});
+
+/* idle life: something small every 20–40 s (shown faster here: 12–18 s) */
+(function idle() { setTimeout(() => { if (mode === 'rest' && !pinned) { const r = ['yawn', 'peek', 'edgepeek', 'gaze'][Math.floor(Math.random() * 4)]; go('peekout', { row: r, back: 2200 }); } idle(); }, 12000 + Math.random() * 6000); })();
+
+/* run clock + progress */
+setInterval(() => { elapsed++; run = Math.min(.98, run + .01); if (mode === 'think' || mode === 'hover' || mode === 'open') { content.querySelectorAll('.odo').forEach((o, i) => { if (i === 0) { const tmp = document.createElement('div'); tmp.innerHTML = odo(fmt(elapsed)); o.replaceWith(tmp.firstChild); } }); settleOdo(content); if (mode === 'open') { const f = content.querySelector('.fill'), w = content.querySelector('.walker'); if (f) { f.style.width = Math.round(run * 100) + '%'; w.style.left = 'calc(' + Math.round(run * 100) + '% - 24px)'; } } } $('#mbClock').textContent = '9:' + String(41 + Math.floor(elapsed / 60) % 18).padStart(2, '0'); }, 1000);
+
+/* thinking dots */
+const css = document.createElement('style'); css.textContent = '.tdot{display:block;width:5px;height:5px;border-radius:50%;background:#F4F2ED;opacity:.3;animation:td 1.2s infinite}.tdot:nth-child(2){animation-delay:.15s}.tdot:nth-child(3){animation-delay:.3s}@keyframes td{40%{opacity:1;transform:translateY(-2px)}}@keyframes pulse{50%{opacity:.3}}.bop{animation:bop .5s ease-in-out infinite alternate}@keyframes bop{to{transform:translateY(-3px) scaleY(.94)}}@media (prefers-reduced-motion:reduce){.tdot,.bop{animation:none}}'; document.head.appendChild(css);
+
+/* ================= scope + perf HUD ================= */
+const sc = $('#scope'), sx = sc.getContext('2d');
+function drawScope(now) {
+  const w = sc.width, h = sc.height; sx.clearRect(0, 0, w, h);
+  const cs = getComputedStyle(document.documentElement), fg = cs.getPropertyValue('--fg').trim(), mut = cs.getPropertyValue('--text-3').trim(), acc = cs.getPropertyValue('--accent').trim();
+  if (!hist.length) return;
+  const lo = 150, hi = 720, yv = v => h - 12 - (v - lo) / (hi - lo) * (h - 24), xt = t => w - (now - t) / 2200 * w;
+  sx.strokeStyle = mut; sx.setLineDash([4, 4]); sx.beginPath(); hist.forEach((p, i) => { const X = xt(p.t), Y = yv(p.tw); i ? sx.lineTo(X, Y) : sx.moveTo(X, Y); }); sx.stroke(); sx.setLineDash([]);
+  sx.strokeStyle = fg; sx.lineWidth = 2; sx.beginPath(); hist.forEach((p, i) => { const X = xt(p.t), Y = yv(p.w); i ? sx.lineTo(X, Y) : sx.moveTo(X, Y); }); sx.stroke();
+  sx.fillStyle = acc; sx.font = '500 11px JetBrains Mono, monospace';
+  scopeTaps.filter(t => now - t.t < 2200).forEach(t => { const X = xt(t.t); sx.fillRect(X - 1, 0, 2, h); sx.fillText(t.name, Math.min(w - 70, X + 4), 12); });
+}
+setInterval(() => { $('#fps').textContent = frames; $('#drv').textContent = frames ? (T.lp ? '60 Hz cap' : 'display') : spriteFrames ? '8 fps sprites' : 'idle'; $('#mode').textContent = mode; $('#pc').textContent = parts.length; $('#sm').textContent = moving(); frames = 0; spriteFrames = 0; while (scopeTaps.length && performance.now() - scopeTaps[0].t > 3000) scopeTaps.shift(); }, 1000);
+
+window.__lab = { go, act, emit, spawnFree };   // for screenshots and tests
+setAgent(0); go('rest'); W.snap(); H.snap(); R.snap(); apply();
+setTimeout(() => act('think'), 600);
+})();
+</script>
+</html>

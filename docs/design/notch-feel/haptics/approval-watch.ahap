@@ -1,0 +1,9 @@
+{
+  "Version": 1.0,
+  "Metadata": { "Project": "Gremlo", "Created": "2026-11-14", "Description": "Approval waiting: two firm knocks, a pause, a soft third. iPhone (Core Haptics). On Watch use WKInterfaceDevice.play(.notification) then .click after 0.4 s." },
+  "Pattern": [
+    { "Event": { "Time": 0.0, "EventType": "HapticTransient", "EventParameters": [ { "ParameterID": "HapticIntensity", "ParameterValue": 1.0 }, { "ParameterID": "HapticSharpness", "ParameterValue": 0.55 } ] } },
+    { "Event": { "Time": 0.13, "EventType": "HapticTransient", "EventParameters": [ { "ParameterID": "HapticIntensity", "ParameterValue": 0.9 }, { "ParameterID": "HapticSharpness", "ParameterValue": 0.5 } ] } },
+    { "Event": { "Time": 0.45, "EventType": "HapticContinuous", "EventDuration": 0.12, "EventParameters": [ { "ParameterID": "HapticIntensity", "ParameterValue": 0.45 }, { "ParameterID": "HapticSharpness", "ParameterValue": 0.2 } ] } }
+  ]
+}
