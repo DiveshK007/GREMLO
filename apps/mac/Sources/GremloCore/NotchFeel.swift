@@ -65,6 +65,21 @@ public enum NotchFeel {
     }
     public static func restSize(hardware: (w: Double, h: Double)) -> (w: Double, h: Double) { (hardware.w - 2, hardware.h - 1) }
 
+    /// Quiet states keep this width for the whole session. A Mac with no camera housing uses the lab's 190 pt pill.
+    public static func housingSize(hardware: (w: Double, h: Double)) -> (w: Double, h: Double) {
+        hardware.w > 40 && hardware.h > 8 ? restSize(hardware: hardware) : (190, 32)
+    }
+    /// The shape grows only for a decision, or for something the user opened. Everything else stays in the housing.
+    public static let grows: Set<LiveState> = [.knock, .queue, .stuck, .room, .quick, .drop, .ticker]
+    /// One breath of the bottom edge, about a pixel, for a moment that is not a card.
+    public static let breath = 1.0
+    /// The flip from the wall onto the ledge, in seconds.
+    public static let ledgeFlip = 0.12
+    /// When the door is this close to the wall, the pet scrambles in instead of walking the ceiling.
+    public static let scrambleReach: CGFloat = 180
+    /// The pet looks up once, this many minutes before a meeting. The countdown stays off the notch.
+    public static let glanceMinutes = 2
+
     /// A size change counts as opening when the area grows by more than a sliver (it gets the open spring and the peak tap).
     public static func isOpening(from: (w: Double, h: Double), to: (w: Double, h: Double)) -> Bool { to.w * to.h > from.w * from.h + 200 }
 

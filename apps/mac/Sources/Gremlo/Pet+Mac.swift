@@ -106,7 +106,14 @@ final class Pet {
         }
     }
     /// Floor, walls, ceiling and door from GremloCore's HomePath, so the tested geometry is the one on screen.
-    var home: HomePath { HomePath(screen: mainScreen.frame, visible: mainScreen.visibleFrame, sprite: size, footPadding: skin.footPadding) }
+    var home: HomePath {
+        let s = door.host ?? mainScreen
+        return HomePath(screen: s.frame, visible: s.visibleFrame, sprite: size, footPadding: skin.footPadding)
+    }
+    /// Ears up while the Mac's own volume overlay is showing.
+    var perkUntil = Date.distantPast
+    private var ledgeFrom = Date.distantPast
+    private var stepAt = Date.distantPast
     var floorY: CGFloat { perch.map { $0.maxY - skin.footPadding } ?? home.floorY }
     var topY: CGFloat { home.ceilingY }
     var leftX: CGFloat { home.walls(perch: perch).left }
@@ -251,6 +258,14 @@ final class Pet {
         go(.falling)
     }
 
+    func perk() { perkUntil = Date().addingTimeInterval(1.8) }
+
+    /// The display under the pet. A screen with no camera housing becomes its home: a pill on that top edge.
+    func screenUnderPet() -> NSScreen {
+        let p = CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2)
+        return NSScreen.screens.first { $0.frame.contains(p) } ?? mainScreen
+    }
+
     func goHome(lock: Bool) {
         if egg && path != .home {  // an egg can't climb: it pops back behind the door
             go(.home); panel.orderOut(nil); door.close(lock: lock); return
@@ -259,6 +274,7 @@ final class Pet {
         switch path {
         case .home: if lock { door.close(lock: true) }
         case .floor:
+            door.place(on: screenUnderPet())
             dir = 1
             set(.walk)
             go(.toWall)
@@ -323,9 +339,20 @@ final class Pet {
             if pos.x >= rightX { pos.x = rightX; set(.climb); go(.climbing) }
         case .climbing:
             pos.y += 140 * dt
-            // Upside down under the menu bar. It used to be lifted by footPadding so the feet touched, which put the
-            // sprite's top into the menu bar band; now the whole sprite stays below it (HomePath, tested).
-            if pos.y >= topY { pos.y = topY; dir = -1; set(.walk); go(.ceiling) }
+            // The sprite stays below the menu bar (HomePath, tested). At the ledge it flips upright, or scrambles
+            // straight into the mouth when the door is close.
+            if pos.y >= topY {
+                pos.y = topY
+                dir = -1
+                set(.walk)
+                if pos.x - doorX <= NotchFeel.scrambleReach {
+                    door.open()
+                    go(.entering)
+                } else {
+                    ledgeFrom = Date()
+                    go(.ceiling)
+                }
+            }
         case .ceiling:
             pos.x -= 140 * dt
             if pos.x <= doorX { pos.x = doorX; door.open(); go(.entering) }
@@ -342,6 +369,12 @@ final class Pet {
                 }
                 return
             }
+        }
+        if [.floor, .toWall, .climbing, .ceiling].contains(path), [.walk, .climb, .sign].contains(state), Date() >= stepAt {
+            stepAt = Date().addingTimeInterval(0.34)
+            let span = max(home.screen.width, 1)
+            let pan = Float((pos.x + size.width / 2) / span * 2 - 1)
+            SoundKit.shared.play(.tick, pan: pan, gain: 0.22)
         }
         animClock += (Rates.fps(strip.row, mood: mood) ?? 8) * Context.frameRateFactor(power) * dt
         while animClock >= 1 {
@@ -557,6 +590,14 @@ final class Pet {
         // The trip home walks the top edge right side up, facing the notch. It does not flip onto the ceiling.
         // v6 climb frames are pre-rotated for the right wall; walk standing in for climb is turned onto it.
         if strip.rotated { t = t.rotated(by: .pi / 2) }
+        // One short flip from the wall onto the ledge, then the walk is upright.
+        if path == .ceiling {
+            let u = min(1, Date().timeIntervalSince(ledgeFrom) / NotchFeel.ledgeFlip)
+            if u < 1 { t = t.rotated(by: (1 - u) * .pi / 2) }
+        }
+        if path == .floor, Date() < perkUntil {
+            t = t.translatedBy(x: 0, y: 3).scaledBy(x: 0.96, y: 1.08)
+        }
         let phase = Double(frame) + animClock
         if mood == "thriving" && path == .floor && state == .walk {
             t = t.translatedBy(x: 0, y: abs(sin(phase * .pi / 2)) * 3)

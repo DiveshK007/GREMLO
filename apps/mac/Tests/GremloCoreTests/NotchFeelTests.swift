@@ -158,5 +158,8 @@ import Testing
         #expect(NotchFeel.ear(width: rest.w, hardwareWidth: 179) == 0, "no ears at rest")
         #expect(NotchFeel.ear(width: 199, hardwareWidth: 179) == 10 && NotchFeel.ear(width: 185, hardwareWidth: 179) == 3, "ears grow past its edges")
         #expect(NotchFeel.ear(width: 190, hardwareWidth: 0) == 10, "no hardware notch: the drawn notch keeps its ears")
+        #expect(NotchFeel.housingSize(hardware: (179, 32)).w == rest.w)
+        #expect(NotchFeel.housingSize(hardware: (0, 0)).w == 190)
+        #expect(NotchFeel.grows.contains(.knock) && !NotchFeel.grows.contains(.done) && !NotchFeel.grows.contains(.rest))
     }
 }

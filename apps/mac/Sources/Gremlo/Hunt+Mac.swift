@@ -48,6 +48,7 @@ final class HuntController {
     var season: Season?
     let store = EKEventStore()
     var nextMeeting: (title: String, start: Date, end: Date)?
+    private var glancedStart: Date?
     var inMeeting = false
     var frameTick = 0
     var pet: Pet { backend.pet }
@@ -308,10 +309,12 @@ final class HuntController {
         let now = Date()
         let pred = store.predicateForEvents(withStart: now.addingTimeInterval(-6 * 3600), end: now.addingTimeInterval(600), calendars: nil)
         let ev = store.events(matching: pred).filter { !$0.isAllDay && $0.endDate > now }.sorted { $0.startDate < $1.startDate }.first
-        let before = nextMeeting.map { HeadsUp.state(start: $0.start, end: $0.end, now: now) } ?? HeadsUp.none
         nextMeeting = ev.map { ($0.title ?? "meeting", $0.startDate, $0.endDate) }
         let state = nextMeeting.map { HeadsUp.state(start: $0.start, end: $0.end, now: now) } ?? HeadsUp.none
-        if case .soon = state, before == HeadsUp.none, pet.path == .floor { pet.set(.wrist, then: .walk) }  // checks its watch
+        if case .soon(let mins) = state, mins <= NotchFeel.glanceMinutes, glancedStart != nextMeeting?.start, pet.path == .floor {
+            glancedStart = nextMeeting?.start
+            pet.set(.wrist, then: .walk)  // one glance, two minutes out
+        }
         if state == .inMeeting && !inMeeting { pet.set(.greet); pet.goHome(lock: false) }  // waves, goes home
         inMeeting = state == .inMeeting
         silence.inMeeting = inMeeting

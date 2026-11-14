@@ -79,8 +79,6 @@ final class NotchLiveController: NSObject {
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var clickWork: DispatchWorkItem?
-    private var dwellWork: DispatchWorkItem?
-    var dwelling = false
     private var placed = NSRect.zero     // the shape's target, in screen points
     private var generation = 0           // a newer transition cancels an older one's content swap
     // Notch feel: the notch is one spring-driven path in a fixed, transparent panel (NotchFeel+Mac.swift).
@@ -113,6 +111,18 @@ final class NotchLiveController: NSObject {
     // phase C: Mac events, personality
     var moment: MacMoment?
     var momentUntil = Date.distantPast
+    var breathUntil = Date.distantPast
+    /// True while Music or Spotify is playing and the bop setting is on. The title stays in the menu bar.
+    var hearingMusic = false { didSet { if hearingMusic != oldValue { syncBop() } } }
+
+    /// Bobs the housing while music plays and the pointer is near. The ticker leaves when either stops, so the clock can pause.
+    func syncBop() {
+        guard hearingMusic, hovered, !Motion.reduce else { return }
+        NotchDriver.shared.addTicker { [weak self] _ in
+            guard let self else { return false }
+            return self.hearingMusic && self.hovered && !Motion.reduce
+        }
+    }
     private var konami = Konami()
     private var flinging = false
     lazy var events = MacEvents(live: self)
@@ -247,8 +257,9 @@ final class NotchLiveController: NSObject {
         i.doneUntil = run.doneUntil
         // A nearby cursor only swells the small notch. The live card opens when the user pins it (a click),
         // so brushing the menu bar during a run doesn't throw the big card open.
-        // A click pins the card. Resting on the shape for a moment during a run opens it too.
-        i.hoverOrPin = (pinned || dwelling) && run.started != nil
+        // A click pins the card. The pointer being near only leans the housing.
+        i.hoverOrPin = pinned && run.started != nil
+        // A meeting is a glance from the pet, two minutes out. It does not take the housing.
         i.toolRunning = NotchLive.toolShowing(running: run.toolRunning, lastToolEnd: run.lastToolEnd, runEnded: run.endedAt != nil, now: Date())
         i.thinking = run.thinking
         i.dragging = dragging || Date() < toastUntil
@@ -256,7 +267,7 @@ final class NotchLiveController: NSObject {
         i.roomOpen = roomOpen
         i.focus = backend?.privacy.focus != nil
         i.stuck = backend?.hunt.stuckTrigger != nil
-        i.meetingSoon = backend?.hunt.meetingSoonText != nil
+        i.meetingSoon = false
         if let g = backend?.growth { i.egg = g.isEgg && backend?.pet.path != .home || unlockNoteShowing }
         i.sleeping = backend.map { $0.pet.napping || $0.pet.night && $0.pet.path == .home } ?? false
         i.offline = backend?.pet.offline ?? false
@@ -286,7 +297,6 @@ final class NotchLiveController: NSObject {
         passThrough()
         SpriteClock.shared.visible = backend?.privacy.duck != .hidden
         heartbeatTick()
-        considerDwell(at: NSEvent.mouseLocation)
     }
 
     /// Hook events redraw at once (the timer only moves the clock), and done and the peek linger end on time.
@@ -322,26 +332,26 @@ final class NotchLiveController: NSObject {
     }
     func fit(_ s: (w: Double, h: Double)) -> (w: Double, h: Double) { (s.w * notchScale, s.h) }
 
+    /// The camera housing. Quiet states, idle life and Mac moments all stay this wide. Height may breathe.
+    var housing: (w: Double, h: Double) {
+        NotchFeel.housingSize(hardware: (Double(hardwareNotchWidth), Double(notchHeight)))
+    }
+
     var shapeSize: (w: Double, h: Double) {
-        if let m = activeMoment { return fit((m.size.w, m.size.h)) }
-        if state == .rest, idleRow != nil, Date() < idleUntil { return fit(NotchFeel.idleSize) }
-        if hovered, Self.leans.contains(state) { return fit(NotchFeel.hoverSize) }
-        return fit(NotchLive.size(state, agents: broker.queue.waiting.count))
+        if NotchFeel.grows.contains(state) { return fit(NotchLive.size(state, agents: broker.queue.waiting.count)) }
+        var h = housing.h
+        if state == .rest, idleRow != nil, Date() < idleUntil { h += 12 }
+        if Date() < breathUntil { h += NotchFeel.breath }
+        return (housing.w, h)
     }
 
     var belowNotch: Bool {
-        shapeSize.h > 40
-            || notchHeight > 0 && (state == .offline || state == .egg && unlockNoteShowing)
+        NotchFeel.grows.contains(state) || notchHeight > 0 && state == .egg && unlockNoteShowing
     }
 
     func target() -> NSRect {
         let sz = shapeSize
         let f = mainScreen.frame
-        // plain rest on a Mac with a notch: just inside the hardware notch, so nothing shows until something happens
-        if state == .rest, hardwareNotchWidth > 0, idleRow == nil, !hovered {
-            let r = NotchFeel.restSize(hardware: (Double(hardwareNotchWidth), Double(notchHeight)))
-            return NSRect(x: f.midX - r.w / 2, y: f.maxY - r.h, width: r.w, height: r.h)
-        }
         let w = CGFloat(sz.w)
         let h = CGFloat(sz.h) + (belowNotch ? notchHeight : 0)
         return NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h).integral
@@ -367,13 +377,14 @@ final class NotchLiveController: NSObject {
         let to = (w: Double(frame.width), h: Double(frame.height))
         let opening = NotchFeel.isOpening(from: (W.target, H.target), to: to)
         placed = frame
-        contentWidth = CGFloat(activeMoment?.size.w ?? NotchLive.size(s, agents: broker.queue.waiting.count).w) - 36
+        contentWidth = (CGFloat(to.w) - UI.margin * 2).rounded(.down)
+        shape.rimDim = s == .focus
         switch activeMoment {
         case .battery?: shape.rimColor = nsColor(hex: NotchFeel.batteryColor); shape.rimMode = .solid
         case .charging?: shape.rimColor = nsColor(hex: NotchFeel.doneColor); shape.rimMode = .solid
         default:
             shape.rimColor = nsColor(hex: s == .done ? NotchFeel.doneColor : s == .stuck ? NotchFeel.failColor : NotchFeel.agentColor(run.agent))
-            shape.rimMode = NotchFeel.rim(s)
+            shape.rimMode = s == .focus ? .solid : NotchFeel.rim(s)
         }
         let swap = { [weak self] in
             guard let self, g == self.generation else { return }
@@ -444,12 +455,15 @@ final class NotchLiveController: NSObject {
     func applyFrame() {
         guard let b = panel.contentView?.bounds, b.width > 0 else { return }
         if shape.frame != b { shape.frame = b }
-        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value) + max(0, mouth.value), radius: R.value,
+        let mouthDrop = max(0, mouth.value)
+        let bob = hearingMusic && hovered && !Motion.reduce ? sin(CACurrentMediaTime() * .pi * 4) * 1.6 : 0
+        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value) + mouthDrop + bob, radius: R.value,
                               ear: NotchFeel.ear(width: W.value, hardwareWidth: Double(hardwareNotchWidth)), bulge: max(0, -squash.value) / 2.2)
         CATransaction.begin()
         CATransaction.setDisableActions(true)  // also when called outside the frame clock (layout, a jump)
-        shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value, open: openness.value)
-        ride(in: b, path: g.path(centerX: b.midX, top: b.maxY))
+        shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value,
+                    open: openness.value, mouth: mouthDrop, showLip: !NotchFeel.grows.contains(state))
+        ride(in: b, path: g.path(centerX: b.midX + lean.value, top: b.maxY))
         CATransaction.commit()
     }
 
@@ -503,46 +517,23 @@ final class NotchLiveController: NSObject {
         } else if hovered, hoverWanted(at: p) == false {
             hovered = false
         }
-        considerDwell(at: p)
         let f = mainScreen.frame
         let l = Self.leans.contains(state) && !Motion.reduce ? NotchFeel.lean(dx: p.x - f.midX, dy: f.maxY - p.y) : NotchFeel.lean(dx: 0, dy: 1000)
-        let grow = hovered ? (w: 0.0, h: 0.0) : (w: Double(l.growW), h: Double(l.growH))  // hover is its own size
+        let grow = (w: Double(l.growW), h: Double(l.growH))
         guard abs(l.shift - lean.target) > 0.25 || abs(grow.w - leanGrow.w) > 0.5 else { return }  // far away: no frames
         leanGrow = grow
         lean.animate(to: l.shift, .lean)
-        guard !hovered else { return }  // the hover size is the open spring's; don't retarget it every move
         let sz = target()
         W.animate(to: Double(sz.width) + grow.w, .lean)
         H.animate(to: Double(sz.height) + grow.h, .lean)
-    }
-
-    /// Resting on the shape during a run opens the live card. Crossing the menu bar does not: the pointer has to be on it.
-    private func considerDwell(at p: NSPoint) {
-        let on = shapeOnScreen.insetBy(dx: -2, dy: -2).contains(p)
-        let can = run.started != nil && !pinned && [.rest, .think, .peek, .sleep, .focus, .meeting, .egg].contains(state)
-        if on, can, !dwelling {
-            guard dwellWork == nil else { return }
-            let w = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.dwellWork = nil
-                guard self.run.started != nil, !self.pinned else { return }
-                self.dwelling = true
-                self.update()
-            }
-            dwellWork = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: w)
-        } else if !on {
-            dwellWork?.cancel()
-            dwellWork = nil
-            if dwelling { dwelling = false; update() }
-        }
     }
 
     /// The small hover, now. A tick lands with the swell.
     private func setHover(_ on: Bool) {
         guard hovered != on else { return }
         hovered = on
-        update()   // the tick fires from the spring, on the frame the swell arrives
+        syncBop()
+        update()
     }
 
     // MARK: Idle life (#16)
@@ -613,10 +604,12 @@ final class NotchLiveController: NSObject {
         ticks = []
         stack.removeFromSuperview()
         stack = NSStackView()
+        let card = NotchFeel.grows.contains(state)
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: notchHeight > 0 && belowNotch ? notchHeight + 6 : 8, left: 18, bottom: 10, right: 18)
+        stack.alignment = card ? .leading : .centerX
+        stack.spacing = 8
+        let topPad: CGFloat = card ? (notchHeight > 0 && belowNotch ? notchHeight + UI.rowY : UI.rowY) : 0
+        stack.edgeInsets = NSEdgeInsets(top: topPad, left: UI.margin, bottom: card ? UI.rowY : 0, right: UI.margin)
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.alphaValue = 1
         guard let content = panel.contentView else { return }
@@ -625,10 +618,15 @@ final class NotchLiveController: NSObject {
             content.addSubview(stage)
         }
         stage.addSubview(stack)
-        // centred at the final width, so the content stays put while the shape blooms around it
-        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
-                                     stack.widthAnchor.constraint(equalToConstant: contentWidth + 36),
-                                     stack.topAnchor.constraint(equalTo: stage.topAnchor)])
+        // Same centre and width as the shape, so every row shares one left and right edge.
+        var pins = [stack.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
+                    stack.widthAnchor.constraint(equalToConstant: contentWidth + UI.margin * 2)]
+        if card {
+            pins.append(stack.topAnchor.constraint(equalTo: stage.topAnchor))
+        } else {
+            pins.append(stack.centerYAnchor.constraint(equalTo: stage.topAnchor, constant: -CGFloat(shapeSize.h) / 2))
+        }
+        NSLayoutConstraint.activate(pins)
         if let m = activeMoment {
             momentContent(m)
             ticks.forEach { $0() }
@@ -650,34 +648,28 @@ final class NotchLiveController: NSObject {
             stack.addArrangedSubview(row([pet, text(dragging ? "Drop to copy the path" : "Ready to paste", 13, .primary), spacer()]))
         case .quick: quickCard()
         case .meeting:
-            let soon = text("", 11, .secondary, mono: true)
-            stack.addArrangedSubview(row([eyes(), spacer(), soon]))
-            ticks.append { [weak self] in soon.stringValue = self?.backend?.hunt.meetingSoonText ?? "" }
+            stack.addArrangedSubview(centered(eyes()))
         case .stuck: if let t = backend?.hunt.stuckTrigger { stuckCard(t) }
         case .room: if let b = backend { room(b) }
         case .focus:
-            let (dial, arc) = ring()
-            let label = text("", 11, .secondary, mono: true)
-            stack.addArrangedSubview(row([dial, spacer(), label]))
-            ticks.append { [weak self] in
-                guard let f = self?.backend?.privacy.focus else { return }
-                arc.strokeEnd = f.progress(Date())
-                label.stringValue = "focus \(f.label(Date()))"
-            }
+            stack.addArrangedSubview(centered(eyes(asleep: true)))
         case .rest:
             if let r = idleRow, Date() < idleUntil, let frames = backend?.pet.skin.loaded.strip(r)?.frames {
-                stack.addArrangedSubview(row([SpriteView(frames: frames, size: 30), spacer()]))
+                stack.addArrangedSubview(centered(SpriteView(frames: frames, size: 28)))
             }
-        case .visitor: break
+        case .visitor: stack.addArrangedSubview(centered(eyes()))
         case .think: break  // the flowing rim says it
         case .peek: stack.addArrangedSubview(row([eyes(), spacer(), softAlert ? text("over your cost alert", 10, .amber) : pulse()]))
         case .sleep:
             let icon = dreamIcon()
             stack.addArrangedSubview(row([eyes(asleep: true), spacer(), icon]))
             ticks.append { [weak self] in self?.showDream(in: icon) }
-        case .offline: stack.addArrangedSubview(text("Can't reach the network \u{00B7} sleeping safely", 12, .primary))
+        case .offline:
+            let off = text("offline", 12, .primary)
+            off.alignment = .center
+            stack.addArrangedSubview(centered(off))
         case .ticker: ticker()
-        case .done: done()
+        case .done: stack.addArrangedSubview(centered(SpriteView(frames: frames(run.errors > 0 ? .fail : .celebrate), size: 28)))
         case .knock: if let r = broker.queue.top { knock(r) }
         case .queue: queueRows()
         }
@@ -785,10 +777,10 @@ final class NotchLiveController: NSObject {
     }
 
     func room(_ b: Backend) {
-        let size = NSSize(width: NotchLive.size(.room).w, height: NotchLive.size(.room).h + notchHeight)
-        let v = RoomView(backend: b, size: size, top: notchHeight + 4)
-        v.widthAnchor.constraint(equalToConstant: size.width - 36).isActive = true
-        v.heightAnchor.constraint(equalToConstant: size.height - notchHeight - 18).isActive = true
+        let size = NSSize(width: contentWidth + UI.margin * 2, height: NotchLive.size(.room).h + notchHeight)
+        let v = RoomView(backend: b, size: size, top: notchHeight + UI.rowY)
+        v.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        v.heightAnchor.constraint(equalToConstant: size.height - notchHeight - UI.margin).isActive = true
         stack.addArrangedSubview(v)
     }
 
@@ -816,6 +808,7 @@ final class NotchLiveController: NSObject {
         let ignore = NSButton(title: "Ignore this run", target: self, action: #selector(stuckIgnore))
         let nudge = NSButton(title: "Copy a nudge", target: self, action: #selector(stuckNudge))
         let show = NSButton(title: "Show me", target: self, action: #selector(stuckShow))
+        for b in [ignore, nudge, show] { b.controlSize = .small; b.setContentCompressionResistancePriority(.required, for: .horizontal) }
         stack.addArrangedSubview(row([ignore, nudge, show, spacer()]))
     }
     @objc func stuckIgnore() { backend?.hunt.ignoreRun() }
@@ -856,7 +849,9 @@ final class NotchLiveController: NSObject {
         buttons.append(button(r.risky ? "Allow once" : "Allow once  \u{2325}\u{21A9}", r.id, .allowOnce, primary: true))
         let terminal = NSButton(title: "Answer in terminal", target: self, action: #selector(releaseTop))
         terminal.isBordered = false
+        terminal.controlSize = .small
         terminal.contentTintColor = .secondaryLabelColor
+        terminal.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.addArrangedSubview(row(buttons + [spacer(), terminal]))
         if r.risky { stack.addArrangedSubview(text("Deletes, pushes or spends: answer with a click.", 10, .secondary)) }
     }
@@ -864,9 +859,19 @@ final class NotchLiveController: NSObject {
     func queueRows() {
         let items = Array(broker.queue.waiting.prefix(4))
         for (i, r) in items.enumerated() {
-            let mark = i == selected ? "\u{203A} " : "  "
-            stack.addArrangedSubview(row([text(mark + r.tool, 12, .primary, mono: true), text(String(r.summary.prefix(60)), 11, .secondary, mono: true), spacer(),
-                                          button("Deny", r.id, .deny), button("Allow", r.id, .allowOnce, primary: true)]))
+            let mark = text(i == selected ? "\u{203A}" : "", 12, .primary, mono: true)
+            mark.alignment = .center
+            mark.widthAnchor.constraint(equalToConstant: 12).isActive = true
+            let tool = text(r.tool, 12, .primary, mono: true)
+            let deny = button("Deny", r.id, .deny)
+            let allow = button("Allow", r.id, .allowOnce, primary: true)
+            stack.addArrangedSubview(row([mark, tool, spacer(), deny, allow]))
+            if !r.summary.isEmpty {
+                let summary = text(String(r.summary.prefix(80)), 11, .secondary, mono: true)
+                let sub = row([summary])
+                sub.edgeInsets = NSEdgeInsets(top: 0, left: 20, bottom: 0, right: 0)
+                stack.addArrangedSubview(sub)
+            }
         }
     }
 
@@ -879,21 +884,29 @@ final class NotchLiveController: NSObject {
         l.font = mono ? .monospacedSystemFont(ofSize: size, weight: .medium) : .systemFont(ofSize: size, weight: size >= 13 ? .semibold : .regular)
         l.textColor = color(tone)
         l.lineBreakMode = .byTruncatingTail
+        l.preferredMaxLayoutWidth = contentWidth
+        l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return l
     }
     func row(_ v: [NSView]) -> NSStackView {
         let r = NSStackView(views: v)
         r.orientation = .horizontal
+        r.alignment = .centerY
         r.spacing = 8
         r.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         return r
     }
+    /// One view, centred on the column. The two spacers take the same slack.
+    func centered(_ v: NSView) -> NSStackView { row([spacer(), v, spacer()]) }
     func spacer() -> NSView { let v = NSView(); v.setContentHuggingPriority(.defaultLow, for: .horizontal); return v }
     func button(_ title: String, _ id: String, _ a: Answer, primary: Bool = false) -> NSButton {
         let b = AnswerButton(title: title, target: self, action: #selector(answered(_:)))
         b.requestId = id
         b.answer = a
         b.bezelStyle = .rounded
+        b.controlSize = .small
+        b.setContentCompressionResistancePriority(.required, for: .horizontal)
+        b.setContentHuggingPriority(.required, for: .horizontal)
         if primary, let accent = backend?.pet.skin.accent { b.bezelColor = NSColor(cgColor: accent); b.keyEquivalent = "" }
         return b
     }
@@ -932,7 +945,7 @@ final class NotchLiveController: NSObject {
             let b = CALayer()
             let h: CGFloat = c == "x" ? 12 : c == "e" ? 9 : c == "r" ? 6 : 14
             b.backgroundColor = c == "f" ? NSColor.systemRed.cgColor : c == "a" ? NSColor.white.cgColor : accent.copy(alpha: c == "p" ? 1 : 0.7)
-            b.frame = CGRect(x: CGFloat(i) * (w / 48), y: 0, width: max(2, w / 48 - 2), height: h)
+            b.frame = CGRect(x: CGFloat(i) * (w / 48), y: (14 - h) / 2, width: max(2, w / 48 - 2), height: h)
             return b
         }
         CATransaction.commit()
@@ -988,14 +1001,12 @@ final class NotchLiveController: NSObject {
         noteClick(clicks)
     }
 
-    /// One click opens or folds, after the double-click window. The third click is a trick and cancels that.
+    /// Releasing commits, in one spring. The third click is a trick.
     private func noteClick(_ clicks: Int) {
         clickWork?.cancel()
         if clicks >= 3 { trick(); return }
         guard clicks == 1 else { return }
-        let work = DispatchWorkItem { [weak self] in self?.toggleFromClick() }
-        clickWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+        toggleFromClick()
     }
 
     /// A click on a running agent pins the live card. With nothing running it opens the room. A click on a card
@@ -1112,13 +1123,21 @@ final class NotchLiveController: NSObject {
 
     // MARK: Moments (#24-27)
 
-    /// Shows a moment for its hold time. The same moment again (the music still playing) just stays up longer.
+    /// A moment lives inside the housing: a face, a rim colour, and one breath of the edge. It does not resize the notch.
     func show(_ m: MacMoment) {
         let same = activeMoment == m
         moment = m
         momentUntil = Date().addingTimeInterval(m.hold)
+        breathUntil = Date().addingTimeInterval(0.45)
         if !same { update() }
         DispatchQueue.main.asyncAfter(deadline: .now() + m.hold + 0.05) { [weak self] in self?.update() }
+    }
+
+    /// The Mac is changing its own volume. Ears perk. The system overlay is the volume UI.
+    func perk() {
+        breathUntil = Date().addingTimeInterval(0.45)
+        backend?.pet.perk()
+        update()
     }
 
     func batteryLow(_ percent: Int) {
@@ -1157,45 +1176,18 @@ final class NotchLiveController: NSObject {
     func frames(_ r: Row) -> [CGImage] { backend?.pet.skin.loaded.strip(r)?.frames ?? [] }
 
     func momentContent(_ m: MacMoment) {
+        let rowName: Row
         switch m {
-        case .volume(let v):
-            // the pet rides the fill
-            let track = NSView(), fill = CALayer()
-            track.wantsLayer = true
-            track.layer?.backgroundColor = NSColor(white: 1, alpha: 0.15).cgColor
-            track.layer?.cornerRadius = 3
-            let w = contentWidth - 34
-            fill.backgroundColor = backend?.pet.skin.accent
-            fill.cornerRadius = 3
-            fill.frame = CGRect(x: 0, y: 0, width: w * CGFloat(max(0, min(1, v))), height: 6)
-            track.layer?.addSublayer(fill)
-            track.widthAnchor.constraint(equalToConstant: w).isActive = true
-            track.heightAnchor.constraint(equalToConstant: 6).isActive = true
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.walk), size: 26), track]))
-            stack.addArrangedSubview(text("Volume \(Int((v * 100).rounded()))%", 11, .secondary))
-        case .battery(let p):
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.fail), size: 26), text("Battery \(p)% \u{00B7} plug me in", 12, .amber), spacer()]))
-        case .charging:
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.gulp), size: 30), text("\u{26A1}\u{FE0E} Charging, nom", 12, .primary), spacer()]))
-        case .screenshot:
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.greet), size: 26), text("Nice shot", 12, .primary), spacer()]))
-        case .trick(let r):
-            stack.addArrangedSubview(row([SpriteView(frames: frames(r), size: 36), spacer()]))
-        case .typing:
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.celebrate), size: 22), text("Look at you go", 11, .primary), spacer()]))
-        case .nap:
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.night), size: 30), text("zz", 11, .secondary), spacer()]))
-        case .music(let title):
-            let pet = SpriteView(frames: Array(frames(.idle).prefix(1)), size: 26)
-            if !Motion.reduce {  // a steady 2 Hz bop
-                let a = CABasicAnimation(keyPath: "transform.translation.y")
-                a.fromValue = 0; a.toValue = 3; a.duration = 0.25; a.autoreverses = true; a.repeatCount = .infinity
-                pet.layer?.add(a, forKey: "bop")
-            }
-            stack.addArrangedSubview(row([pet, text("\u{266A} " + title, 11, .primary), spacer()]))
-        case .home(let line):
-            stack.addArrangedSubview(row([SpriteView(frames: frames(.gulp), size: 30), text(line, 12, .primary), spacer()]))
+        case .volume: rowName = .walk
+        case .battery: rowName = .fail
+        case .charging, .home: rowName = .gulp
+        case .screenshot: rowName = .greet
+        case .trick(let r): rowName = r
+        case .typing: rowName = .celebrate
+        case .nap: rowName = .night
+        case .music: return
         }
+        stack.addArrangedSubview(centered(SpriteView(frames: frames(rowName), size: 28)))
     }
 
     // MARK: Heartbeat (#21)

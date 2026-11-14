@@ -371,7 +371,9 @@ extension Backend {
             var views: [NSView] = [label(item, 12, .medium), label(state, 11, .regular, .secondaryLabelColor), NSView(), try_]
             if let action { let b = ItemButton(title: action.0, target: self, action: action.1); b.item = item; views.append(b) }
             let r = NSStackView(views: views)
-            r.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            r.alignment = .centerY
+            r.spacing = 8
+            r.widthAnchor.constraint(equalToConstant: 380 - UI.margin * 2).isActive = true
             s.addArrangedSubview(r)
         }
 
@@ -381,7 +383,9 @@ extension Backend {
             var views: [NSView] = [label(f.id, 12, .medium), label(owned ? (p.placed.contains(f.id) ? "in the room" : "put away") : "\(f.stars) stars", 11, .regular, .secondaryLabelColor), NSView()]
             if !owned && p.stars >= f.stars { let b = ItemButton(title: "Take", target: self, action: #selector(roomTake(_:))); b.item = f.id; views.append(b) }
             let r = NSStackView(views: views)
-            r.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            r.alignment = .centerY
+            r.spacing = 8
+            r.widthAnchor.constraint(equalToConstant: 380 - UI.margin * 2).isActive = true
             s.addArrangedSubview(r)
         }
         s.addArrangedSubview(NSButton(title: "Open the room", target: self, action: #selector(openRoom)))
@@ -398,7 +402,7 @@ extension Backend {
         if let pc = privacy.latestPostcard, let img = NSImage(contentsOf: pc) {
             let iv = NSImageView(image: img)
             iv.imageScaling = .scaleProportionallyUpOrDown
-            iv.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            iv.widthAnchor.constraint(equalToConstant: 380 - UI.margin * 2).isActive = true
             iv.heightAnchor.constraint(equalToConstant: 160).isActive = true
             s.addArrangedSubview(iv)
             s.addArrangedSubview(NSStackView(views: [NSButton(title: "Save\u{2026}", target: self, action: #selector(savePostcard)), NSButton(title: "Copy", target: self, action: #selector(copyPostcard))]))

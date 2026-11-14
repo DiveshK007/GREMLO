@@ -56,7 +56,7 @@ final class SettingsWindow: NSWindow {
         side.translatesAutoresizingMaskIntoConstraints = false
         let dot = UI.fixed(Box(fill: UI.accent, radius: 4.5), w: 9, h: 9)
         let logo = UI.hstack([dot, UI.label(productName, UI.display(22), UI.fg, wrap: false)], spacing: 8)
-        let sideStack = UI.vstack([logo, nav], spacing: 22, insets: NSEdgeInsets(top: 52, left: 14, bottom: 16, right: 14))
+        let sideStack = UI.vstack([logo, nav], spacing: 24, insets: NSEdgeInsets(top: 48, left: UI.margin, bottom: UI.margin, right: UI.margin))
         sideStack.translatesAutoresizingMaskIntoConstraints = false
         side.addSubview(sideStack)
 
@@ -347,7 +347,7 @@ final class LinkRow: NSButton {
         chevron.contentTintColor = UI.text3
         let words = UI.vstack([UI.label(title, UI.body(13, .medium), UI.fg, wrap: false)] + (detail.map { [UI.label($0, UI.body(11), UI.text2, wrap: false)] } ?? []), spacing: 2)
         let r = UI.hstack([words, UI.spacer(), chevron], spacing: 8)
-        r.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 12)
+        r.edgeInsets = NSEdgeInsets(top: UI.rowY, left: UI.margin, bottom: UI.rowY, right: UI.margin)
         for v in [bg, r] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         NSLayoutConstraint.activate([bg.topAnchor.constraint(equalTo: topAnchor), bg.bottomAnchor.constraint(equalTo: bottomAnchor),
                                      bg.leadingAnchor.constraint(equalTo: leadingAnchor), bg.trailingAnchor.constraint(equalTo: trailingAnchor),

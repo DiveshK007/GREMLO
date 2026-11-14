@@ -164,9 +164,13 @@ final class NotchShapeLayer: CALayer {
     private let rimBox = CALayer()            // masked to a 3 pt stroke of the path; never rotates
     private let rim = CAGradientLayer()       // the conic gradient inside it; this is what spins
     private let rimMask = CAShapeLayer()
+    private let interior = CAShapeLayer()   // the room, visible in the open lip
+    private let lip = CAShapeLayer()        // the grab at the bottom edge
 
     var rimColor: NSColor = .systemOrange { didSet { if rimColor != oldValue { updateRim() } } }
     var rimMode: NotchFeel.Rim = .off { didSet { if rimMode != oldValue { updateRim() } } }
+    /// Focus keeps the rim, dimmed, so the housing does not grow a timer.
+    var rimDim = false { didSet { if rimDim != oldValue { updateRim() } } }
 
     override init() {
         super.init()
@@ -188,17 +192,34 @@ final class NotchShapeLayer: CALayer {
         rimBox.mask = rimMask
         rimBox.addSublayer(rim)
         rimBox.opacity = 0
-        for l in [glow, rimBox, body] as [CALayer] { addSublayer(l) }
+        interior.fillColor = NSColor(srgbRed: 0.36, green: 0.20, blue: 0.12, alpha: 1).cgColor
+        interior.opacity = 0
+        lip.fillColor = NSColor(white: 1, alpha: 0.42).cgColor
+        lip.opacity = 0
+        for l in [glow, rimBox, body, interior, lip] as [CALayer] { addSublayer(l) }
         actions = ["sublayerTransform": NSNull()]
     }
     required init?(coder: NSCoder) { fatalError() }
     override init(layer: Any) { super.init(layer: layer) }
 
-    func apply(_ g: NotchGeometry, centerX cx: CGFloat, top: CGFloat, squash: CGFloat, press: CGFloat, open: CGFloat) {
+    func apply(_ g: NotchGeometry, centerX cx: CGFloat, top: CGFloat, squash: CGFloat, press: CGFloat, open: CGFloat, mouth: CGFloat, showLip: Bool) {
         let path = g.path(centerX: cx, top: top)
         body.path = path; glow.path = path; rimMask.path = path
         body.shadowPath = path
         glow.shadowPath = path
+        let room = max(0, mouth)
+        interior.opacity = room > 2 ? 1 : 0
+        if room > 2 {
+            let lipH = min(room, 18)
+            interior.path = CGPath(roundedRect: CGRect(x: cx - g.width / 2 + 10, y: top - g.height + 3, width: g.width - 20, height: lipH),
+                                   cornerWidth: 6, cornerHeight: 6, transform: nil)
+        }
+        let grab = showLip && room < 2 && g.height < 80
+        lip.opacity = grab ? 1 : 0
+        if grab {
+            lip.path = CGPath(roundedRect: CGRect(x: cx - 14, y: top - g.height + 5, width: 28, height: 3),
+                              cornerWidth: 1.5, cornerHeight: 1.5, transform: nil)
+        }
         rimBox.frame = bounds
         rimMask.frame = rimBox.bounds
         let side = max(g.width, g.height) * 1.6   // a big square, so the spin never shows a corner
@@ -226,13 +247,14 @@ final class NotchShapeLayer: CALayer {
     }
 
     private func updateRim() {
+        let previous = rim.presentation()?.colors ?? rim.colors
         rim.removeAnimation(forKey: "flow")
         glow.shadowColor = rimColor.cgColor
         switch rimMode {
         case .off:
             rimBox.opacity = 0; glow.shadowOpacity = 0
         case .solid:
-            rimBox.opacity = 1; glow.shadowOpacity = 0.5
+            rimBox.opacity = rimDim ? 0.22 : 1; glow.shadowOpacity = rimDim ? 0.12 : 0.5
             rim.colors = [rimColor.cgColor, rimColor.cgColor]
             rim.locations = nil
         case .flow:
@@ -247,6 +269,14 @@ final class NotchShapeLayer: CALayer {
             a.duration = 2.2
             a.repeatCount = .infinity
             rim.add(a, forKey: "flow")
+        }
+        // A new agent keeps the housing and only crossfades the rim.
+        if let previous, rimMode != .off {
+            let fade = CABasicAnimation(keyPath: "colors")
+            fade.fromValue = previous
+            fade.duration = 0.35
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            rim.add(fade, forKey: "cross")
         }
     }
 }
@@ -437,13 +467,15 @@ final class SoundKit {
         armIdle()
     }
 
-    func play(_ s: Sound) {
+    /// `pan` is -1...1 across the screen. `gain` scales the sound's own level (a latch is quieter than a pop).
+    func play(_ s: Sound, pan: Float = 0, gain: Float = 1) {
         guard level != .off, !silence.silent, let e = prepare(), let b = buffers[s] else { return }
         if !e.isRunning { do { try e.start() } catch { return } }
         let p = players.first { !$0.isPlaying } ?? players[next]
         next = (next + 1) % players.count
         if p.isPlaying { p.stop() }   // only when every voice is busy; a free voice is never cut
-        p.volume = Self.gain[s] ?? 1
+        p.pan = max(-1, min(1, pan))
+        p.volume = (Self.gain[s] ?? 1) * gain
         p.scheduleBuffer(b, at: nil)
         p.play()
         armIdle()

@@ -34,6 +34,10 @@ enum UI {
         accentText = dyn(hex(s.accent), hex(s.paperSafe))
     }
 
+    /// Spec D §1 space scale. Page margin and the inset inside a card are 16; a row's vertical padding is 12.
+    static let margin: CGFloat = 16
+    static let rowY: CGFloat = 12
+
     static func display(_ size: CGFloat) -> NSFont { .systemFont(ofSize: size, weight: .heavy, width: .compressed) }
     static func body(_ size: CGFloat = 13, _ w: NSFont.Weight = .regular) -> NSFont { .systemFont(ofSize: size, weight: w) }
     static func mono(_ size: CGFloat = 11, _ w: NSFont.Weight = .medium) -> NSFont { .monospacedSystemFont(ofSize: size, weight: w) }
@@ -83,7 +87,7 @@ enum UI {
         let room = width - 40 - (control?.fittingSize.width ?? 0)  // the detail wraps beside the control, never under it
         let words = vstack([label(title, body(13, .medium), fg, wrap: false)] + (detail.map { [label($0, body(11), text2, width: room)] } ?? []), spacing: 2)
         let r = hstack([words, spacer()] + (control.map { [$0] } ?? []), spacing: 12)
-        r.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+        r.edgeInsets = NSEdgeInsets(top: rowY, left: margin, bottom: rowY, right: margin)
         r.widthAnchor.constraint(equalToConstant: width).isActive = true
         r.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         return r
@@ -93,7 +97,7 @@ enum UI {
         let v = label(value, digits(12, .medium), valueColor, wrap: false)
         v.alignment = .right
         let r = hstack([label(key, body(12), text2, wrap: false), spacer(), v], align: .firstBaseline)
-        r.edgeInsets = NSEdgeInsets(top: 9, left: 14, bottom: 9, right: 14)
+        r.edgeInsets = NSEdgeInsets(top: rowY, left: margin, bottom: rowY, right: margin)
         r.widthAnchor.constraint(equalToConstant: width).isActive = true
         return r
     }
@@ -101,7 +105,7 @@ enum UI {
     static func group(_ title: String?, _ rows: [NSView], note: String? = nil, width: CGFloat) -> NSView {
         var inner: [NSView] = []
         for (i, r) in rows.enumerated() {
-            if i > 0 { inner.append(ruleLine(width - 28)) }
+            if i > 0 { inner.append(ruleLine(width - margin * 2)) }
             inner.append(r)
         }
         let list = vstack(inner, spacing: 0)
@@ -114,9 +118,9 @@ enum UI {
                                      list.leadingAnchor.constraint(equalTo: card.leadingAnchor), list.trailingAnchor.constraint(equalTo: card.trailingAnchor),
                                      card.widthAnchor.constraint(equalToConstant: width)])
         var parts: [NSView] = []
-        if let title { let c = caption(title); parts.append(padLeft(c, 14)) }
+        if let title { parts.append(caption(title)) }  // flush with the card, same x as every other section label
         parts.append(card)
-        if let note { parts.append(padLeft(label(note, body(11), text3, width: width - 28), 14)) }
+        if let note { parts.append(padLeft(label(note, body(11), text3, width: width - margin * 2), margin)) }
         return vstack(parts, spacing: 8)
     }
     static func padLeft(_ v: NSView, _ x: CGFloat) -> NSView {
@@ -125,7 +129,11 @@ enum UI {
     /// A short status line with the one square of colour in front (accent, amber or quiet).
     static func notice(_ s: String, _ tone: NSColor, width: CGFloat) -> NSView {
         let dot = fixed(Box(fill: tone, radius: 2), w: 8, h: 8)
-        return hstack([dot, label(s, body(12, .medium), text, width: width - 20)], spacing: 8, align: .firstBaseline)
+        let text = label(s, body(12, .medium), self.text, width: max(40, width - 16))
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let r = hstack([dot, text], spacing: 8, align: .centerY)
+        r.widthAnchor.constraint(lessThanOrEqualToConstant: width).isActive = true
+        return r
     }
     /// A balance tile: label, a big mono number, a thin bar in the pet's colour.
     static func stat(_ title: String, _ value: String, fraction: CGFloat?, width: CGFloat) -> NSView {
@@ -156,8 +164,8 @@ enum UI {
         let ad = NSTextField(labelWithString: "AD")
         ad.font = mono(9); ad.textColor = ink
         let tag = wrap(padded(ad, 2, 4), fill: paper, radius: 2, stroke: ink)
-        let r = hstack([text, spacer(), tag], spacing: 8, align: .top)
-        r.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 8)
+        let r = hstack([text, spacer(), tag], spacing: 8, align: .centerY)
+        r.edgeInsets = NSEdgeInsets(top: rowY, left: rowY, bottom: rowY, right: rowY)
         let b = wrap(r, fill: paper, radius: 4, width: width, stroke: ink)
         b.setAccessibilityLabel("Sponsored: \(line)")
         return b
@@ -458,13 +466,16 @@ final class MenuPanel: NSPanel {
     func fit(_ content: NSView, under button: NSStatusBarButton?) {
         if content.superview == nil || content.superview !== scroll.documentView { scroll.documentView = FlippedClip.wrap(content) }
         content.layoutSubtreeIfNeeded()
-        let size = content.fittingSize
+        var size = content.fittingSize
+        size.width = ceil(size.width)
+        size.height = ceil(size.height)
         guard let bw = button?.window, let screen = bw.screen ?? NSScreen.main else { return }
         let r = bw.frame
         let h = min(size.height, screen.visibleFrame.height - 24)
         let x = min(max(r.midX - size.width / 2, screen.visibleFrame.minX + 8), screen.visibleFrame.maxX - size.width - 8)
-        setFrame(NSRect(x: x, y: r.minY - 6 - h, width: size.width, height: h), display: true)
-        (scroll.documentView)?.frame.size = size
+        let frame = NSRect(x: x, y: r.minY - 6 - h, width: size.width, height: h).integral
+        setFrame(frame, display: true)
+        scroll.documentView?.frame.size = NSSize(width: frame.width, height: size.height)
     }
 
     func open() {

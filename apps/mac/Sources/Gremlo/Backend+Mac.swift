@@ -76,7 +76,7 @@ final class Backend: NSObject {
     lazy var companions: CompanionController = CompanionController(earner: self.pet, growth: self.growth)
     lazy var growthStack: NSStackView = {
         let s = NSStackView(); s.orientation = .vertical; s.alignment = .leading; s.spacing = 6
-        s.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 16, right: 18); return s
+        s.edgeInsets = NSEdgeInsets(top: UI.margin, left: UI.margin, bottom: UI.margin, right: UI.margin); return s
     }()
     lazy var growthWindow: NSWindow = {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 640), styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -161,8 +161,8 @@ final class Backend: NSObject {
         item.button?.setAccessibilityLabel(productName)
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.spacing = UI.margin
+        stack.edgeInsets = NSEdgeInsets(top: UI.margin, left: UI.margin, bottom: UI.margin, right: UI.margin)
         stack.widthAnchor.constraint(equalToConstant: popoverWidth).isActive = true
         menu.onClose = { [weak self] in self?.showingDemo = false }
         refresh()
@@ -331,7 +331,7 @@ final class Backend: NSObject {
         UI.setAccent(pet.skin.species)
         statusIcon()
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let w = popoverWidth - 32
+        let w = popoverWidth - UI.margin * 2
         let gp = growth.p
 
         // the pet: who it is and how it feels
@@ -368,7 +368,7 @@ final class Backend: NSObject {
         if let i = info, i.mood == "asleep" || i.mood == "hungry", let why = i.moodReason ?? (i.mood == "asleep" ? brokeReason : nil) {
             notes.append(UI.notice(why, i.mood == "hungry" ? UI.amber : UI.text3, width: w))
         }
-        if !notes.isEmpty { stack.addArrangedSubview(UI.vstack(notes, spacing: 8)) }
+        if !notes.isEmpty { stack.addArrangedSubview(column(notes, width: w)) }
         if pet.waiting {
             let b = Btn("Approve in terminal", style: .primary, symbol: "terminal", target: self, action: #selector(approveInTerminal))
             b.keyEquivalent = "\r"
@@ -402,7 +402,7 @@ final class Backend: NSObject {
             r.widthAnchor.constraint(equalToConstant: w).isActive = true
             showing.append(r)
         }
-        stack.addArrangedSubview(UI.vstack(showing, spacing: 8))
+        stack.addArrangedSubview(column(showing, width: w))
 
         // its last paid thoughts, each with the completion id (click copies it)
         var thoughts: [NSView] = [UI.caption("Last thoughts")]
@@ -415,7 +415,7 @@ final class Backend: NSObject {
             b.identifier = NSUserInterfaceItemIdentifier(tx)
             thoughts.append(b)
         }
-        stack.addArrangedSubview(UI.vstack(thoughts, spacing: 8))
+        stack.addArrangedSubview(column(thoughts, width: w))
 
         stack.addArrangedSubview(UI.group(nil, [LinkRow("Closet, stars and certificate", width: w, target: self, action: #selector(openGrowth)),
                                                 LinkRow("Pet page and weekly recap", width: w, target: self, action: #selector(openPetPage))], width: w))
@@ -439,9 +439,10 @@ final class Backend: NSObject {
     @objc func closeDemo() { showingDemo = false; shown = ""; render() }
     func renderDemo() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let w = popoverWidth - 32
+        let w = popoverWidth - UI.margin * 2
         let back = Btn("Back", style: .icon, symbol: "chevron.left", target: self, action: #selector(closeDemo))
-        let head = UI.hstack([back, UI.label("Demo", UI.display(26), UI.fg, wrap: false)], spacing: 6)
+        let head = UI.hstack([back, UI.label("Demo", UI.display(26), UI.fg, wrap: false)], spacing: 8)
+        head.widthAnchor.constraint(equalToConstant: w).isActive = true
         stack.addArrangedSubview(head)
         stack.addArrangedSubview(UI.label("Play any event to see what the pet does. Local only: while demo mode is on there are no AI calls and no paid views.", UI.body(12), UI.text2, width: w))
         let picker = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -605,8 +606,8 @@ final class Backend: NSObject {
         b.toolTip = "Copy \(id)"
         b.attributedTitle = idTitle(tag, id, tagColor: UI.accentText)
         let row = UI.hstack([b, UI.spacer()])
-        row.edgeInsets = NSEdgeInsets(top: 9, left: 14, bottom: 9, right: 14)
-        row.widthAnchor.constraint(equalToConstant: popoverWidth - 32).isActive = true
+        row.edgeInsets = NSEdgeInsets(top: UI.rowY, left: UI.margin, bottom: UI.rowY, right: UI.margin)
+        row.widthAnchor.constraint(equalToConstant: popoverWidth - UI.margin * 2).isActive = true
         return row
     }
 
@@ -622,10 +623,17 @@ final class Backend: NSObject {
     }
 
     // Used by the Closet window and the privacy ledger: the same tokens as the panel.
-    func bar(_ fraction: CGFloat) -> NSView { UI.bar(fraction, width: popoverWidth - 32) }
+    func bar(_ fraction: CGFloat) -> NSView { UI.bar(fraction, width: popoverWidth - UI.margin * 2) }
     func caption(_ text: String) -> NSTextField { UI.caption(text) }
     func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor = UI.text, mono: Bool = false) -> NSTextField {
-        UI.label(text, mono ? UI.mono(size, weight) : UI.body(size, weight), color == .labelColor ? UI.text : color, width: popoverWidth - 32)
+        UI.label(text, mono ? UI.mono(size, weight) : UI.body(size, weight), color == .labelColor ? UI.text : color, width: popoverWidth - UI.margin * 2)
     }
-    func row(_ key: String, _ value: String) -> NSView { UI.kv(key, value, width: popoverWidth - 32) }
+    func row(_ key: String, _ value: String) -> NSView { UI.kv(key, value, width: popoverWidth - UI.margin * 2) }
+
+    /// A section that is exactly the column width, so its label lines up with the cards above and below it.
+    func column(_ views: [NSView], width: CGFloat, spacing: CGFloat = 8) -> NSView {
+        let s = UI.vstack(views, spacing: spacing)
+        s.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return s
+    }
 }
