@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import GremloCore
 
 // Notch Live on the Mac (spec D §5, R2 §9, R3 §2). Rules are in GremloCore/NotchLive.swift; this draws them and
@@ -88,7 +89,17 @@ final class NotchLiveController: NSObject {
     var idleUntil = Date.distantPast
     private var idleTimer: Timer?
     private var moveMonitors: [Any] = []
-    static let big: Set<LiveState> = [.ticker, .knock, .queue, .room, .stuck, .drop, .done]
+    static let big: Set<LiveState> = [.ticker, .knock, .queue, .room, .stuck, .drop, .done, .quick]
+    // phase B: pull, flick, force click, heartbeat
+    let pullSpring = Spring(0, .pull)
+    var quickOpen = false
+    private var dragStart: NSPoint?
+    private var dragged = false, overPull = false
+    private var dragSamples: [(t: CFTimeInterval, y: CGFloat)] = []
+    private var holdWork: DispatchWorkItem?
+    private var heartbeat: Timer?
+    private var heartbeatStart = Date.distantPast
+    var fingerDown = false
     static let leans: Set<LiveState> = [.rest, .think]
     var softRunCents: Int? { (defaults.object(forKey: "softAlertRunCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
     var softDayCents: Int? { (defaults.object(forKey: "softAlertDayCents") as? Int).flatMap { $0 > 0 ? $0 : nil } }
@@ -121,19 +132,35 @@ final class NotchLiveController: NSObject {
             Motion.reduce = reduceMotion
         }
         NotchDriver.shared.attach(to: drop)
-        NotchDriver.shared.register(W, H, R, lean, squash, press, openness)
+        NotchDriver.shared.register(W, H, R, lean, squash, press, openness, pullSpring)
+        drop.onTouches = { [weak self] n in self?.fingerDown = n > 0 }
+        // #11: ⌥⌘N opens or folds the notch from anywhere
+        HotKeys.register(3, keyCode: UInt32(kVK_ANSI_N), mods: UInt32(cmdKey | optionKey)) { [weak self] in self?.toggleNotch() }
         NotchDriver.shared.onFrame = { [weak self] in self?.applyFrame() }
         // the pointer, wherever it is (mouse events need no permission): hover, lean and click-through
         let moved: (NSEvent) -> Void = { [weak self] _ in self?.pointerMoved() }
         if let g = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: moved) { moveMonitors.append(g) }
         if let l = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { moved($0); return $0 }) { moveMonitors.append(l) }
         broker.onChange = { [weak self] in self?.update() }
-        drop.onDragging = { [weak self] on in self?.dragging = on; self?.update() }
+        drop.onDragging = { [weak self] on in
+            guard let self, self.dragging != on else { return }
+            self.dragging = on
+            // #12: the mouth opens with a snap; leaving without dropping ticks (a drop has its own boop)
+            if on { Feel.haptic(.snap) } else if Date() >= self.toastUntil { Feel.haptic(.tick) }
+            self.update()
+        }
         drop.onScroll = { [weak self] e in self?.scrolled(e) }
-        drop.onDropped = { [weak self] in self?.toastUntil = Date().addingTimeInterval(2); Feel.haptic(.tick); self?.update() }
+        drop.onDropped = { [weak self] in
+            self?.toastUntil = Date().addingTimeInterval(2.6)
+            SoundKit.shared.play(.chomp)
+            Feel.haptic(.boop)  // with the gulp
+            self?.update()
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in self?.key(e) == true ? nil : e }
-        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] e in
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .pressure]) { [weak self] e in
             guard let self, e.window === self.panel else { return e }
+            if e.type == .leftMouseDragged { self.dragMoved(); return e }
+            if e.type == .pressure { self.pressure(e); return e }
             if e.type == .leftMouseDown {
                 self.hoverWork?.cancel()
                 self.hovered = true  // a click means the pointer is here, even inside the hover delay
@@ -142,6 +169,18 @@ final class NotchLiveController: NSObject {
                 // the press dent; a button gives its own feedback, so only a press on the notch itself boops
                 self.press.animate(to: NotchFeel.pressScale, .press)
                 if !self.pressOnControl { Feel.haptic(.boop) }
+                self.dragStart = NSEvent.mouseLocation
+                self.dragged = false; self.overPull = false; self.dragSamples = []
+                // #9 without Force Touch: holding still opens the quick actions
+                self.holdWork?.cancel()
+                if !self.pressOnControl {
+                    let w = DispatchWorkItem { [weak self] in
+                        guard let self, self.pressStart != nil, !self.dragged else { return }
+                        self.openQuick()
+                    }
+                    self.holdWork = w
+                    DispatchQueue.main.asyncAfter(deadline: .now() + NotchFeel.quickHold, execute: w)
+                }
             } else {
                 self.press.animate(to: 1, .release)
                 self.mouseUp()
@@ -171,6 +210,7 @@ final class NotchLiveController: NSObject {
         i.toolRunning = NotchLive.toolShowing(running: run.toolRunning, lastToolEnd: run.lastToolEnd, runEnded: run.endedAt != nil, now: Date())
         i.thinking = run.thinking
         i.dragging = dragging || Date() < toastUntil
+        i.quick = quickOpen
         i.roomOpen = roomOpen
         i.focus = backend?.privacy.focus != nil
         i.stuck = backend?.hunt.stuckTrigger != nil
@@ -202,6 +242,7 @@ final class NotchLiveController: NSObject {
         if !(hovered && needsKeys) { giveBackKeyboard() }
         passThrough()
         SpriteClock.shared.visible = backend?.privacy.duck != .hidden
+        heartbeatTick()
     }
 
     /// Hook events redraw at once (the timer only moves the clock), and done and the peek linger end on time.
@@ -280,7 +321,8 @@ final class NotchLiveController: NSObject {
             self.refreshContent(clear: true, stagger: animated)
             self.spring(to: to, opening: opening, animated: animated)
             if animated && !reduceMotion && s == .knock { self.shake() }
-            if animated && !reduceMotion && s == .done { self.confetti() }
+            if animated && s == .done { self.burst(self.run.errors > 0 ? .smoke : .confetti) }
+            if animated && s == .stuck { self.burst(.smoke) }
         }
         if animated, !opening, !Motion.reduce, !stack.arrangedSubviews.isEmpty {
             swapPending = true
@@ -324,7 +366,7 @@ final class NotchLiveController: NSObject {
     func applyFrame() {
         guard let b = panel.contentView?.bounds, b.width > 0 else { return }
         if shape.frame != b { shape.frame = b }
-        let g = NotchGeometry(width: W.value, height: H.value, radius: R.value, bulge: max(0, -squash.value) / 2.2)
+        let g = NotchGeometry(width: W.value, height: H.value + max(0, pullSpring.value), radius: R.value, bulge: max(0, -squash.value) / 2.2)
         CATransaction.begin()
         CATransaction.setDisableActions(true)  // also when called outside the frame clock (layout, a jump)
         shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value, open: openness.value)
@@ -334,11 +376,13 @@ final class NotchLiveController: NSObject {
     /// The shape on screen right now (springs, not targets), so clicks land on what you see.
     var shapeOnScreen: NSRect {
         let f = mainScreen.frame
-        return NSRect(x: f.midX + lean.value - W.value / 2, y: f.maxY - H.value, width: W.value, height: H.value)
+        let h = H.value + max(0, pullSpring.value)
+        return NSRect(x: f.midX + lean.value - W.value / 2, y: f.maxY - h, width: W.value, height: h)
     }
 
     /// Clicks pass through the panel everywhere except the notch, so the menu bar and the windows under it still work.
     func passThrough() {
+        if pressStart != nil { if panel.ignoresMouseEvents { panel.ignoresMouseEvents = false }; return }  // mid-press: keep the drag
         let over = shapeOnScreen.union(placed).insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
         if panel.ignoresMouseEvents == over { panel.ignoresMouseEvents = !over }
     }
@@ -403,28 +447,14 @@ final class NotchLiveController: NSObject {
         layer.add(a, forKey: "knock")
     }
 
-    func confetti() {
-        guard let layer = panel.contentView?.layer, let accent = backend?.pet.skin.accent else { return }
-        let colors = [accent, NSColor.white.cgColor, accent.copy(alpha: 0.6) ?? accent]
-        let b = layer.bounds, w = CGFloat(W.target), bottom = b.maxY - CGFloat(H.target)
-        for i in 0..<(ProcessInfo.processInfo.isLowPowerModeEnabled ? 23 : 46) {  // half in Low Power Mode
-            let bit = CALayer()
-            bit.backgroundColor = colors[i % colors.count]
-            bit.frame = CGRect(x: b.midX + CGFloat.random(in: -w / 2...w / 2), y: bottom, width: 4, height: 4)
-            layer.addSublayer(bit)
-            let fall = CABasicAnimation(keyPath: "position.y")
-            fall.toValue = bottom - CGFloat.random(in: 30...80)
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.toValue = 0
-            let g = CAAnimationGroup()
-            g.animations = [fall, fade]
-            g.duration = Double.random(in: 0.8...1.6)
-            g.beginTime = CACurrentMediaTime() + Double(i) * 0.012
-            g.isRemovedOnCompletion = false
-            g.fillMode = .forwards
-            bit.add(g, forKey: "fall")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { bit.removeFromSuperlayer() }
-        }
+    /// #14: a burst from the notch's bottom edge, 120 ms of birth, gone after 2.6 s. Capped by the budget, none under
+    /// Reduce Motion.
+    func burst(_ kind: NotchFeel.Burst) {
+        guard !Motion.reduce, let root = panel.contentView?.layer else { return }
+        let b = root.bounds, w = CGFloat(W.target), bottom = b.maxY - CGFloat(H.target)
+        Particles.burst(kind, in: root, at: CGPoint(x: b.midX, y: bottom + 4), width: max(20, w - 12),
+                        count: NotchFeel.particles(kind, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled),
+                        palette: Roster.all.map { nsColor(hex: $0.accent) })
     }
 
     // MARK: Content
@@ -472,7 +502,12 @@ final class NotchLiveController: NSObject {
                 stack.addArrangedSubview(row([eyes(), spacer(), calls]))
                 ticks.append { calls.stringValue = "egg \u{00B7} \(g.egg.calls)/50" }
             }
-        case .drop: stack.addArrangedSubview(text(dragging ? "Drop to copy it for your agent" : "Ready to paste", 13, .primary))
+        case .drop:
+            // #12 the mouth: the gulp row's first frame open while dragging, the whole gulp once it's eaten
+            let gulp = backend?.pet.skin.loaded.strip(.gulp)?.frames ?? []
+            let pet = SpriteView(frames: dragging ? Array(gulp.prefix(1)) : gulp, size: 44)
+            stack.addArrangedSubview(row([pet, text(dragging ? "Drop to copy the path" : "Ready to paste", 13, .primary), spacer()]))
+        case .quick: quickCard()
         case .meeting:
             let soon = text("", 11, .secondary, mono: true)
             stack.addArrangedSubview(row([eyes(), spacer(), soon]))
@@ -530,8 +565,17 @@ final class NotchLiveController: NSObject {
             scrub.heightAnchor.constraint(equalToConstant: 14).isActive = true
             stack.addArrangedSubview(scrub)
         } else {
-            let b = bars()
-            stack.addArrangedSubview(b)
+            // #15 the progress scene: no ETA is known, so the pet walks in place at the start of the track and the
+            // track pulses; never a made-up percentage
+            let walker = SpriteView(frames: backend?.pet.skin.loaded.strip(.walk)?.frames ?? [], size: 18)
+            let b = bars(width: contentWidth - 26)
+            if !Motion.reduce {
+                b.wantsLayer = true
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 1; a.toValue = 0.6; a.duration = 0.9; a.autoreverses = true; a.repeatCount = .infinity
+                b.layer?.add(a, forKey: "pulse")
+            }
+            stack.addArrangedSubview(row([walker, b]))
             ticks.append { [weak self] in self?.drawBars(in: b) }
         }
     }
@@ -544,9 +588,12 @@ final class NotchLiveController: NSObject {
             if abs(swipe) > 40 {
                 let n = min(broker.queue.waiting.count, 4)
                 selected = (selected + (swipe < 0 ? 1 : n - 1)) % max(n, 1)
+                let dir: CGFloat = swipe < 0 ? -1 : 1
                 swipe = 0
                 Feel.haptic(.tick)
+                SoundKit.shared.play(.tick)
                 refreshContent(clear: true)
+                slide(dir * NotchFeel.detentSlide)
             }
             if e.phase == .ended { swipe = 0 }
             return
@@ -558,6 +605,18 @@ final class NotchLiveController: NSObject {
             else if pull < -30, roomOpen { roomOpen = false; update() }
             pull = 0
         }
+    }
+
+    /// The content arrives from the side it was scrolled from, on the release spring.
+    func slide(_ dx: CGFloat) {
+        guard !Motion.reduce else { return }
+        stack.wantsLayer = true
+        let p = SpringParams.release
+        let a = CASpringAnimation(keyPath: "transform.translation.x")
+        a.fromValue = dx; a.toValue = 0
+        a.mass = 1; a.stiffness = p.stiffness; a.damping = p.dampingCoefficient
+        a.duration = a.settlingDuration
+        stack.layer?.add(a, forKey: "detent")
     }
 
     func room(_ b: Backend) {
@@ -692,15 +751,15 @@ final class NotchLiveController: NSObject {
         }
         return v
     }
-    func bars() -> NSView {
+    func bars(width: CGFloat? = nil) -> NSView {
         let v = NSView()
         v.wantsLayer = true
-        v.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        v.widthAnchor.constraint(equalToConstant: width ?? contentWidth).isActive = true
         v.heightAnchor.constraint(equalToConstant: 14).isActive = true
         return v
     }
     func drawBars(in v: NSView) {
-        let w = contentWidth
+        let w = v.bounds.width > 0 ? v.bounds.width : contentWidth
         let accent = backend?.pet.skin.accent ?? NSColor.white.cgColor
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -723,15 +782,23 @@ final class NotchLiveController: NSObject {
     /// ⌥↩ allow once, ⌥⌫ deny, ⌥↓ next, esc folds. Risky requests get no shortcut.
     func key(_ e: NSEvent) -> Bool {
         guard panel.isKeyWindow else { return false }
-        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; update(); return true }
-        guard e.modifierFlags.contains(.option) else { return false }
+        if e.keyCode == 53 { pinned = false; hovered = false; selected = 0; roomOpen = false; quickOpen = false; Feel.haptic(.tick); update(); return true }
         let items = broker.queue.waiting
+        // ←/→ pick a waiting approval
+        if (e.keyCode == 123 || e.keyCode == 124), items.count > 1 {
+            let n = min(items.count, 4)
+            selected = (selected + (e.keyCode == 124 ? 1 : n - 1)) % n
+            Feel.haptic(.tick)
+            refreshContent(clear: true)
+            return true
+        }
+        guard e.modifierFlags.contains(.option) else { return false }
         guard !items.isEmpty else { return false }
         let r = items[min(selected, items.count - 1)]
         switch e.keyCode {
         case 36: if ApprovalQueue.shortcutAllowed(r) { broker.answer(r.id, .allowOnce) }; return true
         case 51: if ApprovalQueue.shortcutAllowed(r) { broker.answer(r.id, .deny) }; return true
-        case 125: selected = (selected + 1) % min(items.count, 4); refreshContent(clear: true); return true
+        case 125: selected = (selected + 1) % min(items.count, 4); Feel.haptic(.tick); refreshContent(clear: true); return true
         default: return false
         }
     }
@@ -744,6 +811,7 @@ final class NotchLiveController: NSObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.hoverWanted(at: NSEvent.mouseLocation) == on else { return }
             self.hovered = on
+            if !on { self.quickOpen = false }
             if on && self.needsKeys { self.panel.makeKey() }
             self.update()
             if on { Feel.haptic(.tick) }  // paired with the notch swelling to hover
@@ -752,16 +820,119 @@ final class NotchLiveController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    /// Click pins; a long press (over 0.6 s) pauses everything for 30 minutes. Clicks on buttons, the scrubber and the
-    /// room belong to them and do neither.
+    /// Click pins. Pulling the notch down past 130 pt opens the room; an upward flick dismisses a big state; holding
+    /// still (or a force click) opened the quick actions. Clicks on buttons, the scrubber and the room are theirs.
     func mouseUp() {
-        defer { pressStart = nil }
-        guard let p = pressStart, !pressOnControl else { return }
-        if Date().timeIntervalSince(p) > 0.6 { backend?.pause(minutes: 30); return }
-        guard state != .knock && state != .queue else { return }
+        defer { pressStart = nil; dragStart = nil }
+        holdWork?.cancel()
+        guard pressStart != nil, !pressOnControl else { return }
+        if overPull {
+            overPull = false
+            pullSpring.animate(to: 0, .pull)
+            roomOpen = true
+            Feel.haptic(.snap)  // with the room opening
+            update()
+            return
+        }
+        if pullSpring.value > 0.5 { pullSpring.animate(to: 0, .pull) }
+        if let v = flickSpeed(), v > NotchFeel.flickSpeed, Self.big.contains(state) {
+            SoundKit.shared.play(.whoosh)
+            fold()
+            return
+        }
+        guard !dragged, state != .quick, state != .knock, state != .queue else { return }
         pinned.toggle()
         Feel.haptic(.snap)
         update()
+    }
+
+    /// #7: the rubber band follows a downward drag, then resists; a tick each way across the threshold.
+    func dragMoved() {
+        guard let start = dragStart, !pressOnControl else { return }
+        let p = NSEvent.mouseLocation
+        if hypot(p.x - start.x, p.y - start.y) > 4 { dragged = true; holdWork?.cancel() }
+        dragSamples.append((CACurrentMediaTime(), p.y))
+        if dragSamples.count > 6 { dragSamples.removeFirst(dragSamples.count - 6) }
+        guard ![.knock, .queue, .quick, .room].contains(state) else { return }
+        let band = NotchFeel.band(start.y - p.y)
+        pullSpring.hold(at: band)
+        NotchDriver.shared.wake()
+        let over = band > NotchFeel.pullThreshold
+        if over != overPull { overPull = over; Feel.haptic(.tick) }  // paired with the shape crossing the line
+    }
+
+    /// Upward speed from the last few drag samples, in points per second.
+    private func flickSpeed() -> CGFloat? {
+        guard let a = dragSamples.first, let b = dragSamples.last, b.t > a.t else { return nil }
+        return (b.y - a.y) / CGFloat(b.t - a.t)
+    }
+
+    /// #9: a force click opens the quick actions (no haptic: the trackpad clicks itself); pressure deepens the dent.
+    func pressure(_ e: NSEvent) {
+        if e.stage >= 2 { if !quickOpen { openQuick() } }
+        else if e.stage == 1 { press.animate(to: NotchFeel.pressScale - 0.04 * Double(e.pressure), .press) }
+    }
+
+    func openQuick() {
+        holdWork?.cancel()
+        guard !quickOpen else { return }
+        quickOpen = true
+        SoundKit.shared.play(.boing)
+        update()
+    }
+
+    /// Folds whatever the user opened (pin, room, quick actions); approvals stay until they're answered.
+    func fold() {
+        pinned = false; roomOpen = false; quickOpen = false
+        update()
+    }
+
+    /// #11 ⌥⌘N: open the notch (the live run, or the room when nothing runs), or fold it.
+    func toggleNotch() {
+        if Self.big.contains(state) && state != .knock && state != .queue { fold() }
+        else if run.started != nil { pinned = true; update() }
+        else { roomOpen = true; update() }
+        Feel.haptic(.tick)
+    }
+
+    /// The quick actions card.
+    func quickCard() {
+        let safe = broker.queue.waiting.filter { !$0.risky }
+        let approve = NSButton(title: safe.isEmpty ? "Approve safe calls" : "Approve \(safe.count) safe", target: self, action: #selector(approveSafe))
+        approve.isEnabled = !safe.isEmpty
+        let mute = NSButton(title: "Mute 1h", target: self, action: #selector(muteHour))
+        let room = NSButton(title: "Open room", target: self, action: #selector(openRoomNow))
+        for b in [approve, mute, room] { b.bezelStyle = .rounded }
+        stack.addArrangedSubview(row([approve, mute, room, spacer()]))
+    }
+    /// Answers only the ordinary requests; anything that deletes, pushes or spends still needs its own click.
+    @objc func approveSafe() {
+        for r in broker.queue.waiting where !r.risky { broker.answer(r.id, .allowOnce) }
+        quickOpen = false
+        update()
+    }
+    @objc func muteHour() { quickOpen = false; backend?.pause(minutes: 60); update() }
+    @objc func openRoomNow() { quickOpen = false; roomOpen = true; Feel.haptic(.snap); update() }
+
+    // MARK: Heartbeat (#21)
+
+    /// While an approval waits: a slow double tap every 1.4 s, only with a finger on the trackpad, for 30 s at most,
+    /// each one with a pulse of the rim.
+    private func heartbeatTick() {
+        let waiting = !broker.queue.waiting.isEmpty
+        if waiting, heartbeat == nil {
+            heartbeatStart = Date()
+            let t = Timer.scheduledTimer(withTimeInterval: NotchFeel.heartbeatEvery, repeats: true) { [weak self] t in
+                guard let self else { t.invalidate(); return }
+                guard Date().timeIntervalSince(self.heartbeatStart) <= NotchFeel.heartbeatFor else { t.invalidate(); return }
+                if self.fingerDown { self.shape.beat(); Feel.haptic(.heartbeat) }
+            }
+            t.tolerance = 0.1
+            heartbeat = t
+        } else if !waiting, let t = heartbeat {
+            t.invalidate()
+            heartbeat = nil
+        }
     }
 
     private func interactive(at p: NSPoint) -> Bool {

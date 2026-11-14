@@ -64,6 +64,7 @@ public enum NotchFeel {
         case .visitor: return 16
         case .done, .ticker: return 24
         case .drop: return 30
+        case .quick: return 24
         case .knock, .queue, .stuck: return 28
         case .room: return 34
         }
@@ -85,7 +86,25 @@ public enum NotchFeel {
         if a.contains("cursor") { return "#4C8DFF" }
         return "#FF5A3C"
     }
-    public static let doneColor = "#8FD14F", failColor = "#FF5A3C"
+    public static let doneColor = "#8FD14F", failColor = "#FF5A3C", mergeColor = "#B48CFF", batteryColor = "#FFB020"
+
+    /// #7 rubber band: follows the finger, then resists. Past 130 pt the room opens; an upward flick over 500 pt/s
+    /// dismisses a big state.
+    public static func band(_ dy: CGFloat) -> CGFloat { dy <= 0 ? 0 : dy * 0.55 / (1 + dy / 320) * 2 }
+    public static let pullThreshold: CGFloat = 130, flickSpeed: CGFloat = 500
+    /// #8 one detent per 40 pt of scroll; the content slides 30 pt the same way.
+    public static let detent: CGFloat = 40, detentSlide: CGFloat = 30
+    /// #9 without Force Touch, holding this long opens the quick actions.
+    public static let quickHold = 0.48
+    /// #21 heartbeat while an approval waits: every 1.4 s, for 30 s at most.
+    public static let heartbeatEvery = 1.4, heartbeatFor = 30.0
+    /// #14 particles: a burst from the bottom edge, capped by the budget (140, or 50 in Low Power Mode).
+    public enum Burst: Sendable { case confetti, sparks, smoke, sweat }
+    public static func particles(_ b: Burst, lowPower: Bool) -> Int {
+        let want: Int
+        switch b { case .confetti: want = 60; case .sparks: want = 36; case .smoke: want = 14; case .sweat: want = 6 }
+        return min(want, lowPower ? 50 : 140)
+    }
 
     /// #16 idle life: every 20-40 s at rest one small action for 2.2 s; the night row from 22:00 to 06:00.
     public static let idleEvery = 20.0...40.0, idleHold = 2.2

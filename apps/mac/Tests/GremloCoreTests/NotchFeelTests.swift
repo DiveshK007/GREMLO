@@ -105,4 +105,17 @@ import Testing
         #expect(g.play(.snap, now: t.addingTimeInterval(0.05), screenShared: false, lineUp: false) != nil, "ticks don't hold up the snap")
         #expect(g.play(.tick, now: t.addingTimeInterval(1), screenShared: true, lineUp: false) == nil, "nothing during a share")
     }
+
+    @Test func pullFlickAndParticleNumbers() {
+        #expect(NotchFeel.band(0) == 0 && NotchFeel.band(-20) == 0)
+        #expect(abs(NotchFeel.band(100) - 100 * 0.55 / (1 + 100.0 / 320) * 2) < 1e-9)
+        #expect(NotchFeel.band(80) < NotchFeel.pullThreshold && NotchFeel.band(200) > NotchFeel.pullThreshold, "about 160 pt of drag opens the room")
+        #expect(NotchFeel.band(1000) - NotchFeel.band(900) < 100 - 1, "it resists the further you pull")
+        #expect(NotchFeel.particles(.confetti, lowPower: false) == 60 && NotchFeel.particles(.confetti, lowPower: true) == 50)
+        #expect(NotchFeel.particles(.sweat, lowPower: true) == 6)
+        #expect(NotchLive.size(.drop) == (320, 92) && NotchLive.size(.quick) == (460, 62))
+        var i = NotchLive.Inputs(); i.quick = true; i.waiting = 1
+        #expect(NotchLive.resolve(i, now: Date()) == .quick, "asked for this moment, it sits over a waiting approval")
+        #expect(Haptics.recipes[.heartbeat]?.count == 2)
+    }
 }

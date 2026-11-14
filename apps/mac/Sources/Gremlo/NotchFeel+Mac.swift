@@ -422,3 +422,84 @@ final class SoundKit {
         idle?.tolerance = 2
     }
 }
+
+// MARK: - Particles (#14)
+
+/// CAEmitterLayer bursts from the notch's bottom edge: the render server animates them, so the frame clock stays idle.
+/// Unflipped coordinates: down is -y, so gravity is a negative yAcceleration.
+enum Particles {
+    static func burst(_ k: NotchFeel.Burst, in root: CALayer, at p: CGPoint, width: CGFloat, count n: Int, palette: [NSColor]) {
+        let e = CAEmitterLayer()
+        e.emitterShape = .line
+        e.emitterMode = .points
+        e.emitterPosition = p
+        e.emitterSize = CGSize(width: width, height: 1)
+        e.emitterCells = cells(k, palette: palette)
+        e.beginTime = CACurrentMediaTime()
+        // each cell's rate x the 120 ms burst adds up to about n particles in all
+        let total = (e.emitterCells ?? []).reduce(Float(0)) { $0 + $1.birthRate }
+        if total > 0 { let scale = Float(n) / (total * 0.12); e.emitterCells?.forEach { $0.birthRate *= scale } }
+        root.addSublayer(e)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { e.birthRate = 0 }  // a burst, not a fountain
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { e.removeFromSuperlayer() }
+    }
+
+    private static func cells(_ k: NotchFeel.Burst, palette: [NSColor]) -> [CAEmitterCell] {
+        switch k {
+        case .confetti:
+            return palette.map { color in
+                let c = CAEmitterCell()
+                c.contents = rect(8, 4); c.color = color.cgColor
+                c.birthRate = 70; c.lifetime = 2.2; c.velocity = 220; c.velocityRange = 120
+                c.emissionLongitude = -.pi / 2; c.emissionRange = .pi * 0.9; c.yAcceleration = -520
+                c.spin = 4; c.spinRange = 8; c.scaleRange = 0.4; c.alphaSpeed = -0.4
+                return c
+            }
+        case .sparks:
+            let c = CAEmitterCell()
+            c.contents = rect(10, 2); c.color = NSColor(srgbRed: 0.91, green: 0.84, blue: 1, alpha: 1).cgColor
+            c.birthRate = 300; c.lifetime = 0.7; c.velocity = 320; c.velocityRange = 160
+            c.emissionLongitude = -.pi / 2; c.emissionRange = .pi; c.yAcceleration = -300; c.alphaSpeed = -1.4
+            return [c]
+        case .smoke:
+            let c = CAEmitterCell()
+            c.contents = dot(24); c.color = NSColor(white: 0.65, alpha: 0.35).cgColor
+            c.birthRate = 110; c.lifetime = 1.6; c.velocity = 30; c.velocityRange = 20
+            c.emissionLongitude = -.pi / 2; c.yAcceleration = 20  // it rises
+            c.scale = 0.5; c.scaleSpeed = 0.6; c.alphaSpeed = -0.25
+            return [c]
+        case .sweat:
+            let c = CAEmitterCell()
+            c.contents = dot(6); c.color = NSColor(srgbRed: 0.49, green: 0.78, blue: 1, alpha: 1).cgColor
+            c.birthRate = 50; c.lifetime = 0.9; c.velocity = 60; c.emissionRange = .pi / 3
+            c.emissionLongitude = -.pi / 2; c.yAcceleration = -600
+            return [c]
+        }
+    }
+
+    private static var images: [String: CGImage] = [:]
+    private static func image(_ key: String, _ w: Int, _ h: Int, _ draw: (CGContext) -> Void) -> CGImage? {
+        if let i = images[key] { return i }
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.setFillColor(NSColor.white.cgColor)
+        draw(ctx)
+        let i = ctx.makeImage()
+        images[key] = i
+        return i
+    }
+    static func rect(_ w: Int, _ h: Int) -> CGImage? { image("r\(w)x\(h)", w, h) { $0.fill(CGRect(x: 0, y: 0, width: w, height: h)) } }
+    static func dot(_ d: Int) -> CGImage? { image("d\(d)", d, d) { $0.fillEllipse(in: CGRect(x: 0, y: 0, width: d, height: d)) } }
+}
+
+extension NotchShapeLayer {
+    /// A pulse of the glow: the visible half of the approval heartbeat.
+    func beat() {
+        guard let glow = sublayers?.first as? CAShapeLayer else { return }
+        let a = CABasicAnimation(keyPath: "shadowOpacity")
+        a.fromValue = 0.95
+        a.toValue = glow.shadowOpacity
+        a.duration = 0.4
+        glow.add(a, forKey: "beat")
+    }
+}

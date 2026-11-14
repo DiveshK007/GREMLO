@@ -208,7 +208,7 @@ final class HuntController {
         case .tag:
             backend.growth.releaseTag()
             pet.trick(.moonwalk)
-        case .merged: dream(.merge); if pet.path == .floor { pet.set(.celebrate, then: .walk) }
+        case .merged: dream(.merge); backend.live.burst(.sparks); if pet.path == .floor { pet.set(.celebrate, then: .walk) }
         case .commit: if pet.path == .floor && !pet.busy { pet.set(.greet, then: .walk) }
         case .forcePush: if pet.path == .floor { pet.set(.covereyes, then: .walk) }
         case .conflict: break
@@ -332,11 +332,19 @@ final class DropView: NSView {
     var onScroll: ((NSEvent) -> Void)?
     override func scrollWheel(with e: NSEvent) { onScroll?(e) }
     var onDropped: (() -> Void)?
+    /// Fingers resting on the trackpad (the approval heartbeat plays only with one down).
+    var onTouches: ((Int) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL, .string, .png, .tiff])
+        allowedTouchTypes = [.indirect]
+        wantsRestingTouches = true
     }
+    private func touched(_ e: NSEvent) { onTouches?(e.touches(matching: .touching, in: self).count) }
+    override func touchesBegan(with e: NSEvent) { touched(e) }
+    override func touchesEnded(with e: NSEvent) { touched(e) }
+    override func touchesCancelled(with e: NSEvent) { onTouches?(0) }
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { onDragging?(true); return .copy }
@@ -402,6 +410,7 @@ final class ScrubView: NSView {
         return min(max(Int(x / (bounds.width / CGFloat(steps.count))), 0), steps.count - 1)
     }
     private func show(_ i: Int?) {
+        if let i, i != picked { Feel.haptic(.tick) }  // #20 texture: one tick per bar, paired with the bar growing
         picked = i
         needsDisplay = true
         guard let i else { return }

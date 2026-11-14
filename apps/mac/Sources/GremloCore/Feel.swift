@@ -94,7 +94,7 @@ public struct VoiceLimiter: Sendable {
 
 // MARK: - Haptics (HAPTICS.md)
 
-public enum Haptic: String, CaseIterable, Sendable { case tick, snap, boop, purr, knock, thud, stomp, allow, deny, hatch }
+public enum Haptic: String, CaseIterable, Sendable { case tick, snap, boop, purr, knock, thud, stomp, allow, deny, hatch, heartbeat }
 public enum HapticPattern: String, Sendable { case alignment, levelChange, generic }
 public enum HapticLevel: String, CaseIterable, Sendable { case on, subtle, off }
 
@@ -106,6 +106,7 @@ public enum Haptics {
         .stomp: [(.levelChange, 0), (.levelChange, 0.07), (.levelChange, 0.14)],
         .allow: [(.levelChange, 0)], .deny: [(.generic, 0), (.generic, 0.08)],
         .hatch: [(.alignment, 0), (.alignment, 0.15), (.alignment, 0.30), (.levelChange, 0.60)],
+        .heartbeat: [(.generic, 0), (.generic, 0.14)],  // an approval still waiting, finger on the pad
     ]
 
     /// The Mac map: each moment a finger is on the pad, and its haptic. Celebrate has none on the Mac.
