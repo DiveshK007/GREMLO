@@ -1,266 +1,206 @@
-# Gremlo
+<p align="center"><img src="docs/media/readme/banner.png" width="100%" alt="Gremlo. Your agent makes you wait. Gremlo makes the wait pay."></p>
 
-<p align="center"><img src="docs/media/gremlo-teaser.gif" width="720" alt="Gremlo springs out of the notch"></p>
+<p align="center">
+  <b>A tiny pet that lives behind your MacBook notch, reacts to Claude Code, and earns from one sponsored line while your agent works.</b>
+</p>
 
-**Your agent makes you wait. Gremlo makes the wait pay.**
+<p align="center">
+  <a href="#try-it-in-two-minutes">Try it</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#proof">Proof</a> ·
+  <a href="#whats-real">What's real</a> ·
+  <a href="#run-the-full-loop-from-source">Run from source</a>
+</p>
 
-Gremlo is a tiny desktop pet that lives behind a door in your MacBook notch. It reacts live to Claude Code: it drops
-out when the agent starts working, knocks when the agent needs your approval (you can answer from the notch), and
-celebrates when the run is done. While the agent works, it holds up one short sponsored line. Brands pay per verified
-view, the views are settled to the pet on NEAR testnet, and a share of every settlement goes into the pet's compute
-budget, which its AI calls are charged against. One human, one pet, checked with World ID.
+<p align="center">
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-0B0B0B?logo=apple&logoColor=white">
+  <img alt="Works with Claude Code" src="https://img.shields.io/badge/works%20with-Claude%20Code-D97757">
+  <img alt="NEAR testnet" src="https://img.shields.io/badge/NEAR-testnet-2ED3B7">
+  <img alt="World ID" src="https://img.shields.io/badge/World%20ID-one%20human%2C%20one%20pet-FFC93C">
+  <!-- TODO(you): add a license badge once LICENSE exists -->
+</p>
 
-Prior art: sk-ruban/notchi is an open-source notch companion for Claude Code. Gremlo differs by its sponsored-impression economy, onchain settlement and a compute budget the pet pays its own thinking from.
+<!-- TODO(you): upload media/gremlo-explainer-v2-small.mp4 (YouTube, or drag it into a GitHub issue to get a user-attachments link) and replace VIDEO_URL -->
+<p align="center"><a href="VIDEO_URL"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (4:40)"></a></p>
 
-Originally built from scratch at ETHGlobal Mumbai 2026 as **Notchi**, and renamed Gremlo for 1.0 (sk-ruban/notchi
-owns that name). The hackathon build is described under [History](#history).
+## What it does
 
-## How it works
+<table>
+<tr>
+<td width="33%" valign="top"><img src="docs/media/readme/notch.gif" alt="The pet reporting from the notch"><br><b>It lives in the notch.</b><br>It drops out when Claude Code starts working, knocks when the agent needs your approval, and celebrates when the run is done.</td>
+<td width="33%" valign="top"><img src="docs/media/readme/brand.gif" alt="A brand funding a campaign"><br><b>It holds one sponsored line.</b><br>A brand writes a line of 6 to 40 characters and pays into a vault from its own wallet. The line shows only while your agent works, labelled AD.</td>
+<td width="33%" valign="top"><img src="docs/media/readme/books.gif" alt="The pet's earnings in the menu bar"><br><b>It keeps its own books.</b><br>Each verified view is settled onchain. Most goes to you; a share goes into the pet's compute budget, which its AI calls are charged against.</td>
+</tr>
+</table>
 
-```
-Claude Code hooks ──> Mac app (notch, menu bar, 127.0.0.1:47474)
-                         │  signed views, think calls (species, stage), approvals stay local
-                         v
-                      Server (Node) ──> NEAR AI Cloud: private inference in a TEE, a completion id per call
-                         │          ──> World ID: one human, one pet (proof checked on the server)
-                         │          ──> Vault on NEAR testnet (contracts-near): campaigns, settlements,
-                         │              the pet's compute budget, one charge per AI call with its completion id
-                         ^
-                      Web app (Next.js): get your pet, your pet, fund a campaign, park, gallery, money
-```
+All three clips are real screen recordings from the final run on 15 Nov 2026.
 
-1. **Get a pet.** On `/pet` you connect a NEAR wallet and prove you are a person with World ID. The server checks the
-   proof and registers the pet in the vault with your payout account.
-2. **A brand funds a campaign.** On `/brand` the brand writes up to four lines of 6 to 40 characters (or picks from
-   hooks NEAR AI writes, each with its completion id) and pays into the vault from its own wallet.
-3. **The pet holds the line while your agent works.** A view counts only when the sign has been on screen for 5
-   seconds, the screen is unlocked, not shared and not recorded, and someone used the Mac in the last 5 minutes; at most
-   12 lines an hour. Views count only from a Mac paired to the pet (one wallet signature on `/pair`): each is a report
-   signed by its Secure Enclave and appended to the campaign's public log; `gremlo verify <campaign>` replays it
-   against the bill.
-4. **Settlement feeds the pet.** The server settles views in the vault: most goes to the payout account, a share goes
-   into the pet's compute budget. Each NEAR AI call is charged a fixed per-tier rate in NEAR against that budget, with
-   the TEE-signed completion id in the log. The operator holds the NEAR AI credits; the pet can't buy credits directly
-   yet. Mood follows the real budget: thriving, stable, hungry, or asleep (no paid calls).
+## Try it in two minutes
 
-## Install
-
-Needs macOS 13 or later and the Xcode Command Line Tools (`xcode-select --install`).
+You need a Mac on macOS 13 or later and the Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash
 ```
 
-This builds Gremlo from source on your Mac (a few minutes the first time), puts it in `~/Applications/Gremlo.app` and
-starts it. Run the same line again to update. Because it's built on your Mac, macOS opens it without a warning.
+That builds Gremlo from source on your Mac (a few minutes the first time), puts it in `~/Applications/Gremlo.app` and starts it. Then:
 
-Or download the `.dmg` from [Releases](https://github.com/DiveshK007/GREMLO/releases) (none yet: the first appears when a
-`v*` tag is pushed) and do this the first time:
+1. Click the Gremlo icon in the menu bar.
+2. Open **Settings → General → Claude Code → Connect**.
+3. Start a Claude Code run and watch the notch.
 
-1. Open the dmg and drag Gremlo onto Applications.
-2. Open Gremlo. When macOS says it was not opened, click Done.
-3. Open System Settings, Privacy & Security, scroll to Security, and click Open Anyway next to Gremlo. Confirm with your password, then click Open.
+Run the same line again to update. To quit, use the bottom of the menu bar panel.
 
-Or, in Terminal, once: `xattr -dr com.apple.quarantine /Applications/Gremlo.app`
+> **No hosted server yet.** The app talks to `http://localhost:8787` unless `GREMLO_SERVER` is set. To see sponsored lines, earnings and the pet's thoughts, run the server and web app yourself: [Run the full loop from source](#run-the-full-loop-from-source).
 
-The app isn't notarized yet: there's no Apple Developer account behind it. The dmg is ad hoc signed and built by this
-repo's release workflow from the tagged source, so macOS can't check who made it. That's what the steps above get past.
+<details>
+<summary>Why build from source, and what about a download?</summary>
 
-There's no hosted server yet. The app talks to `http://localhost:8787` unless `GREMLO_SERVER` is set, so run the server
-from the Quickstart below. To set it for an app opened from Finder: `launchctl setenv GREMLO_SERVER <url>`, then reopen it.
+There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. A `.dmg` will appear under [Releases](https://github.com/DiveshK007/GREMLO/releases) when the first `v*` tag is pushed; it will be ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`.
+</details>
 
-Set your pet's name in the menu bar: Settings, Pet, Name (press Return; Gremlo restarts to switch). `GREMLO_PET` still
-wins when it's set. Quit Gremlo from the bottom of its menu bar panel (or ⌘Q while the panel is open), or from
-Settings, General.
+## How it works
 
-## Quickstart
+<p align="center"><img src="docs/media/readme/architecture.png" width="100%" alt="Architecture: Claude Code hooks, the Mac app, the server, NEAR AI Cloud, World ID and the vault on NEAR testnet"></p>
 
-Needs macOS 13+ with Swift 5.9+, Node 22 (the version CI uses), and Rust only for the contracts. Steps 1 and 2 were
-checked from a fresh clone in `/tmp` on 2026-11-13. Step 3 needs your own keys and wasn't part of that check.
+<p align="center"><img src="docs/media/readme/flow.png" width="100%" alt="One view, start to finish: brand, sign, proof, settle, budget, think"></p>
 
-```bash
-# 1. clone
-git clone https://github.com/DiveshK007/GREMLO.git && cd GREMLO
+1. **Get a pet.** On `/pet` you connect a NEAR wallet and prove you are a person with World ID. The server checks the proof and registers the pet in the vault with your payout account.
+2. **A brand funds a campaign.** On `/brand` the brand writes up to four lines (or picks from hooks NEAR AI writes, each with its completion id) and pays into the vault from its own wallet.
+3. **The pet holds the line while your agent works.** Each view is a report signed by your Mac's Secure Enclave and appended to the campaign's public log.
+4. **Settlement feeds the pet.** The server settles views in the vault. Most goes to the payout account; a share goes into the pet's compute budget. Each NEAR AI call is charged a fixed per-tier rate against that budget, with the TEE-signed completion id in the log. The pet's mood follows the real budget: thriving, stable, hungry, or asleep.
 
-# 2. build and test everything (no keys needed)
-(cd apps/mac && swift build && swift test)                     # Mac app + GremloCore: 92 tests
-(cd apps/server && npm ci && npm test)                         # 75 tests
-(cd packages/brain && npm test)                                # 16 tests, no dependencies
-(cd apps/web && npm ci && npm run typecheck && npm run build && npm test)   # 4 tests (Node 22; on Node 20 use npx tsx --test lib/*.test.ts)
-(cd contracts-near && cargo test)                              # vault: 3 unit + 18 integration tests
-(cd contracts-accounts && cargo test)                          # factory and purse: 14 tests
+### What counts as a view
 
-# 3. run it (needs keys)
-cp apps/server/.env.example apps/server/.env    # fill in: NEAR operator account and key, vault id, NEAR AI key, World app id
-cp apps/web/.env.example apps/web/.env          # fill in: server URL, vault id, World app id
-(cd apps/server && npm start)                   # :8787
-(cd apps/web && npm run dev)                    # :3000
-(cd apps/mac && swift run Gremlo)               # then menu bar → Settings → General → Claude Code → Connect
-```
+<p align="center"><img src="docs/media/readme/viewlog.png" width="100%" alt="Two real entries from the campaign log: shown for 5340 ms, unlocked, visible, signed, and hash-chained"></p>
 
-Every env var name is listed in [HANDOFF.md](HANDOFF.md). Values live only in your own `.env` files.
+A view counts only when all of these hold:
+
+- the sign was on screen for 5 seconds;
+- the screen was unlocked, not shared and not recorded;
+- someone used the Mac in the last 5 minutes;
+- the Mac is paired to the pet (one wallet signature on `/pair`);
+- at most 12 lines an hour.
+
+A log entry holds the campaign, which line was shown, for how long, the visible and unlocked flags, idle seconds, the pet key and the signature. `gremlo verify <campaign>` replays the log against the bill.
+
+### Where the money goes
+
+<p align="center"><img src="docs/media/readme/jars.png" width="100%" alt="One view paid 0.003 NEAR: 0.0024 to the owner and 0.0006 to the compute budget"></p>
+
+In the final run each view paid 0.003 NEAR: 0.0024 to the owner's payout account and 0.0006 (the 20% compute share) into the pet's budget. A smart-model call cost 0.0005 and a cheap one 0.0001, which took the budget back to zero.
+
+## Proof
+
+<p align="center"><img src="docs/media/readme/ledger.png" width="100%" alt="The final run: ten transactions on NEAR testnet and the compute budget they moved"></p>
+
+The final run on `vault.gremlo.testnet`, 15 Nov 2026. Every hash was checked on testnet RPC: each ended in `SuccessValue`.
+
+| # | What happened | Call | Tx |
+|---|---|---|---|
+| 1 | Pet registered after the World ID check | `register_pet` | [`5xuUysyi…fWho`](https://testnet.nearblocks.io/txns/5xuUysyigMP4bARt3WdRHTW9byCyKiifiwi4oPd8fWho) |
+| 2 | Pet verified | `set_verified` | [`6EAhsDt7…zu9X`](https://testnet.nearblocks.io/txns/6EAhsDt7Ae6mqq1ipxBgP22Yra9ccWB1fSJ9sdsdzu9X) |
+| 3 | Brand funds campaign 1 with 0.1 NEAR | `create_campaign` | [`214EyrLM…ugn7`](https://testnet.nearblocks.io/txns/214EyrLM5Jwqsn2R2gDbGrnBYXsKQsLnZXvCXXTougn7) |
+| 4 | View 1 settled: 0.0024 NEAR paid, +0.0006 to the budget | `settle_impressions` | [`FFdmieVQ…QUQB`](https://testnet.nearblocks.io/txns/FFdmieVQ26YyJcHwkvcSnSveA4EfG6SxYUE2JwWBQUQB) |
+| 5 | Smart-model call charged: 0.0005 NEAR | `charge_compute` | [`E1vh3VKe…MH1d`](https://testnet.nearblocks.io/txns/E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d) |
+| 6 | Cheap-model call charged: 0.0001 NEAR | `charge_compute` | [`GHMAHr4a…rBzq`](https://testnet.nearblocks.io/txns/GHMAHr4ad8hZKJf7jR9Mgz92K1wXKBh4srFTbanCrBzq) |
+| 7 | Brand tops up campaign 1 | `top_up` | [`Akz9UDRZ…tNcr`](https://testnet.nearblocks.io/txns/Akz9UDRZqkSM5AjjEubTZhfv6QD7U52kjsPQ63R4tNcr) |
+| 8 | View 2 settled: 0.0024 NEAR paid, +0.0006 to the budget | `settle_impressions` | [`CNvNmMvB…a95M`](https://testnet.nearblocks.io/txns/CNvNmMvBLdgdXzCUFr852CRdjRCrWb43sVLjSuoUa95M) |
+| 9 | Smart-model call charged: 0.0005 NEAR | `charge_compute` | [`8gDVVjKk…1V9Z`](https://testnet.nearblocks.io/txns/8gDVVjKkHYh7VkGWpwvJ5hS7AdpYUUAAWMRVZuWj1V9Z) |
+| 10 | Cheap-model call charged: 0.0001 NEAR | `charge_compute` | [`J6a5MxUP…U5cg`](https://testnet.nearblocks.io/txns/J6a5MxUP1EV5591XNVRV8i4B194hAuGnv8wW8eggU5cg) |
+
+`npm run verify chatcmpl-cc26d4e5-abf1-4837-b10f-7543f37ce156` returns **SIGNED**: the signature recovers to `0xfe0071895500a9755c18044948ab4f4e1a7f337e`, an attested key of the NEAR TEE that served the call.
+
+<p align="center"><img src="docs/media/readme/verify.png" width="820" alt="npm run verify returns SIGNED"></p>
+
+Accounts, the deploy transaction, the vault state after the run and the earlier dry run are in [PROOF.md](PROOF.md).
 
 ## What's real
 
-### Live on testnet
-| Claim | Proof |
-|---|---|
-| The vault is deployed and initialised as `vault.gremlo.testnet`, with `operator.gremlo.testnet` as operator; its code hash matches a local build of `contracts-near` | [PROOF.md, final run](PROOF.md#final-run-accounts-gremlotestnet) · deploy tx [`12bj3uDk…J4bq`](https://testnet.nearblocks.io/txns/12bj3uDkB6ufrMmKS7m4s85xma9CC1zhgevS7eMbJ4bq) |
-| The full loop ran end to end: pet registered after the World ID check, verified, campaign funded, views settled, the compute budget refilled, NEAR AI calls charged against it with their completion ids | [PROOF.md, the loop (final run, 15 Nov 2026)](PROOF.md#the-loop-final-run-15-nov-2026) on `vault.gremlo.testnet`: two views settled, four NEAR AI calls charged, each paid from the views' share of the budget. First pass: [dry run, 12 Nov](PROOF.md#the-loop-dry-run-12-nov-2026) |
-| A NEAR AI completion is signed by the attested TEE that served it (`npm run verify` in `apps/server`) | [PROOF.md, NEAR AI Cloud](PROOF.md#near-ai-cloud-private-inference-in-a-tee) |
+| | Status | Detail |
+|---|---|---|
+| Vault on NEAR testnet | **Live** | `vault.gremlo.testnet`, operator `operator.gremlo.testnet`; the code hash matches a local build of `contracts-near` |
+| The full loop | **Live on testnet** | register, verify, fund, two views settled, four NEAR AI calls charged, each with its completion id |
+| TEE-signed inference | **Live** | one completion verified with `npm run verify` |
+| World ID | **Simulator** | the final run used the World ID simulator, not a real Orb or app proof |
+| iPhone and Watch apps | **Simulator only** | `apps/ios` builds and launches in the simulators; signing and TestFlight need an Apple Developer account |
+| The pet's own purse | **Built, not deployed** | factory and purse contracts in `contracts-accounts` (14 tests); pets use the vault's compute budget for now |
+| Hosted server and website | **Not yet** | everything runs locally |
+| Signed Mac download | **Not yet** | build from source with the install line |
+| Mainnet | **Not yet** | nothing is on mainnet |
 
-### Built, simulator only
-| Claim | Evidence |
-|---|---|
-| iPhone app with Live Activity, widgets and lock-screen approvals; Watch app and complication | `apps/ios`; build, install and launch in the iOS and watchOS 27.2 simulators ([PLAN_1.0](docs/PLAN_1.0.md), M11). Signing, push and TestFlight need an Apple Developer account |
+Known limits:
 
-### Built, not deployed
-| Claim | Evidence |
-|---|---|
-| The pet's purse: a factory and a purse contract, with a Mac key limited to `pay_inference` and per-call and daily caps. The app side is wired: a pet with a purse pays for each thought from its own account, signed on the Mac, and the server counts a payment only once the chain shows it | `contracts-accounts` (14 tests), `apps/server/src/purse.ts` (tested), `GremloCore/Near.swift` (byte-identical to near-api-js). Not deployed; setup steps in [contracts-accounts/README.md](contracts-accounts/README.md). Pets without a purse use the vault's compute budget |
-
-### Known limits
-- Not self-funded beyond the wording above: AI calls are charged against the pet's budget (or paid from its purse, once deployed) at a fixed per-tier rate, not the real USD bill, and the operator holds the NEAR AI credits.
-- The platform fee isn't published, so it shows as `—`.
-- A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom/system recording are).
-- Shortcuts lists the App Intents only from an Xcode-built bundle; `gremlo://` links and the `gremlo` CLI work now.
+- AI calls are charged at a fixed per-tier rate in NEAR, not the real USD bill, and the operator holds the NEAR AI credits. The pet can't buy credits directly yet.
+- The platform fee isn't published.
+- A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom or system recording are).
 - Community species can't be installed from the gallery yet.
-- The pet page shows the species and stage only after the Mac has thought once.
-- The redesigned menu bar, Settings and web pages haven't been watched running yet.
-- The Mac app isn't notarized (no Apple Developer account yet), and there's no hosted server; see Install.
 - Windows and Linux aren't built.
 
-## Repo
+## Run the full loop from source
+
+Needs macOS 13+ with Swift 5.9+, Node 22, and Rust only for the contracts.
+
+```bash
+git clone https://github.com/DiveshK007/GREMLO.git && cd GREMLO
+
+cp apps/server/.env.example apps/server/.env    # NEAR operator account and key, vault id, NEAR AI key, World app id
+cp apps/web/.env.example apps/web/.env          # server URL, vault id, World app id
+
+(cd apps/server && npm ci && npm start)         # :8787
+(cd apps/web && npm ci && npm run dev)          # :3000
+(cd apps/mac && swift run Gremlo)               # then menu bar → Settings → General → Claude Code → Connect
+```
+
+Then open `http://localhost:3000/pet` to get a pet, `/pair` to pair this Mac, and `/brand` to fund a campaign. Every env var name is listed in [HANDOFF.md](HANDOFF.md).
+
+<details>
+<summary>Build and test everything (no keys needed)</summary>
+
+```bash
+(cd apps/mac && swift build && swift test)                                   # Mac app + GremloCore: 114 tests
+(cd apps/server && npm ci && npm test)                                       # 79 tests
+(cd packages/brain && npm test)                                              # 16 tests
+(cd apps/web && npm ci && npm run typecheck && npm run build && npm test)    # 4 tests
+(cd contracts-near && cargo test)                                            # vault: 3 unit + 18 integration tests
+(cd contracts-accounts && cargo test)                                        # factory and purse: 14 tests
+```
+</details>
+
+<details>
+<summary>Deploy the vault yourself</summary>
+
+Build with `cargo near build non-reproducible-wasm` in `contracts-near`, then deploy with the near CLI. Steps are in [docs/DEPLOY.md](docs/DEPLOY.md).
+</details>
+
+## Repo map
 
 | Part | Where |
 |---|---|
-| Mac app: eight species, the plate, Notch Live and approvals, growth and the Closet, bug hunt, git moods, room, focus, privacy rules, stream mode, postcard, team and park | `apps/mac` (rules and tests in `GremloCore`) |
-| `gremlo` CLI, `gremlo://` links, Shortcuts | `apps/mac/Sources/GremloCLI` |
-| Server: campaigns, signed sightings with a public log, A/B, moments, reports, park, relay, gallery, phone mailbox | `apps/server` |
+| Mac app: eight species, the sign, Notch Live and approvals, growth and the Closet, bug hunt, git moods, room, focus, privacy rules, stream mode | `apps/mac` (rules and tests in `GremloCore`) |
+| `gremlo` CLI, `gremlo://` links | `apps/mac/Sources/GremloCLI` |
+| Server: campaigns, signed views with a public log, settlement, park, gallery | `apps/server` |
 | NEAR AI calls, mood to model, claim checks | `packages/brain` |
-| Web: the site at `/` and the app pages | `apps/web` |
-| iPhone, Watch | `apps/ios` |
+| Web: the site and the app pages | `apps/web` |
+| iPhone and Watch (simulator only) | `apps/ios` |
 | VS Code and Cursor extension, Raycast extension | `apps/vscode`, `apps/raycast` |
 | Vault (campaigns, compute budget) | `contracts-near` |
 | Factory and purse (not deployed) | `contracts-accounts` |
 
-Design source: `docs/design/1.0/`. Build plan and open items: `docs/PLAN_1.0.md`. Handoff: `HANDOFF.md`.
+## Prior art and history
 
-## History
+[sk-ruban/notchi](https://github.com/sk-ruban/notchi) is an open-source notch companion for Claude Code. Gremlo differs by its sponsored-view economy, onchain settlement and the compute budget its AI calls are charged against.
 
-The ETHGlobal Mumbai 2026 build, as written at the time. It ran on a different stack and is kept on the
-`ethglobal-0g` branch; nothing below describes `main`.
+Gremlo started at ETHGlobal Mumbai 2026 as **Notchi**, on a different stack. That build lives on the `ethglobal-0g` branch and is described in [docs/HISTORY.md](docs/HISTORY.md); nothing there describes `main`.
 
-> On one laptop, during this hackathon, we spent 1.6 hours waiting on Claude Code (1,589 agent events), measured by Gremlo's own hook log.
-### What it does
+## Team
 
-1. **A developer gets a pet.** They prove they are a unique human with World ID. One person, one pet, so brands only pay real screens. The pet is registered onchain with a payout address only the owner can change.
-2. **A brand funds a campaign.** The brand picks a tone (bold, calm or dev-meme) and Gremlo writes three hooks of up to 40 characters on 0G Private Computer (each shows its request ID). The brand picks one and pays into the `CampaignVault` contract on 0G Galileo. Unspent budget is refunded when the campaign ends.
-3. **The pet works.** Claude Code hooks tell the pet what the agent is doing: working, waiting for permission, idle, done, failed. While the agent works, the pet holds the brand's line. Each event asks the pet's 0G brain what to do next.
-4. **The pet gets paid.** Impressions are settled onchain to the pet's payout address. The pet's mood comes from its real balance: thriving, stable, hungry or asleep.
+<!-- TODO(you): names, roles, X handles -->
+Built by [@DiveshK007](https://github.com/DiveshK007).
 
-### Proof it is real
+## License
 
-| What | Where |
-|---|---|
-| CampaignVault (verified) | [0xe74a2dd7C3acFdf7180e43cB41644EA386f9B7DB](https://chainscan-galileo.0g.ai/address/0xe74a2dd7C3acFdf7180e43cB41644EA386f9B7DB) on 0G Galileo (16602) |
-| Pet registered after a real World ID proof | [0x24340bcc...52148f3](https://chainscan-galileo.0g.ai/tx/0x24340bccc045b7ca596aaf05e32e8331445ca82b77721f755a3a47e1e52148f3) |
-| Brand campaign funded | [0x655415b2...a370f30](https://chainscan-galileo.0g.ai/tx/0x655415b2eb9b5de7fe80d53849713227f53ed19440b009248400d318ba370f30) |
-| Ad lines written on 0G | request `ecbcab9c-96ee-4dc0-880d-e3622419f7d7` |
-| Pet decision on 0G | request `61eeed8e-7f32-4317-bcf5-e573d35553a2` |
-| Campaign #2 funded | [0x208f143c...aba26d5](https://chainscan-galileo.0g.ai/tx/0x208f143c6b049278d851d912a6de8b937936af27cee1fd93a5ec906caaba26d5) |
-| Impressions settled to the pet | [0x45cf8fed...ab651704](https://chainscan-galileo.0g.ai/tx/0x45cf8fed373b3fc9db171297a7f96df4b649996c06de325f4be16be9ab651704) |
+<!-- TODO(you): add a LICENSE file (MIT is the usual choice) and name it here -->
+No license yet.
 
-### The pet
-
-- **Hidden door.** The notch looks like stock hardware. The door only appears while the pet crosses it: it fades in, glows, swings open, closes and fades out.
-- **Ticker sign.** While the agent works the pet walks slowly holding the sponsored line. Lines that don't fit scroll like a news ticker and pause when your cursor is on the pet.
-- **Walks every edge.** It walks the bottom, climbs the side wall and walks the top edge upside down on its way home. The sign and bubbles stay upright.
-- **Three avatars.** Gremlo, Gremlo Ink and Gremlo Signal, switched live from the menu-bar popover.
-- **Settings.** Sounds, sponsored lines on/off, ticker, walk speed, how long before it goes home, and a "Send pet home" button.
-- **Reminders.** After the agent stops or asks for approval, Gremlo reminds you every 2, 5 or 10 minutes (or never) until your next prompt.
-- **Stays out of full-screen apps.** The pet shows on every normal desktop but never covers full-screen apps; a setting shows it there too. Impressions only count while the sign is actually on screen.
-- **Reacts to you.** Hover and it turns to smile; click it repeatedly and it gets annoyed, then calms down after 6 seconds. It never interrupts work, approvals or what its 0G brain says.
-
-### What counts as a paid view
-
-A view is paid only when all of these hold, measured on the Mac and sent inside the device-signed request:
-
-- the sign was on screen for at least 5 seconds;
-- the screen was unlocked;
-- the sign's window was visible (not on another Space, not behind a full-screen app);
-- someone used the keyboard or mouse in the last 5 minutes.
-
-The server refuses views that break a rule and says which one. At most one view per campaign per minute and 120 a day per pet. Views then wait out the holdback and the fraud rules before they are paid.
-
-### How each sponsor is used
-
-**0G (Private Computer).** The pet's brain. Every pet decision and every set of ad lines is an inference call on 0G Private Computer (TEE routing), and the request ID is shown in the UI. We use 0G's own `0gm-1.0-35b-a3b` for everyday decisions and `glm-5.3` when the pet is thriving or writing ad lines. If 0G can't be reached, the pet goes to sleep and says why. It never invents a decision. The campaign contract also lives on 0G Galileo.
-
-**World (World ID).** One human, one pet. Ad networks die from fake views, so a pet only gets registered (and paid) after a World ID proof. The proof is checked on our server against the World Developer Portal, the nullifier is stored, and a second pet from the same person is refused with "You already have a pet."
-
-### Architecture
-
-```
-Claude Code hooks ──> Mac app (Swift, notch window, hook server on 127.0.0.1:47474)
-                          │  GET /campaigns/active, GET /pets/:name, POST /pets/:name/think
-                          v
-                     Server (Node/TS) ──> 0G Private Computer (inference, request IDs)
-                          │           ──> World Developer Portal (proof verify)
-                          │           ──> CampaignVault on 0G Galileo (register, settle)
-                          ^
-                     Web app (Next.js): /pet (World ID) and /brand (fund, refund)
-```
-
-| Folder | What |
-|---|---|
-| `apps/mac` | Notch overlay, door, sprites, state machine, menu-bar popover, hook server |
-| `apps/server` | Campaigns, impressions, settlement, World verify, think route |
-| `apps/web` | Pet registration and brand checkout |
-| `packages/brain` | 0G calls, mood to model, safe-stop |
-| `contracts` | `CampaignVault.sol`, Foundry tests, deploy script |
-
-### Tests
-
-- Contracts: 20 Foundry tests including fuzzing (`forge test`). The fuzz test checks the pet's earnings plus what's left always equal the budget.
-- Server: 24 tests (`npm test` in `apps/server`).
-- Brain: 6 tests (`npm test` in `packages/brain`).
-
-### Run it
-
-```bash
-# 1. contracts (already deployed; only to redeploy)
-cd contracts && forge test
-
-# 2. server
-cd apps/server && cp .env.example .env   # fill in keys
-npm install && npm start                 # :8787
-
-# 3. web
-cd apps/web && cp .env.example .env.local
-npm install && npm run dev               # :3000
-
-# 4. Mac app
-cd apps/mac && swift run
-
-# 5. hooks: merge pet-hooks.user-settings.json into ~/.claude/settings.json
-```
-
-### Hacky bits (what was hard)
-
-- **Wallets can't estimate gas on 0G Galileo.** Core showed "pre-execution unavailable" and transactions reverted with no reason. We set the gas limit explicitly in the web app.
-- **World ID v4 vs legacy proofs.** IDKit returned the legacy proof shape when legacy proofs were allowed, but the v4 verify endpoint only accepts v4 results. We request v4 proofs and let the portal's verify response decide, reading the nullifier from the field each version binds (so a client can't inject its own nullifier).
-- **Claude Code hooks must never slow the agent.** Every hook is a `curl -m 1 ... || true` to localhost. A closed pet app never blocks or changes Claude Code, and hooks never return a decision. The local log keeps only metadata (time, event, session, tool), never prompts or file contents.
-- **Notch geometry.** The door position comes from `NSScreen.safeAreaInsets` and the auxiliary top areas. Macs without a notch get the door under the menu bar.
-- **Honest moods.** The mood is read from the pet's real onchain balance, cached for 30s. If the RPC fails, the pet is "asleep: can't read balance" rather than guessing.
-
-### Known limits
-
-- Impressions are reported by the client in v1. World ID's one-human-one-pet rule and a one-per-minute limit per pet per campaign (checked on the server) are the defence. Reports are not signed yet.
-- The pet does not yet top up its own 0G compute account from its earnings. Its 0G calls are paid from the team's account. Next step: the pet's wallet deposits into its own 0G Router balance.
-- The World flow was tested with World ID staging.
-- ENS: we started giving each pet an ENS subname for its public status and payout; Sepolia moved .eth registration to ENSv2 during the hackathon, so this ships next.
-
-## AI usage
-
-See [docs/AI_USAGE.md](docs/AI_USAGE.md).
+AI usage: [docs/AI_USAGE.md](docs/AI_USAGE.md).
