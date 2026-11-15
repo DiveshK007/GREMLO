@@ -18,7 +18,7 @@ body { --accent-safe: #C1442D; --accent-text: var(--accent); }
 html[data-theme="light"] body { --accent-text: var(--accent-safe); }
 * { box-sizing: border-box; }
 html { background: var(--ink); }
-body { background: var(--ink); color: var(--paper); font: 400 16px/1.55 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; transition: --accent .7s ease; }
+body { background: var(--ink); color: var(--paper); font: 400 16px/1.55 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 html.lenis, html.lenis body { height: auto; }
 .lenis.lenis-smooth { scroll-behavior: auto !important; }
 canvas { image-rendering: pixelated; display: block; }
