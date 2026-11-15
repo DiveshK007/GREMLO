@@ -7,6 +7,7 @@
 <p align="center">
   <a href="#try-it-in-two-minutes">Try it</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#the-full-walkthrough">The full walkthrough</a> ·
   <a href="#proof">Proof</a> ·
   <a href="#whats-real">What's real</a> ·
   <a href="#run-the-full-loop-from-source">Run from source</a>
@@ -88,6 +89,12 @@ A log entry holds the campaign, which line was shown, for how long, the visible 
 <p align="center"><img src="docs/media/readme/jars.png" width="100%" alt="One view paid 0.003 NEAR: 0.0024 to the owner and 0.0006 to the compute budget"></p>
 
 In the final run each view paid 0.003 NEAR: 0.0024 to the owner's payout account and 0.0006 (the 20% compute share) into the pet's budget. A smart-model call cost 0.0005 and a cheap one 0.0001, which took the budget back to zero.
+
+## The full walkthrough
+
+<p align="center"><a href="https://youtu.be/-QK3U_Z1n5s"><img src="docs/media/readme/explainer.png" width="820" alt="Watch the full walkthrough (4:40)"></a></p>
+
+4:40. One view from start to finish: the brand's campaign, the signed view, settlement on NEAR testnet, the compute budget, and the ten transactions from the final run.
 
 ## Proof
 
