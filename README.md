@@ -20,7 +20,7 @@
   <!-- TODO(you): add a license badge once LICENSE exists -->
 </p>
 
-<p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (4:40)"></a></p>
+<p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (1:30)"></a></p>
 
 ## What it does
 
