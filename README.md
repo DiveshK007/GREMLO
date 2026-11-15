@@ -20,8 +20,7 @@
   <!-- TODO(you): add a license badge once LICENSE exists -->
 </p>
 
-<!-- TODO(you): upload media/gremlo-explainer-v2-small.mp4 (YouTube, or drag it into a GitHub issue to get a user-attachments link) and replace VIDEO_URL -->
-<p align="center"><a href="VIDEO_URL"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (4:40)"></a></p>
+<p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (4:40)"></a></p>
 
 ## What it does
 
