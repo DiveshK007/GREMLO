@@ -37,7 +37,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- menu bar + the real notch ---------- */
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: rgba(11,11,11,.9); }
-.bar { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 50; height: 38px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: linear-gradient(rgba(11,11,11,.92), rgba(11,11,11,.6)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.bar { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 50; height: 38px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: linear-gradient(rgba(11,11,11,.97), rgba(11,11,11,.82)); }
 .bar .logo { display: flex; align-items: center; gap: 8px; height: 38px; font: 800 17px/1 var(--display); letter-spacing: -.02em; text-decoration: none; }
 .bar .logo i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: block; }
 .bar nav { display: flex; justify-content: flex-end; align-items: center; gap: 22px; height: 38px; font-size: 13px; color: var(--text-2); }
@@ -174,7 +174,7 @@ section { position: relative; }
 .caps p { margin: 0; color: var(--text-2); max-width: 34ch; }
 @media (max-width: 860px) { .caps p { margin: 0 auto; } }
 .nest { position: relative; width: 300px; height: 330px; display: flex; align-items: flex-end; justify-content: center; }
-.nest .glow { position: absolute; inset: -40px; border-radius: 50%; background: radial-gradient(closest-side, var(--accent), transparent 70%); opacity: var(--g, .08); filter: blur(10px); transition: opacity .2s; }
+.nest .glow { position: absolute; inset: -40px; border-radius: 50%; background: radial-gradient(closest-side, var(--accent), transparent 70%); opacity: var(--g, .08); transition: opacity .2s; }
 .nest canvas { position: relative; }
 .count { text-align: right; }
 @media (max-width: 860px) { .count { text-align: center; } }

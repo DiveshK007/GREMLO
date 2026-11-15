@@ -144,7 +144,7 @@ async function init() {
   /* smooth scroll */
   let lenis = null;
   if (!RM && window.Lenis && hasGsap) {
-    lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 1, smoothWheel: true });
+    lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1, smoothWheel: true, syncTouch: false });
     lenis.on('scroll', ScrollTrigger.update);
     gsap.ticker.add(t => lenis.raf(t * 1000));
     gsap.ticker.lagSmoothing(0);
@@ -335,6 +335,7 @@ function heroInit(topNotch) {
     const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); setTimeout(drop, 350); } }, { threshold: .55 });
     io.observe(yard);
   } else pet.play(R.idle, { frames: [0, 1, 2, 3], fps: 2.4 });
+  H.on = true; new IntersectionObserver(es => { H.on = es[0].isIntersecting; }, { rootMargin: '200px 0px' }).observe(yard);
 
   let down = null, samples = [];
   hp.addEventListener('pointerdown', e => {
@@ -439,6 +440,7 @@ function say(t) { if (!H) return; H.bub.textContent = t; H.bub.classList.add('on
 function toIdle() { H.mode = 'idle'; H.until = performance.now() + 2500 + Math.random() * 2500; H.pet.play(R.idle, { frames: [0, 1, 2, 3], fps: 2.4 }); }
 function heroStep(now) {
   if (!H) return;
+  if (!H.on) { H.last = now; return; }
   const dt = Math.min(.05, (now - H.last) / 1000); H.last = now;
   const W = H.W(), PW = H.PW, g = 2400;
   if (BUGS.length) bugsStep(now, dt);
@@ -462,7 +464,8 @@ function heroStep(now) {
     case 'annoy': if (now > H.until) toIdle(); break;
     case 'idle': {
       if (liveBugs().length) { startChase(); break; }
-      const r = H.cv.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      if (H.mx > -1e3 && now - (H.rAt || 0) > 150) { H.rAt = now; H.r = H.cv.getBoundingClientRect(); }
+      const r = H.r || { left: -1e4, top: -1e4, width: 0, height: 0 }; const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       const dx = H.mx - cx, near = Math.hypot(dx, H.my - cy) < 320;
       if (near) { const f = dx < -150 ? 0 : dx < -40 ? 1 : dx < 40 ? 2 : dx < 150 ? 3 : 4; H.pet.show(R.gaze, f); H.until = Math.max(H.until, now + 1200); }
       else if (H.pet.fixed != null) H.pet.play(R.idle, { frames: [0, 1, 2, 3], fps: 2.4 });
@@ -494,16 +497,20 @@ function marqueeInit() {
   let html = '';
   for (let k = 0; k < 2; k++) names.forEach((n, i) => { html += '<span class="' + (i % 3 === 0 ? 'f' : i % 3 === 1 ? '' : 'a') + '">' + n + '</span><span>·</span>'; });
   t.innerHTML = html;
-  MQ = { t, x: 0, v: 0, last: performance.now(), lastY: scrollY };
+  MQ = { t, x: 0, v: 0, last: performance.now(), lastY: scrollY, half: t.scrollWidth / 2, on: true };
+  addEventListener('resize', () => { MQ.half = t.scrollWidth / 2; });
+  if (document.fonts) document.fonts.ready.then(() => { MQ.half = t.scrollWidth / 2; });
+  new IntersectionObserver(es => { MQ.on = es[0].isIntersecting; }, { rootMargin: '100px 0px' }).observe(t.parentElement || t);
 }
 function marqueeStep(now) {
   if (!MQ || RM) return;
+  if (!MQ.on) { MQ.last = now; MQ.lastY = scrollY; return; }
   const dt = Math.min(.05, (now - MQ.last) / 1000); MQ.last = now;
   const dy = scrollY - MQ.lastY; MQ.lastY = scrollY;
   MQ.v += (dy / Math.max(dt, .001) - MQ.v) * .1;
   const speed = 60 + Math.min(900, Math.abs(MQ.v) * .6);
   MQ.x -= speed * dt * (MQ.v < -50 ? -1 : 1);
-  const half = MQ.t.scrollWidth / 2; if (MQ.x < -half) MQ.x += half; if (MQ.x > 0) MQ.x -= half;
+  const half = MQ.half; if (MQ.x < -half) MQ.x += half; if (MQ.x > 0) MQ.x -= half;
   const skew = Math.max(-12, Math.min(12, MQ.v * -.01));
   MQ.t.style.transform = 'translateX(' + MQ.x.toFixed(1) + 'px) skewX(' + skew.toFixed(2) + 'deg)';
 }
