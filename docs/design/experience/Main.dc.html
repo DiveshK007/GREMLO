@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gremlo · Judge experience</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0B0B}
+a{color:#F4F2ED}a:hover{color:#FF8A6E}
+.spr{background-image:url(/_blob/1fe916035b50ec9521c53b8807990709);image-rendering:pixelated;background-repeat:no-repeat;animation:spr calc(var(--n) * .15s) steps(var(--n)) infinite}
+.spr-pip{background-image:url(/_blob/f8360742153768872c3adf35ff60f6d3)}
+@keyframes spr{from{background-position-x:0}to{background-position-x:calc(var(--n) * var(--fw) * -1)}}
+@keyframes pop{0%{transform:scale(.86);opacity:0}70%{transform:scale(1.03);opacity:1}100%{transform:scale(1)}}
+@keyframes rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fall{0%{transform:translateY(-10px) rotate(0);opacity:1}100%{transform:translateY(150px) rotate(320deg);opacity:0}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(143,209,79,.55)}50%{box-shadow:0 0 0 6px rgba(143,209,79,0)}}
+@keyframes blink{50%{opacity:0}}
+.pop{animation:pop .42s cubic-bezier(.34,1.56,.64,1) both}
+.rise{animation:rise .35s ease-out both}
+.conf{animation:fall 1.6s ease-in infinite}
+.live-dot{animation:pulse 1.8s ease-in-out infinite}
+.caret{animation:blink 1s steps(1) infinite}
+a.card-link{text-decoration:none;color:inherit;transition:transform .18s ease,border-color .18s ease}
+a.card-link:hover{transform:translateY(-3px);border-color:#FF5A3C !important;color:inherit}
+button{font:inherit;cursor:pointer}
+@media (prefers-reduced-motion: reduce){.spr,.pop,.rise,.conf,.live-dot,.caret{animation:none}}
+</style>
+</helmet>
+<div style="background: #0B0B0B; color: #F4F2ED; font-family: Inter, system-ui, sans-serif; font-size: 17px; line-height: 1.55; min-height: 100vh;">
+
+<!-- ===== site header (same nav as gremlo.vercel.app) ===== -->
+<header style="position: sticky; top: 0; z-index: 20; background: rgba(11,11,11,.88); backdrop-filter: blur(10px); border-bottom: 1px solid #1F1F23;">
+  <nav aria-label="Gremlo site" style="max-width: 1200px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 26px;">
+    <a href="https://gremlo.vercel.app/" style="text-decoration: none; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: 26px; letter-spacing: -0.8px; color: #F4F2ED;">Gremlo<span style="color: #FF5A3C;">.</span></a>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: #0B0B0B; background: #FFC93C; border-radius: 999px; padding: 4px 10px; font-weight: 500;">FOR JUDGES</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 15px; margin-left: auto; align-items: center;">
+      <a href="https://gremlo.vercel.app/#system" style="text-decoration: none; color: rgba(244,242,237,.78);">System</a>
+      <a href="https://gremlo.vercel.app/park" style="text-decoration: none; color: rgba(244,242,237,.78);">Park</a>
+      <a href="https://gremlo.vercel.app/live" style="text-decoration: none; color: rgba(244,242,237,.78);">Live numbers</a>
+      <a href="https://github.com/DiveshK007/GREMLO" style="text-decoration: none; color: rgba(244,242,237,.78);">GitHub</a>
+      <a href="#next" style="text-decoration: none; color: #0B0B0B; background: #FF5A3C; border-radius: 999px; padding: 9px 16px; font-weight: 600; min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center;">Watch the 1:30</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+<!-- ===== 1 · hook ===== -->
+<section aria-labelledby="h-hook" style="position: relative; overflow: hidden; background: radial-gradient(900px 520px at 50% -10%, rgba(255,90,60,.28), transparent 70%);">
+  <div aria-hidden="true" style="position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 260px; height: 46px; background: #000; border-radius: 0 0 22px 22px; box-shadow: 0 0 0 2px #FF5A3C, 0 14px 60px rgba(255,90,60,.5);"></div>
+  <div aria-hidden="true" class="spr" style="--n: 4; --fw: 72px; position: absolute; left: 50%; top: 22px; margin-left: -36px; width: 72px; height: 78px; background-size: 576px 3042px; background-position: 0 -1092px;"></div>
+  <div style="max-width: 1200px; margin: 0 auto; padding: 150px 24px 84px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #FF5A3C; font-weight: 500;">THE 90-SECOND TOUR · NO WALLET, NO INSTALL</div>
+    <h1 id="h-hook" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(44px, 7vw, 104px); line-height: .98; letter-spacing: -0.035em; max-width: 1000px;">Your agent makes you wait.<br><span style="color: #FF5A3C;">Gremlo makes the wait pay.</span></h1>
+    <p style="margin: 0; max-width: 720px; font-size: clamp(18px, 2vw, 22px); color: rgba(244,242,237,.82);">A pixel pet in your MacBook notch. It holds one sponsored line while your coding agent works, and the money it earns pays for its own AI.</p>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 6px;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; border: 1px solid #2A2A2E; border-radius: 999px; padding: 8px 14px; font-size: 14px; background: #121214;"><span style="width: 8px; height: 8px; border-radius: 8px; background: #D97757;"></span>Claude Code · Codex · Cursor</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; border: 1px solid #2A2A2E; border-radius: 999px; padding: 8px 14px; font-size: 14px; background: #121214;"><span style="width: 8px; height: 8px; border-radius: 8px; background: #2ED3B7;"></span>Settled on NEAR testnet</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; border: 1px solid #2A2A2E; border-radius: 999px; padding: 8px 14px; font-size: 14px; background: #121214;"><span style="width: 8px; height: 8px; border-radius: 8px; background: #B48CFF;"></span>Thinks with NEAR AI in a TEE</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; border: 1px solid #2A2A2E; border-radius: 999px; padding: 8px 14px; font-size: 14px; background: #121214;"><span style="width: 8px; height: 8px; border-radius: 8px; background: #FFC93C;"></span>One human, one pet (World ID)</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 10px;">
+      <a href="#pet" style="text-decoration: none; background: #F4F2ED; color: #0B0B0B; border-radius: 999px; padding: 13px 22px; font-weight: 600; min-height: 48px; box-sizing: border-box; display: inline-flex; align-items: center;">Start the tour</a>
+      <a href="#proof" style="text-decoration: none; border: 1.5px solid #3A3A40; color: #F4F2ED; border-radius: 999px; padding: 13px 22px; font-weight: 600; min-height: 48px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px;"><span class="live-dot" style="width: 9px; height: 9px; border-radius: 9px; background: #8FD14F;"></span>Skip to live proof</a>
+    </div>
+  </div>
+  <!-- tour progress -->
+  <nav aria-label="Tour" style="max-width: 1200px; margin: 0 auto; padding: 0 24px 40px;">
+    <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px;">
+      <li><a href="#pet" style="display: block; text-decoration: none; border-top: 2px solid #FF5A3C; padding: 10px 2px; color: rgba(244,242,237,.8);">01 · The pet</a></li>
+      <li><a href="#loop" style="display: block; text-decoration: none; border-top: 2px solid #FFC93C; padding: 10px 2px; color: rgba(244,242,237,.8);">02 · The money loop</a></li>
+      <li><a href="#brain" style="display: block; text-decoration: none; border-top: 2px solid #B48CFF; padding: 10px 2px; color: rgba(244,242,237,.8);">03 · The brain</a></li>
+      <li><a href="#proof" style="display: block; text-decoration: none; border-top: 2px solid #8FD14F; padding: 10px 2px; color: rgba(244,242,237,.8);">04 · Live proof</a></li>
+      <li><a href="#status" style="display: block; text-decoration: none; border-top: 2px solid #4CC9FF; padding: 10px 2px; color: rgba(244,242,237,.8);">05 · Built vs next</a></li>
+      <li><a href="#next" style="display: block; text-decoration: none; border-top: 2px solid #F4F2ED; padding: 10px 2px; color: rgba(244,242,237,.8);">06 · Go deeper</a></li>
+    </ol>
+  </nav>
+</section>
+
+<!-- ===== 2 · meet the pet (interactive notch) ===== -->
+<section id="pet" aria-labelledby="h-pet" style="border-top: 1px solid #1F1F23;">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 36px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 820px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #FF5A3C; font-weight: 500;">01 · MEET THE PET</div>
+      <h2 id="h-pet" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">It lives in your notch and works when your agent works.</h2>
+      <p style="margin: 0; color: rgba(244,242,237,.78); font-size: 19px;">It peeks out when the agent starts, holds the sign while it runs, knocks before a risky command, and throws a party when the run is done. Tap a step, or let it play.</p>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 28px; align-items: stretch;">
+      <!-- the mac -->
+      <figure style="margin: 0; flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+        <div style="position: relative; aspect-ratio: 16 / 10; border-radius: 20px; overflow: hidden; background: linear-gradient(160deg, #1A1D33 0%, #0E1020 55%, #0B0B0B 100%); border: 1.5px solid #2A2A30; box-shadow: 0 30px 80px rgba(0,0,0,.55);">
+          <div aria-hidden="true" style="height: 30px; background: rgba(8,8,10,.55); display: flex; align-items: center; gap: 18px; padding: 0 16px; font-size: 12px; color: rgba(244,242,237,.8); font-weight: 500;"><span>Terminal</span><span>Shell</span><span>Edit</span><span>View</span><span style="margin-left: auto;">Mon 15:30</span></div>
+
+          <!-- terminal -->
+          <div style="position: absolute; left: 6%; right: 6%; bottom: 7%; top: 30%; border-radius: 12px; background: #0D0D10; border: 1px solid #26262C; overflow: hidden; display: flex; flex-direction: column;">
+            <div aria-hidden="true" style="height: 26px; background: #18181D; display: flex; align-items: center; gap: 7px; padding: 0 12px;"><span style="width: 10px; height: 10px; border-radius: 10px; background: #FF5F57;"></span><span style="width: 10px; height: 10px; border-radius: 10px; background: #FEBC2E;"></span><span style="width: 10px; height: 10px; border-radius: 10px; background: #28C840;"></span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(244,242,237,.45); margin-left: 8px;">~/vault — claude</span></div>
+            <div style="padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: clamp(11px, 1.25vw, 15px); line-height: 1.75; color: rgba(244,242,237,.86);">
+              <div>❯ claude "refactor the vault withdraw path"</div>
+              <sc-if value="{{s0}}" hint-placeholder-val="{{ false }}"><div style="color: rgba(244,242,237,.5);">waiting for you<span class="caret">▍</span></div></sc-if>
+              <sc-if value="{{s1}}" hint-placeholder-val="{{ true }}"><div class="rise"><div>⏺ Reading src/vault.rs, src/withdraw.rs</div><div style="color: #D97757;">✻ Thinking… <span style="color: rgba(244,242,237,.45);">(2m 14s · esc to interrupt)</span></div></div></sc-if>
+              <sc-if value="{{s2}}" hint-placeholder-val="{{ false }}"><div class="rise"><div>⏺ Bash(rm -rf ./build)</div><div style="color: #FFC93C;">⏸ Waiting for your permission</div></div></sc-if>
+              <sc-if value="{{s3}}" hint-placeholder-val="{{ false }}"><div class="rise"><div style="color: #8FD14F;">✓ 3 files changed · 21 tests pass</div><div style="color: rgba(244,242,237,.5);">Done in 4m 12s</div></div></sc-if>
+            </div>
+          </div>
+
+          <!-- notch states -->
+          <div style="position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; align-items: center;">
+            <sc-if value="{{s0}}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <div class="pop" style="width: 190px; height: 32px; background: #000; border-radius: 0 0 16px 16px;"></div>
+                <div aria-hidden="true" class="spr" style="--n: 4; --fw: 72px; width: 72px; height: 78px; margin-top: -40px; background-size: 576px 3042px; background-position: 0 -1092px;"></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{s1}}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <div class="pop" style="width: 300px; height: 40px; background: #000; border-radius: 0 0 18px 18px; box-shadow: 0 0 0 2px #D97757, 0 10px 40px rgba(217,119,87,.45); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #F4F2ED;">✻ Claude Code · thinking</div>
+                <div style="display: flex; flex-direction: column; align-items: center; margin-top: 6px;">
+                  <div aria-hidden="true" class="spr" style="--n: 6; --fw: 72px; width: 72px; height: 78px; background-size: 576px 3042px; background-position: 0 -468px;"></div>
+                  <div class="pop" style="margin-top: -6px; display: inline-flex; align-items: center; gap: 8px; background: #F4F2ED; color: #0B0B0B; border-radius: 8px; padding: 6px 10px; font-weight: 600; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.4);"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; background: #0B0B0B; color: #F4F2ED; border-radius: 4px; padding: 2px 5px;">AD</span>{{line}}</div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{s2}}" hint-placeholder-val="{{ false }}">
+              <div class="pop" style="width: min(440px, 88%); background: #000; border-radius: 0 0 24px 24px; box-shadow: 0 0 0 2px #FFC93C, 0 16px 50px rgba(255,201,60,.35); padding: 18px 20px 16px; box-sizing: border-box; display: flex; gap: 14px; align-items: center;">
+                <div aria-hidden="true" class="spr" style="--n: 4; --fw: 72px; flex: none; width: 72px; height: 78px; background-size: 576px 3042px; background-position: 0 -234px;"></div>
+                <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1;">
+                  <div style="font-size: 13px; color: rgba(244,242,237,.7);">Claude Code wants to run</div>
+                  <div style="font-family: 'JetBrains Mono', monospace; font-size: 15px; color: #FFC93C;">rm -rf ./build</div>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" style="border: 1px solid #3A3A40; background: transparent; color: #F4F2ED; border-radius: 10px; padding: 8px 14px; min-height: 40px;">Deny</button>
+                    <button type="button" style="border: 0; background: #FFC93C; color: #0B0B0B; border-radius: 10px; padding: 8px 14px; font-weight: 600; min-height: 40px;">Allow once</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{s3}}" hint-placeholder-val="{{ false }}">
+              <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+                <div class="pop" style="width: 300px; height: 40px; background: #000; border-radius: 0 0 18px 18px; box-shadow: 0 0 0 2px #8FD14F, 0 10px 40px rgba(143,209,79,.4); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; font-size: 12px;">Done in 4m 12s</div>
+                <div aria-hidden="true" class="spr" style="--n: 5; --fw: 72px; width: 72px; height: 78px; margin-top: 4px; background-size: 576px 3042px; background-position: 0 -312px;"></div>
+                <div aria-hidden="true" style="position: absolute; top: 30px; left: -60px; right: -60px; height: 10px;">
+                  <span class="conf" style="position: absolute; left: 6%; width: 8px; height: 12px; background: #FF5A3C; animation-delay: 0s;"></span>
+                  <span class="conf" style="position: absolute; left: 20%; width: 8px; height: 12px; background: #FFC93C; animation-delay: .3s;"></span>
+                  <span class="conf" style="position: absolute; left: 34%; width: 8px; height: 12px; background: #2ED3B7; animation-delay: .6s;"></span>
+                  <span class="conf" style="position: absolute; left: 62%; width: 8px; height: 12px; background: #B48CFF; animation-delay: .15s;"></span>
+                  <span class="conf" style="position: absolute; left: 78%; width: 8px; height: 12px; background: #4CC9FF; animation-delay: .45s;"></span>
+                  <span class="conf" style="position: absolute; left: 92%; width: 8px; height: 12px; background: #8FD14F; animation-delay: .75s;"></span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+          <span style="position: absolute; right: 12px; bottom: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.4px; color: rgba(244,242,237,.6); background: rgba(11,11,11,.7); border: 1px solid #2A2A2E; border-radius: 999px; padding: 4px 10px;">EXAMPLE · HOW IT LOOKS ON A MAC</span>
+        </div>
+        <figcaption style="font-size: 14px; color: rgba(244,242,237,.6);">Illustration of the Mac app. The sign shows the real line from campaign 3, “{{line}}”. On a real Mac the pet stays out of full-screen apps and hides during screen sharing.</figcaption>
+      </figure>
+
+      <!-- steps -->
+      <div style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 10px;">
+        <sc-for list="{{steps}}" as="st" hint-placeholder-count="4">
+          <sc-if value="{{st.on}}" hint-placeholder-val="{{ false }}">
+            <button type="button" onClick="{{st.pick}}" aria-pressed="true" style="text-align: left; display: flex; flex-direction: column; gap: 4px; border-radius: 18px; padding: 16px 18px; min-height: 44px; background: #18181B; border: 1.5px solid {{st.color}}; color: #F4F2ED;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: {{st.color}};">{{st.num}} · {{st.tag}}</span>
+              <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 24px; letter-spacing: -0.4px; color: #F4F2ED;">{{st.title}}</span>
+              <span style="font-size: 15px; color: rgba(244,242,237,.72); line-height: 1.45;">{{st.body}}</span>
+            </button>
+          </sc-if>
+          <sc-if value="{{st.off}}" hint-placeholder-val="{{ true }}">
+            <button type="button" onClick="{{st.pick}}" aria-pressed="false" style="text-align: left; display: flex; flex-direction: column; gap: 4px; border-radius: 18px; padding: 16px 18px; min-height: 44px; background: transparent; border: 1.5px solid #222226; color: #F4F2ED;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: rgba(244,242,237,.6);">{{st.num}} · {{st.tag}}</span>
+              <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 24px; letter-spacing: -0.4px; color: rgba(244,242,237,.85);">{{st.title}}</span>
+            </button>
+          </sc-if>
+        </sc-for>
+        <button type="button" onClick="{{toggleAuto}}" style="align-self: flex-start; border: 0; background: transparent; color: rgba(244,242,237,.6); font-size: 14px; padding: 10px 0; min-height: 44px; text-decoration: underline;">{{autoLabel}}</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3 · money loop ===== -->
+<section id="loop" aria-labelledby="h-loop" style="border-top: 1px solid #1F1F23; background: linear-gradient(#0F1012, #0B0B0B);">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 40px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 860px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #FFC93C; font-weight: 500;">02 · THE MONEY LOOP</div>
+      <h2 id="h-loop" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">A brand pays for a real view. You earn. The pet eats.</h2>
+    </div>
+
+    <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+      <sc-for list="{{loop}}" as="l" hint-placeholder-count="5">
+        <li style="position: relative; background: #141416; border: 1.5px solid #26262B; border-radius: 20px; padding: 22px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 230px; box-sizing: border-box;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{l.color}}; font-weight: 500;">{{l.num}}</span>
+          <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 26px; line-height: 1.05; letter-spacing: -0.5px;">{{l.title}}</span>
+          <span style="font-size: 15px; color: rgba(244,242,237,.7); line-height: 1.45;">{{l.body}}</span>
+          <span style="margin-top: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: rgba(244,242,237,.55);">{{l.foot}}</span>
+        </li>
+      </sc-for>
+    </ol>
+
+    <!-- the split, live totals -->
+    <div style="background: #141416; border: 1.5px solid #26262B; border-radius: 22px; padding: 26px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;">
+        <span style="display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: #8FD14F; border: 1px solid #2F4A1C; background: #13200C; border-radius: 999px; padding: 5px 11px;"><span class="live-dot" style="width: 8px; height: 8px; border-radius: 8px; background: #8FD14F;"></span>LIVE TOTALS</span>
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 26px; letter-spacing: -0.4px;">Where every view’s money has gone so far</span>
+      </div>
+      <div role="img" aria-label="80 percent to developers, 20 percent to the pet's compute budget" style="display: flex; height: 22px; border-radius: 11px; overflow: hidden;">
+        <div style="flex: 80; background: #8FD14F;"></div><div style="flex: 20; background: #B48CFF;"></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+        <div><div style="font-size: 14px; color: rgba(244,242,237,.62);">Paid by brands</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 500;">{{paid}} <span style="font-size: 15px; color: rgba(244,242,237,.55);">NEAR</span></div></div>
+        <div><div style="font-size: 14px; color: #8FD14F;">To developers · 80%</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 500;">{{toDevs}} <span style="font-size: 15px; color: rgba(244,242,237,.55);">NEAR</span></div></div>
+        <div><div style="font-size: 14px; color: #B48CFF;">To the pet’s compute · 20%</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 500;">{{compute}} <span style="font-size: 15px; color: rgba(244,242,237,.55);">NEAR</span></div></div>
+      </div>
+      <div style="font-size: 13px; color: rgba(244,242,237,.55);">Testnet NEAR. Tiny on purpose: this is one pet and a handful of real views, not a forecast.</div>
+    </div>
+
+    <!-- why it's new -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px;">
+      <div style="border: 1.5px dashed #33333A; border-radius: 22px; padding: 28px; display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.8px; color: rgba(244,242,237,.55);">MOST AGENT PROJECTS</span>
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 30px; line-height: 1.1; letter-spacing: -0.5px; color: rgba(244,242,237,.8);">Guard what an agent is allowed to spend.</span>
+        <span style="font-size: 15px; color: rgba(244,242,237,.6);">Firewalls, limits and allowlists. Useful, and one-sided.</span>
+      </div>
+      <div style="border: 1.5px solid #FF5A3C; background: #1A0F0C; border-radius: 22px; padding: 28px; display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.8px; color: #FF5A3C;">GREMLO</span>
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 30px; line-height: 1.1; letter-spacing: -0.5px;">Turns agent wait-time into a two-sided market.</span>
+        <span style="font-size: 15px; color: rgba(244,242,237,.75);">Brands get a verified, human view. Developers get paid for time they were losing anyway. And the ad money feeds the pet’s brain.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 4 · the brain ===== -->
+<section id="brain" aria-labelledby="h-brain" style="border-top: 1px solid #1F1F23;">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start;">
+    <div style="flex: 1 1 400px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #B48CFF; font-weight: 500;">03 · THE BRAIN</div>
+      <h2 id="h-brain" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">Every thought is a signed AI call, paid on chain.</h2>
+      <ul style="margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; font-size: 18px; color: rgba(244,242,237,.82);">
+        <li style="display: flex; gap: 12px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B48CFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 3px;"><path d="M20 6 9 17l-5-5"></path></svg><span>When the pet decides what to do, it asks NEAR AI Cloud, running privately inside a TEE.</span></li>
+        <li style="display: flex; gap: 12px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B48CFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 3px;"><path d="M20 6 9 17l-5-5"></path></svg><span>Each call is charged to the pet’s compute budget on chain, with its completion ID in the record.</span></li>
+        <li style="display: flex; gap: 12px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B48CFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 3px;"><path d="M20 6 9 17l-5-5"></path></svg><span>No budget, no thinking. The pet goes to sleep instead of faking a thought.</span></li>
+      </ul>
+      <!-- live asleep state (shown only when the budget is 0) -->
+      <div style="margin-top: 10px; display: flex; gap: 16px; align-items: center; background: #141416; border: 1.5px solid #26262B; border-radius: 20px; padding: 16px 18px;">
+        <div aria-hidden="true" class="spr" style="--n: 4; --fw: 72px; flex: none; width: 72px; height: 78px; background-size: 576px 3042px; background-position: 0 -2028px; animation-duration: 2.4s;"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: #8FD14F;"><span class="live-dot" style="width: 8px; height: 8px; border-radius: 8px; background: #8FD14F;"></span>LIVE · MOCHI RIGHT NOW</span>
+          <span style="font-size: 17px;"><b>Asleep.</b> {{moodReason}}. It will think again when the next view pays its budget.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- a real thought -->
+    <div style="flex: 1 1 420px; background: #101012; border: 1.5px solid #2A2A30; border-radius: 22px; padding: 26px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.45);">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: #B48CFF;">ONE REAL THOUGHT</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: rgba(244,242,237,.5);">15 Nov · final testnet run</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px 16px; font-size: 15px;">
+        <span style="color: rgba(244,242,237,.55);">Decision</span><span style="font-family: 'JetBrains Mono', monospace;">work</span>
+        <span style="color: rgba(244,242,237,.55);">Model</span><span style="font-family: 'JetBrains Mono', monospace; overflow-wrap: anywhere;">deepseek-ai/DeepSeek-V4.1-Flash-1017</span>
+        <span style="color: rgba(244,242,237,.55);">Completion ID</span><span style="font-family: 'JetBrains Mono', monospace; overflow-wrap: anywhere;">chatcmpl-cc26d4e5-abf1-4837-b10f-7543f37ce156</span>
+        <span style="color: rgba(244,242,237,.55);">Charged</span><span style="font-family: 'JetBrains Mono', monospace;">0.0005 NEAR · <a href="https://testnet.nearblocks.io/txns/E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d">E1vh3VKe…MH1d ↗</a></span>
+      </div>
+      <div style="border-top: 1px solid #26262B; padding-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: rgba(244,242,237,.75);"><span style="color: #8FD14F;">$</span> npm run verify chatcmpl-cc26d4e5…</div>
+        <div style="display: flex; align-items: center; gap: 14px;"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: 52px; letter-spacing: -1.5px; color: #8FD14F; line-height: 1;">SIGNED</span><span style="font-size: 14px; color: rgba(244,242,237,.7);">by 0xfe00…337e, an attested key of the NEAR TEE that served it</span></div>
+      </div>
+      <div style="font-size: 13px; color: rgba(244,242,237,.55);">Smart-model calls cost 0.0005 NEAR, cheap ones 0.0001: a fixed per-tier rate, not the real USD bill.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5 · live proof ===== -->
+<section id="proof" aria-labelledby="h-proof" style="border-top: 1px solid #1F1F23; background: radial-gradient(900px 500px at 50% 0%, rgba(46,211,183,.12), transparent 70%);">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 860px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #8FD14F; font-weight: 500;">04 · LIVE PROOF</span>
+        <span style="display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: rgba(244,242,237,.7); border: 1px solid #2A2A2E; border-radius: 999px; padding: 5px 11px;"><span class="live-dot" style="width: 8px; height: 8px; border-radius: 8px; background: #8FD14F;"></span>pulled from the Gremlo API when this page loads</span>
+      </div>
+      <h2 id="h-proof" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">It’s running on NEAR testnet right now.</h2>
+      <p style="margin: 0; color: rgba(244,242,237,.75); font-size: 18px;">Every number here is read live from the contract’s records. Every hash opens on nearblocks.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+      <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+        <div style="background: #141416; border: 1.5px solid #26262B; border-radius: 18px; padding: 20px;">
+          <div style="font-size: 14px; color: rgba(244,242,237,.62);">{{s.label}}</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 38px; font-weight: 500; letter-spacing: -1px; margin-top: 4px;">{{s.value}}</div>
+          <div style="font-size: 13px; color: rgba(244,242,237,.5);">{{s.unit}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch;">
+      <!-- mochi -->
+      <div style="flex: 1 1 320px; background: #141416; border: 1.5px solid #26262B; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div aria-hidden="true" class="spr" style="--n: 4; --fw: 96px; flex: none; width: 96px; height: 104px; background-size: 768px 4056px; background-position: 0 -2704px; animation-duration: 2.4s;"></div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: 34px; letter-spacing: -0.8px; line-height: 1;">mochi</span>
+            <span style="font-size: 14px; color: rgba(244,242,237,.62);">a real pet · gremlo species · hatchling</span>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; font-size: 15px;">
+          <span style="color: rgba(244,242,237,.62);">Mood</span><span style="color: #FFC93C;">hungry</span>
+          <span style="color: rgba(244,242,237,.62);">Why</span><span style="text-align: right;">{{moodReason}}</span>
+          <span style="color: rgba(244,242,237,.62);">Compute budget</span><span style="font-family: 'JetBrains Mono', monospace;">0.0000 NEAR</span>
+          <span style="color: rgba(244,242,237,.62);">Earned for its owner</span><span style="font-family: 'JetBrains Mono', monospace;">0.0048 NEAR</span>
+          <span style="color: rgba(244,242,237,.62);">Paid views</span><span style="font-family: 'JetBrains Mono', monospace;">2</span>
+          <span style="color: rgba(244,242,237,.62);">Mac paired</span><span style="color: #8FD14F;">yes · Secure Enclave key</span>
+          <span style="color: rgba(244,242,237,.62);">Compute share</span><span style="font-family: 'JetBrains Mono', monospace;">20%</span>
+          <span style="color: rgba(244,242,237,.62);">Owner</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">owner.gremlo.testnet</span>
+        </div>
+        <a href="https://gremlo.vercel.app/live" style="margin-top: auto; font-size: 15px;">Open the live numbers page ↗</a>
+      </div>
+
+      <!-- thoughts + meals -->
+      <div style="flex: 2 1 520px; min-width: 0; background: #141416; border: 1.5px solid #26262B; border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 26px; letter-spacing: -0.4px;">Mochi’s last thoughts, each paid on chain</div>
+        <div style="overflow-x: auto; border: 1px solid #222226; border-radius: 14px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px;">
+            <thead>
+              <tr style="text-align: left; color: rgba(244,242,237,.55); font-size: 12px; letter-spacing: 1px; font-family: 'JetBrains Mono', monospace;">
+                <th scope="col" style="padding: 10px 14px; font-weight: 500;">WHEN (IST)</th><th scope="col" style="padding: 10px 14px; font-weight: 500;">DECIDED</th><th scope="col" style="padding: 10px 14px; font-weight: 500;">MODEL</th><th scope="col" style="padding: 10px 14px; font-weight: 500;">NEAR AI REQUEST</th><th scope="col" style="padding: 10px 14px; font-weight: 500;">CHARGE TX</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{thoughts}}" as="t" hint-placeholder-count="4">
+                <tr style="border-top: 1px solid #222226;">
+                  <td style="padding: 11px 14px; font-family: 'JetBrains Mono', monospace; white-space: nowrap; color: rgba(244,242,237,.75);">{{t.when}}</td>
+                  <td style="padding: 11px 14px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{t.color}};">{{t.action}}</span></td>
+                  <td style="padding: 11px 14px; color: rgba(244,242,237,.8);">{{t.model}}</td>
+                  <td style="padding: 11px 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: rgba(244,242,237,.7);">{{t.req}}</td>
+                  <td style="padding: 11px 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px;"><a href="{{t.href}}">{{t.tx}} ↗</a></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 14px;">
+          <span style="color: rgba(244,242,237,.62);">Meals (views settled to mochi):</span>
+          <sc-for list="{{meals}}" as="m" hint-placeholder-count="2"><a href="{{m.href}}" style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">{{m.tx}} ↗</a></sc-for>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 14px; margin-top: auto; color: rgba(244,242,237,.62);">
+          <span>Contract: <a href="https://testnet.nearblocks.io/address/vault.gremlo.testnet" style="font-family: 'JetBrains Mono', monospace;">vault.gremlo.testnet ↗</a></span>
+          <span>Every transaction, explained: <a href="https://github.com/DiveshK007/GREMLO/blob/main/PROOF.md">PROOF.md ↗</a></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: #141416; border: 1.5px solid #26262B; border-radius: 18px; padding: 16px 20px;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.6px; color: #8FD14F;"><span class="live-dot" style="width: 8px; height: 8px; border-radius: 8px; background: #8FD14F;"></span>LIVE · THE LINE PETS HOLD RIGHT NOW</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; background: #F4F2ED; color: #0B0B0B; border-radius: 8px; padding: 6px 12px; font-weight: 600;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; background: #0B0B0B; color: #F4F2ED; border-radius: 4px; padding: 2px 5px;">AD</span>{{line}}</span>
+      <span style="font-size: 14px; color: rgba(244,242,237,.62);">campaign 3 · notchi.testnet · 0.001 NEAR per view</span>
+      <a href="https://gremlo.vercel.app/brand?c=3" style="margin-left: auto; font-size: 15px;">See the campaign ↗</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 6 · built vs next ===== -->
+<section id="status" aria-labelledby="h-status" style="border-top: 1px solid #1F1F23;">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 860px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #4CC9FF; font-weight: 500;">05 · BUILT VS NEXT</div>
+      <h2 id="h-status" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">What works today, and what doesn’t yet.</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+      <div style="background: #10180C; border: 1.5px solid #2F4A1C; border-radius: 22px; padding: 26px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 1.8px; color: #8FD14F;">WORKS TODAY</span>
+        <sc-for list="{{works}}" as="w" hint-placeholder-count="5">
+          <div style="display: flex; gap: 12px; font-size: 16px;"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8FD14F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 3px;"><path d="M20 6 9 17l-5-5"></path></svg><span>{{w}}</span></div>
+        </sc-for>
+      </div>
+      <div style="background: #141416; border: 1.5px solid #2A2A30; border-radius: 22px; padding: 26px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 1.8px; color: rgba(244,242,237,.7);">NOT YET, HONESTLY</span>
+        <sc-for list="{{notyet}}" as="n" hint-placeholder-count="6">
+          <div style="display: flex; gap: 12px; font-size: 16px; color: rgba(244,242,237,.85);"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(244,242,237,.55)" stroke-width="2.2" stroke-linecap="round" style="flex: none; margin-top: 3px;"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg><span>{{n}}</span></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 7 · go deeper ===== -->
+<section id="next" aria-labelledby="h-next" style="border-top: 1px solid #1F1F23; background: linear-gradient(#0B0B0B, #140D0B);">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 72px; display: flex; flex-direction: column; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 860px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2.4px; color: #F4F2ED; font-weight: 500;">06 · GO DEEPER</div>
+      <h2 id="h-next" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-stretch: 87.5%; font-size: clamp(34px, 4.6vw, 64px); line-height: 1; letter-spacing: -0.03em;">Your next 60 seconds.</h2>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+      <a class="card-link" href="https://youtu.be/g5L31kJ2dRQ" style="display: flex; flex-direction: column; border: 1.5px solid #2A2A30; border-radius: 22px; overflow: hidden; background: #141416;">
+        <img src="/_blob/d11075b812bf7b9c75e54d344dcd2412" alt="Video poster: Meet Gremlo, 1:30" style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;">
+        <span style="padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 24px;">Watch the 1:30 demo</span><span style="font-size: 15px; color: rgba(244,242,237,.65);">The whole idea, fast. YouTube.</span></span>
+      </a>
+      <a class="card-link" href="https://youtu.be/-QK3U_Z1n5s" style="display: flex; flex-direction: column; border: 1.5px solid #2A2A30; border-radius: 22px; overflow: hidden; background: #141416;">
+        <img src="/_blob/ac84fa61d71e6f69bc1f80204223d0ff" alt="Video poster: the full walkthrough, 4:40" style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;">
+        <span style="padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: 24px;">The full walkthrough · 4:40</span><span style="font-size: 15px; color: rgba(244,242,237,.65);">One view, start to finish, with the real transactions.</span></span>
+      </a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px;">
+      <sc-for list="{{links}}" as="k" hint-placeholder-count="6">
+        <a class="card-link" href="{{k.href}}" style="display: flex; flex-direction: column; gap: 6px; border: 1.5px solid #2A2A30; border-radius: 18px; padding: 18px 20px; background: #141416; min-height: 112px; box-sizing: border-box;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.4px; color: {{k.color}};">{{k.tag}}</span>
+          <span style="font-weight: 600; font-size: 18px;">{{k.title}} <span aria-hidden="true">↗</span></span>
+          <span style="font-size: 14px; color: rgba(244,242,237,.62);">{{k.body}}</span>
+        </a>
+      </sc-for>
+    </div>
+
+    <!-- the one-liner -->
+    <div style="border: 1.5px solid #FF5A3C; border-radius: 24px; padding: 30px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; background: #1A0F0C;">
+      <div aria-hidden="true" class="spr" style="--n: 5; --fw: 96px; flex: none; width: 96px; height: 104px; background-size: 768px 4056px; background-position: 0 -416px;"></div>
+      <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.8px; color: #FF5A3C;">IF YOU REMEMBER ONE SENTENCE</span>
+        <p style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-stretch: 87.5%; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.15; letter-spacing: -0.4px;">Gremlo is a pet in your MacBook notch that earns its own AI by holding a sponsored line while your coding agent works.</p>
+      </div>
+      <button type="button" onClick="{{copy}}" style="border: 0; background: #FF5A3C; color: #0B0B0B; border-radius: 999px; padding: 12px 20px; font-weight: 600; min-height: 48px;">{{copyLabel}}</button>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer style="border-top: 1px solid #1F1F23;">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 28px 24px 40px; display: flex; flex-wrap: wrap; gap: 10px 24px; font-size: 14px; color: rgba(244,242,237,.55);">
+    <span>Gremlo · NEAR testnet · built for #NEARHackathon</span>
+    <span>It never reads your code. It never reads your screen.</span>
+    <a href="https://github.com/DiveshK007/GREMLO" style="margin-left: auto;">github.com/DiveshK007/GREMLO</a>
+  </div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"autoplay":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":7800}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { step: 1, auto: true, copied: false }; }
+  componentDidMount() {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || this.props.autoplay === false) this.setState({ auto: false });
+    this.timer = setInterval(() => { if (this.state.auto) this.setState({ step: (this.state.step + 1) % 4 }); }, 3400);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    const X = 'https://testnet.nearblocks.io/txns/';
+    const short = (h) => h.slice(0, 8) + '…' + h.slice(-4);
+    const when = (s) => new Date(s * 1000).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const step = this.state.step;
+    const S = [
+      { num: '01', tag: 'IDLE', title: 'It waits in the notch', body: 'Hidden until your agent has something to do.', color: '#F4F2ED' },
+      { num: '02', tag: 'AGENT WORKING', title: 'It holds one sponsored line', body: 'Only while your agent works, always labelled AD. Each 5-second view on screen is signed by your Mac.', color: '#D97757' },
+      { num: '03', tag: 'RISKY COMMAND', title: 'It knocks before risky commands', body: 'You allow or deny right from the notch, before anything runs.', color: '#FFC93C' },
+      { num: '04', tag: 'RUN DONE', title: 'It celebrates with you', body: 'Confetti, a time, and back to its corner.', color: '#8FD14F' }
+    ];
+    const steps = S.map((s, i) => ({ ...s, on: i === step, off: i !== step, pick: () => this.setState({ step: i, auto: false }) }));
+    const thoughts = [
+      { action: 'wait', model: 'Qwen 3.8 27B', req: '49b3f9ca…7ae7', tx: 'J6a5MxUP…U5cg', at: 1794694845, chargeTx: 'J6a5MxUP1EV5591XNVRV8i4B194hAuGnv8wW8eggU5cg' },
+      { action: 'celebrate', model: 'DeepSeek V4.1 Flash', req: 'chatcmpl-5132d660…', tx: '8gDVVjKk…1V9Z', at: 1794694787, chargeTx: '8gDVVjKkHYh7VkGWpwvJ5hS7AdpYUUAAWMRVZuWj1V9Z' },
+      { action: 'work', model: 'Qwen 3.8 27B', req: 'cccbcb67…0d62', tx: 'GHMAHr4a…rBzq', at: 1794694014, chargeTx: 'GHMAHr4ad8hZKJf7jR9Mgz92K1wXKBh4srFTbanCrBzq' },
+      { action: 'work', model: 'DeepSeek V4.1 Flash', req: 'chatcmpl-cc26d4e5…', tx: 'E1vh3VKe…MH1d', at: 1794694010, chargeTx: 'E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d' }
+    ].map(t => ({ ...t, when: when(t.at), href: X + t.chargeTx, color: t.action === 'celebrate' ? '#8FD14F' : t.action === 'work' ? '#D97757' : 'rgba(244,242,237,.7)' }));
+    const meals = ['FFdmieVQ26YyJcHwkvcSnSveA4EfG6SxYUE2JwWBQUQB', 'CNvNmMvBLdgdXzCUFr852CRdjRCrWb43sVLjSuoUa95M'].map(h => ({ tx: short(h), href: X + h }));
+    return {
+      s0: step === 0, s1: step === 1, s2: step === 2, s3: step === 3,
+      steps,
+      toggleAuto: () => this.setState({ auto: !this.state.auto }),
+      autoLabel: this.state.auto ? 'Pause the demo' : 'Play the demo',
+      line: 'Ads that feed a pet',
+      moodReason: 'sleeping: compute budget empty',
+      paid: '0.0060', toDevs: '0.0048', compute: '0.0012',
+      loop: [
+        { num: '01', title: 'A brand funds a campaign', body: 'It writes a short line and pays into the vault contract from its own wallet.', foot: 'vault.gremlo.testnet', color: '#FFC93C' },
+        { num: '02', title: 'The pet shows the line', body: 'Only while your agent works. Clearly labelled. Never during a screen share.', foot: 'Mac app · notch', color: '#FF5A3C' },
+        { num: '03', title: 'Your Mac signs the view', body: '5 s on screen, unlocked, visible, on a paired Mac. Signed by its Secure Enclave.', foot: 'hash-chained public log', color: '#4CC9FF' },
+        { num: '04', title: 'Settled on NEAR', body: 'The server checks the signed views and settles them in the vault.', foot: 'settle_impressions', color: '#2ED3B7' },
+        { num: '05', title: 'You earn, the pet eats', body: '80% to the developer. 20% into the pet’s own compute budget.', foot: 'compute share 20%', color: '#8FD14F' }
+      ],
+      stats: [
+        { label: 'Campaigns funded', value: '3', unit: 'on vault.gremlo.testnet' },
+        { label: 'Views settled', value: '2', unit: 'signed on a paired Mac' },
+        { label: 'Paid by brands', value: '0.0060', unit: 'NEAR (testnet)' },
+        { label: 'Charged for AI', value: '0.0012', unit: 'NEAR · 20% of paid' }
+      ],
+      thoughts, meals,
+      works: [
+        'The vault contract on NEAR testnet: campaigns, settlements and the pet’s compute budget.',
+        'The full loop ran end to end: pet registered, campaign funded, signed views settled, AI calls charged.',
+        'Thoughts are NEAR AI calls in a TEE; one completion verified SIGNED against the attested key.',
+        'The Mac app: notch pet, the sign, approvals before risky commands, Secure Enclave signing.',
+        'A hash-chained public log of every view, replayable against the bill.'
+      ],
+      notyet: [
+        'Testnet only. Nothing is on mainnet.',
+        'Mac only. The iPhone and Watch apps run in the simulator.',
+        'Views are settled by an operator (the server) after it checks the Mac’s signatures, not by the Mac itself.',
+        'The pet’s own purse contract is built and tested, but not deployed.',
+        'AI calls are charged a fixed per-tier rate in NEAR, not the real USD bill.',
+        'World ID ran against the simulator in the final run.'
+      ],
+      links: [
+        { tag: 'LIVE', title: 'Live numbers', body: 'The stats above, full page.', href: 'https://gremlo.vercel.app/live', color: '#8FD14F' },
+        { tag: 'LIVE', title: 'The pet park', body: 'Pets out for a walk, right now.', href: 'https://gremlo.vercel.app/park', color: '#8FD14F' },
+        { tag: 'LIVE', title: 'A live campaign', body: 'Campaign 3, as a brand sees it.', href: 'https://gremlo.vercel.app/brand?c=3', color: '#8FD14F' },
+        { tag: 'CODE', title: 'The repo', body: 'Mac app, server, web and contracts.', href: 'https://github.com/DiveshK007/GREMLO', color: '#4CC9FF' },
+        { tag: 'PROOF', title: 'PROOF.md', body: 'Every transaction, checked and explained.', href: 'https://github.com/DiveshK007/GREMLO/blob/main/PROOF.md', color: '#2ED3B7' },
+        { tag: 'ON A MAC', title: 'Install Gremlo', body: 'macOS 13+. Download from Releases.', href: 'https://github.com/DiveshK007/GREMLO/releases', color: '#FF5A3C' }
+      ],
+      copy: () => { try { navigator.clipboard.writeText('Gremlo is a pet in your MacBook notch that earns its own AI by holding a sponsored line while your coding agent works.'); } catch (e) {} this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1800); },
+      copyLabel: this.state.copied ? 'Copied' : 'Copy it'
+    };
+  }
+}
+</script>
+</body>
+</html>

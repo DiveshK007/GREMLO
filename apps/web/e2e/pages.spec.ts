@@ -8,7 +8,7 @@ const SHOTS = process.env.E2E_SHOTS ?? "/tmp/gremlo-e2e";
 mkdirSync(SHOTS, { recursive: true });
 
 const pet = process.env.E2E_PET; // a registered pet name, to also check /me with a real pet
-const pages = ["/", "/pet", "/me", "/pair", "/park", "/gallery", "/brand", "/money", "/live", ...(pet ? [`/me?pet=${pet}`] : [])];
+const pages = ["/", "/pet", "/me", "/pair", "/park", "/gallery", "/brand", "/money", "/live", "/experience", ...(pet ? [`/me?pet=${pet}`] : [])];
 
 for (const path of pages) {
   test(path, async ({ page }, info) => {

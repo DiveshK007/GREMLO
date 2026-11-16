@@ -57,8 +57,8 @@ export function toast(msg: string) {
   toastTimer = setTimeout(() => el!.classList.remove("on"), 2000);
 }
 
-const NAV: [string, string][] = [["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/money", "Money"], ["/live", "Live"]];
-const FOOT: [string, string][] = [["/", "Home"], ["/pet", "Get your pet"], ["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/gallery", "Gallery"], ["/money", "Money"], ["/live", "Live numbers"]];
+const NAV: [string, string][] = [["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/money", "Money"], ["/live", "Live"], ["/experience", "For judges"]];
+const FOOT: [string, string][] = [["/", "Home"], ["/pet", "Get your pet"], ["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/gallery", "Gallery"], ["/money", "Money"], ["/live", "Live numbers"], ["/experience", "For judges"]];
 const ThemeIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor" /></svg>
 );
