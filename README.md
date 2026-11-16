@@ -14,14 +14,31 @@
 </p>
 
 <p align="center">
+  <b>Live now, no Mac needed:</b>
+  <a href="https://gremlo.vercel.app">web app</a> ·
+  <a href="https://gremlo.vercel.app/live">judge page (live pet, thoughts charged on chain, settlements)</a> ·
+  <a href="https://gremlo.vercel.app/park">park</a> ·
+  <a href="https://gremlo.vercel.app/brand?c=3">a live campaign</a> ·
+  <a href="https://16-4-100-95.sslip.io/health">API health</a>
+</p>
+
+<p align="center">
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-0B0B0B?logo=apple&logoColor=white">
   <img alt="Works with Claude Code" src="https://img.shields.io/badge/works%20with-Claude%20Code-D97757">
   <img alt="NEAR testnet" src="https://img.shields.io/badge/NEAR-testnet-2ED3B7">
   <img alt="World ID" src="https://img.shields.io/badge/World%20ID-one%20human%2C%20one%20pet-FFC93C">
-  <!-- TODO(you): add a license badge once LICENSE exists -->
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-F4F2ED">
 </p>
 
 <p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (1:30)"></a></p>
+
+**Judging? Verify in 2 minutes, no keys:**
+
+1. `curl https://16-4-100-95.sslip.io/stats` shows campaigns, settled views, NEAR paid and compute charged. Compute charged is 20% of paid.
+2. Open any "charged on chain" link on [/live](https://gremlo.vercel.app/live). Each is a `charge_compute` call on `vault.gremlo.testnet` carrying the NEAR AI completion id.
+3. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `rust-toolchain.toml`).
+
+Gremlo was built for the NEAR Hackathon (Nov 2026) and is now in active development as a product. The submission snapshot is the [`hackathon-submission`](https://github.com/DiveshK007/GREMLO/tree/hackathon-submission) tag.
 
 ## What it does
 
@@ -51,7 +68,7 @@ That builds Gremlo from source on your Mac (a few minutes the first time), puts 
 
 Run the same line again to update. To quit, use the bottom of the menu bar panel.
 
-> **No hosted server yet.** The app talks to `http://localhost:8787` unless `GREMLO_SERVER` is set. To see sponsored lines, earnings and the pet's thoughts, run the server and web app yourself: [Run the full loop from source](#run-the-full-loop-from-source).
+> **Hosted server:** `https://16-4-100-95.sslip.io` (NEAR testnet). Point the app at it with `GREMLO_SERVER=https://16-4-100-95.sslip.io GREMLO_WEB=https://gremlo.vercel.app` (for an app opened from Finder, use `launchctl setenv`). Without it the app talks to `http://localhost:8787`, so you can also [run the full loop yourself](#run-the-full-loop-from-source).
 
 <details>
 <summary>Why build from source, and what about a download?</summary>
@@ -131,7 +148,7 @@ Accounts, the deploy transaction, the vault state after the run and the earlier 
 | World ID | **Simulator** | the final run used the World ID simulator, not a real Orb or app proof |
 | iPhone and Watch apps | **Simulator only** | `apps/ios` builds and launches in the simulators; signing and TestFlight need an Apple Developer account |
 | The pet's own purse | **Built, not deployed** | factory and purse contracts in `contracts-accounts` (14 tests); pets use the vault's compute budget for now |
-| Hosted server and website | **Not yet** | everything runs locally |
+| Hosted server and website | **Live** | [gremlo.vercel.app](https://gremlo.vercel.app) on Vercel, API on AWS EC2 behind HTTPS ([/health](https://16-4-100-95.sslip.io/health)) |
 | Signed Mac download | **Not yet** | build from source with the install line |
 | Mainnet | **Not yet** | nothing is on mainnet |
 
@@ -141,11 +158,12 @@ Known limits:
 - The platform fee isn't published.
 - A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom or system recording are).
 - Community species can't be installed from the gallery yet.
-- Windows and Linux aren't built.
+- The notch app is macOS only. The server, web app, brain and contracts build and test on Linux and macOS; on Windows use WSL2.
+- The vault account still has a full-access key held by the deployer (testnet). The mainnet plan is to lock it after deploy.
 
 ## Run the full loop from source
 
-Needs macOS 13+ with Swift 5.9+, Node 22, and Rust only for the contracts.
+Needs macOS 13+ with Swift 5.9+ for the Mac app, Node 22+, and Rust 1.95 (pinned in `rust-toolchain.toml`) plus `cargo-near` 0.22 for the contracts. Everything except the Mac app also builds on Linux; the commands below are bash.
 
 ```bash
 git clone https://github.com/DiveshK007/GREMLO.git && cd GREMLO
@@ -206,7 +224,6 @@ Built by [@DiveshK007](https://github.com/DiveshK007).
 
 ## License
 
-<!-- TODO(you): add a LICENSE file (MIT is the usual choice) and name it here -->
-No license yet.
+[MIT](LICENSE).
 
 AI usage: [docs/AI_USAGE.md](docs/AI_USAGE.md).

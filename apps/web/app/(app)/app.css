@@ -47,7 +47,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .bar .logo { display: flex; align-items: center; gap: 8px; height: var(--bar-h); font: 800 17px/1 var(--display); letter-spacing: -.02em; text-decoration: none; color: var(--fg); justify-self: start; }
 .bar .logo i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: block; }
 .bar nav { display: flex; justify-content: flex-end; align-items: center; gap: 20px; height: var(--bar-h); font-size: 13px; color: var(--text-2); }
-.bar nav a { text-decoration: none; position: relative; }
+.bar nav a { text-decoration: none; position: relative; white-space: nowrap; }
 .bar nav a:not(.btn):hover { color: var(--fg); }
 .bar nav a[aria-current="page"] { color: var(--fg); font-weight: 600; }
 .bar nav a[aria-current="page"]::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--accent); }
