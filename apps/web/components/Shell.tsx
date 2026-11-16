@@ -57,7 +57,7 @@ export function toast(msg: string) {
   toastTimer = setTimeout(() => el!.classList.remove("on"), 2000);
 }
 
-const NAV: [string, string][] = [["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/money", "Money"]];
+const NAV: [string, string][] = [["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/money", "Money"], ["/live", "Live"]];
 const FOOT: [string, string][] = [["/", "Home"], ["/pet", "Get your pet"], ["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/gallery", "Gallery"], ["/money", "Money"], ["/live", "Live numbers"]];
 const ThemeIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor" /></svg>
@@ -143,7 +143,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {[["/pet", "Get your pet"] as [string, string], ...NAV].map(([h, l]) => <Link key={h} className="big" href={h} {...cur(h)}>{l}</Link>)}
           <div className="small">
             <Link href="/gallery" {...cur("/gallery")}>Gallery</Link>
-            <Link href="/live" {...cur("/live")}>Live numbers</Link>
             <Link href="/">Home</Link>
           </div>
           <div className="lbl" style={{ marginTop: 30 }}>Theme</div>

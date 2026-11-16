@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { activeCampaign, publicStats, tryHook, type ActiveCampaign, type Hook, type PublicStats } from "@/lib/api";
-import { formatNear, NETWORK, VAULT_ID } from "@/lib/config";
+import { activeCampaign, getPet, publicStats, tryHook, type ActiveCampaign, type Hook, type PetPublic, type PublicStats } from "@/lib/api";
+import { formatNear, formatWhen, NETWORK, txLink, VAULT_ID } from "@/lib/config";
 import { Plate } from "@/components/Plate";
 import { useAccent, useNotch } from "@/components/Shell";
 import { useRotate } from "@/components/useRotate";
@@ -15,6 +15,12 @@ import "./live.css";
 const EXAMPLES = ["Ship faster with Acme CI", "Tests in three seconds", "Logs you can read"];
 const FORMAT: Record<string, string> = { humour: "Humour", sarcasm: "Sarcasm", offer: "Offer", question: "Question", "bold-claim": "Bold claim", urgency: "Urgency", story: "Mini story", "dev-meme": "Dev meme" };
 const TRY_PETS = ["pip", "byte", "gloop"];
+// The pet this page follows live: a real, paired pet on the hosted server.
+const DEMO_PET = process.env.NEXT_PUBLIC_DEMO_PET ?? "mochi";
+const VIDEO = "https://youtu.be/g5L31kJ2dRQ";
+const WALKTHROUGH = "https://youtu.be/-QK3U_Z1n5s";
+const INSTALL = "https://github.com/DiveshK007/GREMLO#try-it-in-two-minutes";
+const near4 = (w: string | null | undefined) => (w == null ? null : Number(formatNear(BigInt(w))).toFixed(4));
 
 export default function Live() {
   useAccent("tako");
@@ -27,12 +33,14 @@ export default function Live() {
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [requestId, setRequestId] = useState("");
   const [tryError, setTryError] = useState("");
+  const [pet, setPet] = useState<PetPublic | null | undefined>(undefined);
 
   useEffect(() => {
     notch.set("think");
     Promise.allSettled([
       activeCampaign().then((c) => setCampaign(c)).catch(() => setCampaign(null)),
       publicStats().then(setS).catch((e) => { setS(null); setStatsError((e as Error).message); }),
+      getPet(DEMO_PET).then(setPet).catch(() => setPet(null)),
     ]).then(() => notch.base("rest"));
   }, [notch]);
 
@@ -66,7 +74,14 @@ export default function Live() {
     <div className="wrap">
       <div className="sec-head">
         <div><div className="eyebrow">Live numbers</div><h1 className="dsp">The real numbers, right now.</h1></div>
-        <p>For judges and the curious: the line on a sign this minute, the running totals, and one real AI call you can make yourself. The story lives on the <Link href="/">home page</Link>.</p>
+        <div>
+          <p>No Mac needed. A real pet on the hosted server, the line it holds this minute, every payment on chain, and one AI call you can make yourself. The story lives on the <Link href="/">home page</Link>.</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+            <a className="btn solid sm" href={VIDEO} target="_blank" rel="noreferrer">Watch the 1:30 demo</a>
+            <a className="btn ghost sm" href={WALKTHROUGH} target="_blank" rel="noreferrer">Full walkthrough</a>
+            <a className="btn ghost sm" href={INSTALL} target="_blank" rel="noreferrer">Have a Mac? Install it</a>
+          </div>
+        </div>
       </div>
 
       <div className="stage now">
@@ -77,6 +92,39 @@ export default function Live() {
             : <><span className="ex">Example hooks</span><span className="faint" style={{ fontSize: 13 }}>No campaign is running. These are examples.</span></>}
         </div>
       </div>
+
+      <div className="sub-head">
+        <div><div className="eyebrow">A real pet</div><h2>{pet ? `${pet.name[0].toUpperCase()}${pet.name.slice(1)}, right now` : "The pet, right now"}</h2></div>
+        <span className="n" role="status">{pet === undefined ? "reading…" : pet ? (pet.paired ? "paired to a Mac · live" : "not paired right now") : ""}</span>
+      </div>
+      {pet === null && <div className="bad" role="alert" style={{ marginBottom: 14 }}>Can’t read the pet right now.</div>}
+      {pet && (
+        <>
+          <div className="totals">
+            {tot("Mood", pet.mood)}
+            {tot("Compute budget", near4(pet.compute?.budget ?? pet.computeBalance))}
+            {tot("Earned (NEAR)", near4(pet.earnedWei))}
+            {tot("Paid views", pet.paidViews == null ? null : String(pet.paidViews))}
+          </div>
+          <p className="faint" style={{ fontSize: 13, margin: "12px 0 0" }}>{pet.moodReason ? `Why: ${pet.moodReason}. ` : ""}Each paid view puts a share into its compute budget; no budget, no thinking.</p>
+          {pet.lastThoughts.length > 0 && (
+            <ul className="fl">
+              {pet.lastThoughts.slice(0, 5).map((t) => (
+                <li key={t.requestId + t.at}>
+                  <span>{t.action}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <span className="mono" style={{ fontSize: 12.5, wordBreak: "break-all", color: "var(--fg)" }}>{t.requestId}</span>
+                    <div className="faint" style={{ fontSize: 12.5 }}>{formatWhen(t.at * 1000)}{t.model ? ` · ${t.model}` : ""}{t.chargeTx ? <> · <a href={txLink(t.chargeTx)} target="_blank" rel="noreferrer">charged on chain ↗</a></> : ""}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {pet.meals && pet.meals.length > 0 && (
+            <p className="faint" style={{ fontSize: 13, margin: "14px 0 0" }}>Meals (settlements that fed it): {pet.meals.slice(-6).map((h, i) => <span key={h}>{i ? " · " : ""}<a href={txLink(h)} target="_blank" rel="noreferrer">{h.slice(0, 8)}…</a></span>)}</p>
+          )}
+        </>
+      )}
 
       <div className="sub-head">
         <div><div className="eyebrow">Totals</div><h2>So far</h2></div>
