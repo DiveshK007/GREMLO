@@ -16,7 +16,8 @@
 <p align="center">
   <b>Live now, no Mac needed:</b>
   <a href="https://gremlo.vercel.app">web app</a> ·
-  <a href="https://gremlo.vercel.app/live">judge page (live pet, thoughts charged on chain, settlements)</a> ·
+  <a href="https://gremlo.vercel.app/experience">judge tour</a> ·
+  <a href="https://gremlo.vercel.app/live">live numbers</a> ·
   <a href="https://gremlo.vercel.app/park">park</a> ·
   <a href="https://gremlo.vercel.app/brand?c=3">a live campaign</a> ·
   <a href="https://16-4-100-95.sslip.io/health">API health</a>
@@ -32,11 +33,12 @@
 
 <p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (1:30)"></a></p>
 
-**Judging? Verify in 2 minutes, no keys:**
+**Judging? Two minutes, no Mac, no wallet, no keys.**
 
-1. `curl https://16-4-100-95.sslip.io/stats` shows campaigns, settled views, NEAR paid and compute charged. Compute charged is 20% of paid.
-2. Open any "charged on chain" link on [/live](https://gremlo.vercel.app/live). Each is a `charge_compute` call on `vault.gremlo.testnet` carrying the NEAR AI completion id.
-3. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `rust-toolchain.toml`).
+1. Take the [guided tour](https://gremlo.vercel.app/experience): the pet, the money loop and live testnet numbers.
+2. Check the API yourself: `curl https://16-4-100-95.sslip.io/stats` returns campaigns, settled views, NEAR paid and NEAR charged for AI. A share of each payment (20% now) is credited to the pet's AI budget; "charged" is the part it has spent so far, so it is at most 20% of paid.
+3. Open any "charged on chain" link on [/live](https://gremlo.vercel.app/live). Each is a `charge_compute` call on `vault.gremlo.testnet` carrying the NEAR AI completion id.
+4. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `rust-toolchain.toml`).
 
 Gremlo was built for the NEAR Hackathon (Nov 2026) and is now in active development as a product. The submission snapshot is the [`hackathon-submission`](https://github.com/DiveshK007/GREMLO/tree/hackathon-submission) tag.
 
