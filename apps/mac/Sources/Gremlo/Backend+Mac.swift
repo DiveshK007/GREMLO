@@ -293,8 +293,11 @@ final class Backend: NSObject {
     }
 
     // One think in flight at a time; events during a pending call are skipped so a tool burst can't stack paid calls.
+    // At most 10 paid thoughts a minute, however many events arrive: a flood of hook events can't turn into a flood of AI calls.
+    let thinkLimit = SlidingLimit(max: 10, window: 60)
     func think(_ hook: [String: Any]) {
         guard !thinking, !demoMode, !pet.offline, !paused, !pet.egg else { return } // no AI spend while demoing, offline or paused
+        guard thinkLimit.allow() else { return }
         thinking = true
         let body: [String: Any] = ["event": hook["hook_event_name"] ?? "", "sessionId": hook["session_id"] ?? "",
                                    "toolName": hook["tool_name"] ?? "", "notificationType": hook["notification_type"] ?? "",

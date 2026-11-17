@@ -91,13 +91,17 @@ final class ClickView: NSView {
 final class HookServer {
     let listener: NWListener
     let onEvent: ([String: Any]) -> Void
+    /// This install's secret: every Claude Code / Codex / Cursor event must carry it (see HookAuth).
+    let secret: String
+    private var refused = 0
     /// PermissionRequest: the connection stays open until `reply` is called with the user's answer (or nil).
     var onPermission: (([String: Any], @escaping (Data?) -> Void) -> Void)?
     /// Git hooks (R4 §4) post one line: {"type":"git","event":...,"repo":<hash>}.
     var onGit: ((GitEvent) -> Void)?
 
-    init(port: UInt16, onEvent: @escaping ([String: Any]) -> Void) throws {
+    init(port: UInt16, secret: String, onEvent: @escaping ([String: Any]) -> Void) throws {
         self.onEvent = onEvent
+        self.secret = secret
         let params = NWParameters.tcp
         params.acceptLocalOnly = true
         listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
@@ -125,13 +129,18 @@ final class HookServer {
             if let data { buf.append(data) }
             if let end = buf.range(of: Data("\r\n\r\n".utf8)) {
                 let head = String(decoding: buf[..<end.lowerBound], as: UTF8.self).lowercased()
+                let path = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+                // refused before the body is read: a page in a browser or a process without the secret gets nothing
+                if let why = HookAuth.refusal(headers: HookAuth.parseHead(head), secret: self.secret, needsSecret: path != "/git") {
+                    self.refuse(conn, why)
+                    return
+                }
                 let length = head.split(separator: "\r\n")
                     .first { $0.hasPrefix("content-length:") }
                     .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) }
                     .map { max(0, $0) } ?? 0 // a negative length would trap in prefix()
                 let body = buf[end.upperBound...]
                 if body.count >= length || done || err != nil {
-                    let path = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
                     self.finish(conn, path: path, body: Data(body.prefix(length)))
                     return
                 }
@@ -139,6 +148,12 @@ final class HookServer {
             if done || err != nil || buf.count > 8_000_000 { conn.cancel(); return }
             self.read(conn, buf)
         }
+    }
+
+    func refuse(_ conn: NWConnection, _ why: String) {
+        refused += 1
+        if refused <= 3 || refused % 100 == 0 { print("hook refused (\(refused) so far): \(why)") }
+        conn.send(content: Data("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8), completion: .contentProcessed { _ in conn.cancel() })
     }
 
     func respond(_ conn: NWConnection, _ body: Data?) {

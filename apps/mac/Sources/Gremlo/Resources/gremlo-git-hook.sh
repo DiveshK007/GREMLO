@@ -23,7 +23,9 @@ send() {
   line="{\"type\":\"git\",\"event\":\"$1\",\"repo\":\"$repo\"}"
   sink="${GREMLO_GIT_SINK:-$NOTCHI_GIT_SINK}"  # the old name is read for one release
   if [ -n "$sink" ]; then printf '%s\n' "$line" >> "$sink"; return; fi
-  curl -s -m 1 -X POST -H 'Content-Type: application/json' --data "$line" http://127.0.0.1:47474/git >/dev/null 2>&1 || true
+  # the secret is sent when the app has made one; /git is accepted without it for hooks installed before it existed
+  auth="$HOME/.gremlo/hook-header"; [ -r "$auth" ] || auth=/dev/null
+  curl -s -m 1 -X POST -H 'Content-Type: application/json' -H "@$auth" --data "$line" http://127.0.0.1:47474/git >/dev/null 2>&1 || true
 }
 zero="0000000000000000000000000000000000000000"
 case "$name" in

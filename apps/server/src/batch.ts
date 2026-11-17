@@ -121,3 +121,11 @@ export function streak(days: string[] = [], today: string) {
 }
 /** Level from views the chain has paid for: 1 at 0, 2 at 10, 3 at 40, 4 at 90... */
 export const level = (paidViews: number) => Math.floor(Math.sqrt(paidViews / 10)) + 1;
+
+/** Time left (ms) before `key` may run again, or 0 and the clock restarts: one run per key per `coolMs`. */
+export function cooldown(last: Map<string, number>, key: string, now: number, coolMs: number) {
+  const wait = coolMs - (now - (last.get(key) ?? -Infinity));
+  if (wait > 0) return wait;
+  last.set(key, now);
+  return 0;
+}

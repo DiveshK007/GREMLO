@@ -6,6 +6,9 @@ import {
   type Brief, type Dropped, type Hook, type Settlement, type Stats,
 } from "@/lib/api";
 import { closeCampaign, connectWallet, createCampaign, lineHash, readCampaign, topUpCampaign } from "@/lib/chain";
+import { clearDraft, keepDraft, loadDraft, type Draft } from "@/lib/draft";
+import { plainError } from "@/lib/errors";
+import { PaidError } from "@/lib/paid";
 import { addressLink, formatNear, formatWhen, parseNear, SERVER_URL, txLink, VAULT_ID } from "@/lib/config";
 import { Pet } from "@/components/Pet";
 import { Plate } from "@/components/Plate";
@@ -73,6 +76,12 @@ export default function FundCampaign() {
   const [error, setError] = useState("");
   const [hooksError, setHooksError] = useState("");
   const [funded, setFunded] = useState<Funded | null>(null);
+  // hooks of a paid campaign the server hasn't saved yet; kept on this device so Retry works after a reload too
+  const [unsavedDraft, setUnsavedDraft] = useState<Draft | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  const [paidTx, setPaidTx] = useState<string | null>(null);
+  useEffect(() => { setUnsavedDraft(loadDraft()); }, []);
 
   const [lookupId, setLookupId] = useState("");
   const [lookup, setLookup] = useState<Lookup | null>(null);
@@ -173,19 +182,41 @@ export default function FundCampaign() {
       const { txHash, campaignId } = await createCampaign({ account, line, budgetWei, rateWei, endTime });
       let recordWarning: string | undefined;
       setBusy("record");
+      const draft: Draft = { campaignId: campaignId.toString(), hooks: picked, moments: picked.map((x) => moments[x] ?? "any"), lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief, email: email.trim() || undefined };
       try {
-        await recordCampaign({ campaignId: campaignId.toString(), hooks: picked, moments: picked.map((x) => moments[x] ?? "any"), lineHash: lineHash(line), brand: account, txHash, url: url.trim(), brief, email: email.trim() || undefined });
+        await recordCampaign(draft);
       } catch (e) {
-        recordWarning = `Paid onchain, but the server didn't save your hooks: ${(e as Error).message}. Your budget is safe; contact us with the receipt.`;
+        keepDraft(draft); // the hook text lives only in this page; keep it so Retry survives a reload
+        setUnsavedDraft(draft);
+        recordWarning = `Your payment went through, but the server didn't save your hooks yet: ${plainError(e)} Your budget is safe. Your hooks are kept on this device; press Retry.`;
       }
       setFunded({ campaignId, txHash, hooks: picked, budgetWei, rateWei, endTime, recordWarning });
       setLookupId(campaignId.toString());
       if (!recordWarning) notch.set("done", `campaign #${campaignId} is live`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
-      setError(`Nothing was paid: ${(e as Error).message.split("\n")[0]}`);
+      if (e instanceof PaidError) { setPaidTx(e.txHash); setError(`${e.message} Open the receipt below, then look for your campaign under "Your campaigns".`); }
+      else setError(`Nothing was paid: ${plainError(e)}`);
     } finally {
       setBusy("");
+    }
+  }
+
+  async function retrySave() {
+    if (!unsavedDraft) return;
+    setRetrying(true);
+    setRetryError("");
+    try {
+      await recordCampaign(unsavedDraft);
+      clearDraft();
+      const id = unsavedDraft.campaignId;
+      setUnsavedDraft(null);
+      setFunded((f) => (f && f.campaignId.toString() === id ? { ...f, recordWarning: undefined } : f));
+      notch.set("done", `campaign #${id} is live`);
+    } catch (e) {
+      setRetryError(plainError(e));
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -269,7 +300,7 @@ export default function FundCampaign() {
       <>
         <div className="wrap narrow" style={{ maxWidth: 1040 }}>
           <div className="end" style={{ paddingBottom: 20 }}>
-            {unsaved && <div className="bad" role="alert" style={{ maxWidth: "62ch", textAlign: "left", padding: "14px 16px", borderRadius: "var(--r-field)", background: "var(--surface)" }}>{funded.recordWarning}</div>}
+            {unsaved && <div className="bad" role="alert" style={{ maxWidth: "62ch", textAlign: "left", padding: "14px 16px", borderRadius: "var(--r-field)", background: "var(--surface)" }}>{funded.recordWarning}{retryError && <> Retry failed: {retryError}</>}</div>}
             <span className="pill live"><i />Campaign #{funded.campaignId.toString()} · {unsaved ? "paid, not saved" : "live"}</span>
             <h1 className="dsp">{unsaved ? "Paid. Hooks not saved yet." : "Your campaign is live."}</h1>
             <p>{unsaved ? "Nothing shows to developers until the hooks are saved. Keep the receipt below; it proves the payment." : "Developers will see your hooks the next time their coding agent starts working. You pay only for real, verified views."}</p>
@@ -285,7 +316,8 @@ export default function FundCampaign() {
           <div className="actions" style={{ justifyContent: "center", marginTop: 30 }}>
             {unsaved ? (
               <>
-                <button type="button" className="btn solid" onClick={() => { void navigator.clipboard?.writeText(`Campaign #${funded.campaignId} · tx ${funded.txHash}`); toast("Receipt copied"); }}>Copy receipt</button>
+                <button type="button" className="btn solid" onClick={retrySave} disabled={retrying} aria-busy={retrying}>{retrying ? "Saving…" : "Retry saving"}</button>
+                <button type="button" className="btn ghost" onClick={() => { void navigator.clipboard?.writeText(`Campaign #${funded.campaignId} · tx ${funded.txHash}`); toast("Receipt copied"); }}>Copy receipt</button>
                 <a className="btn ghost" href={`mailto:help@gremlo.dev?subject=${encodeURIComponent(`Campaign #${funded.campaignId} hooks not saved`)}&body=${encodeURIComponent(`Receipt: ${funded.txHash}`)}`}>Contact us</a>
               </>
             ) : (
@@ -333,6 +365,13 @@ export default function FundCampaign() {
             : <><button type="button" className="btn ghost sm" onClick={onConnect}>Connect wallet</button><p>You pay from your own wallet. Nothing moves until you confirm there.</p></>}
         </div>
         {walletError && <div className="bad" role="alert">{walletError}</div>}
+        {unsavedDraft && (
+          <div className="bad" role="alert" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <span>Campaign #{unsavedDraft.campaignId} is paid, but its hooks weren’t saved on the server. They’re kept on this device.{retryError && <> Retry failed: {retryError}</>}</span>
+            <button type="button" className="btn solid sm" onClick={retrySave} disabled={retrying} aria-busy={retrying}>{retrying ? "Saving…" : "Retry saving"}</button>
+          </div>
+        )}
+        {paidTx && <p className="note">Receipt: <Tx hash={paidTx} full /></p>}
 
         <div className="build">
           <div>

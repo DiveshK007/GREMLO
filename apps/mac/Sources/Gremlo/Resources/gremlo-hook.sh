@@ -6,6 +6,9 @@
 # shows its normal prompt. The app never decides on its own.
 dir="$HOME/.gremlo"
 mkdir -p "$dir"
+# The app only accepts events that carry this install's secret. It sits in a file the app writes (mode 0600), and curl
+# reads it from there, so it never appears in a process list. No file means the app has never run: nothing to tell.
+auth="$dir/hook-header"
 payload="$(cat)"
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -c --arg ts "$(date +%s)" \
@@ -25,11 +28,11 @@ print(json.dumps(keep, separators=(",", ":")))
 fi
 event="$(printf '%s' "$payload" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([A-Za-z]*\)".*/\1/p' | head -n1)"
 if [ "$event" = "PermissionRequest" ]; then
-  answer="$(printf '%s' "$payload" | curl -s -m 110 -X POST -H 'Content-Type: application/json' \
+  answer="$(printf '%s' "$payload" | curl -s -m 110 -X POST -H 'Content-Type: application/json' -H "@$auth" \
     --data-binary @- http://127.0.0.1:47474/claude/permission 2>/dev/null || true)"
   case "$answer" in *hookSpecificOutput*) printf '%s' "$answer" ;; esac
   exit 0
 fi
-printf '%s' "$payload" | curl -s -m 1 -X POST -H 'Content-Type: application/json' \
+printf '%s' "$payload" | curl -s -m 1 -X POST -H 'Content-Type: application/json' -H "@$auth" \
   --data-binary @- http://127.0.0.1:47474/claude/hook >/dev/null 2>&1 || true
 exit 0

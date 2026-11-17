@@ -180,7 +180,8 @@ let pet = Pet(skin: skin, door: door)
 let backend = Backend(pet: pet)
 let server: HookServer
 do {
-    server = try HookServer(port: 47474) { hook in
+    let secret = try HookAuth.loadOrCreate(in: ClaudeHooks.scriptURL.deletingLastPathComponent())
+    server = try HookServer(port: 47474, secret: secret) { hook in
         backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
         backend.growth.hook(hook)
         backend.hunt.hook(hook)

@@ -1,6 +1,7 @@
 // NEAR access for the browser: views over plain JSON-RPC, signing through NEAR Connect (the brand's or owner's wallet).
 import { keccak256, toHex } from "viem";
 import { NETWORK, RPC_URLS, VAULT_ID } from "./config";
+import { PaidError } from "./paid";
 
 /** A vault view over JSON-RPC; returns the parsed JSON result. A 429, 5xx or network error moves to the next RPC URL. */
 export async function view<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -62,8 +63,18 @@ type Campaign = { brand: string; budget: string; spent: string; rate: string; en
 export async function createCampaign(opts: { account: string; line: string; budgetWei: bigint; rateWei: bigint; endTime: bigint }) {
   if (!VAULT_ID) throw new Error("NEXT_PUBLIC_NEAR_CONTRACT_ID is not set.");
   const r = await call(opts.account, "create_campaign", { line_hash: lineHash(opts.line).slice(2), rate: opts.rateWei.toString(), end_time: Number(opts.endTime) }, opts.budgetWei);
-  if (typeof r.value !== "number") throw new Error(`Transaction ${r.txHash} succeeded but returned no campaign id.`);
-  return { txHash: r.txHash, campaignId: BigInt(r.value) };
+  const hash = lineHash(opts.line).slice(2);
+  let id = typeof r.value === "number" ? r.value : null;
+  if (id === null) {
+    // the wallet didn't pass the return value on; the newest campaign is ours if it has our brand and line
+    try {
+      const n = await view<number>("campaign_count");
+      const c = await view<Campaign | null>("get_campaign", { id: n });
+      if (c && c.brand === opts.account && c.line_hash === hash) id = n;
+    } catch { /* fall through to the message below */ }
+  }
+  if (id === null) throw new PaidError(r.txHash, "Your payment went through, but the wallet didn't tell us the campaign number.");
+  return { txHash: r.txHash, campaignId: BigInt(id) };
 }
 
 export async function readCampaign(id: bigint) {

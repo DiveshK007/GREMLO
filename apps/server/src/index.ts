@@ -3,11 +3,13 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, network, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "./chain.ts";
 import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "./purse.ts";
 import { health } from "./health.ts";
-import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
+import { allow, cooldown, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView, type Compute } from "./views.ts";
-import { bad, errText, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "./register.ts";
+import { bad, errText, HttpError, makeRegister, toHttp, verifyWorldProof, type PetRecord } from "./register.ts";
+import { checkCampaign, parseBrief, saveLine, type Brief } from "./campaigns.ts";
+import { makeReserve } from "./reserve.ts";
 import { addThought, type Thought } from "./thoughts.ts";
-import { checkLine, checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
+import { checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
 import { arkivCampaign } from "./arkiv.ts"; // Arkiv mirror: off on the NEAR build (its schema is EVM-only); the read route stays
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -62,7 +64,6 @@ type Store = {
   galleryReviews: Record<string, string[]>; // submission id -> reviewers who played every row
   phones: Record<string, Mailbox>; // pairing channel -> sealed state and answers (the server can't read them)
 };
-type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 
 // shortcut: one JSON file, one process; fine for a single instance on a persistent volume (STORE_PATH).
 // Move to Postgres (PLAN_V2 A2) before running a second instance.
@@ -271,6 +272,16 @@ function addImpressions(req: IncomingMessage, raw: string) {
   return { accepted, pending: store.pending };
 }
 
+const settleHits = new Map<string, number[]>();
+const settleAt = new Map<string, number>();
+/** POST /settle/:id from a browser: a cooldown per campaign and a limit per visitor, so it can't be used to burn gas. */
+async function settleRequest(req: IncomingMessage, id: string) {
+  if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
+  if (!allow(settleHits, clientIp(req), Date.now(), 20, 3_600_000)) throw new HttpError(429, "Too many settlement requests from this address. Try again in an hour.");
+  const wait = cooldown(settleAt, id, Date.now(), 60_000);
+  if (wait) throw new HttpError(429, `Campaign #${id} was just settled. Try again in ${Math.ceil(wait / 1000)} seconds.`);
+  return settle(id);
+}
 async function settle(id: string) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
   if (settling.has(id)) throw new HttpError(409, "settlement already running for this campaign");
@@ -355,7 +366,7 @@ async function activeCampaign() {
   return null;
 }
 
-const inflight = new Map<string, bigint>(); // pet -> compute charges sent but not landed yet
+const reserve = makeReserve(); // pet -> compute held for AI calls in flight and charges not landed yet
 
 /** A registered pet as the Mac and web read it: mood from its onchain compute budget, earnings from the vault. */
 async function getPet(key: string) {
@@ -387,7 +398,7 @@ async function getPet(key: string) {
       walletBalance: pet ? await payoutBalance(pet.payout) : null, // the payout account, where earnings land
       compute,
       fees,
-      inflight: pp ? owed(store.thoughts[petKey]) : inflight.get(petKey) ?? 0n,
+      inflight: (pp ? owed(store.thoughts[petKey]) : 0n) + reserve.held(petKey),
       impressionsToday: t?.day === utcDay() ? t.count : 0,
       seeded,
       lastThoughts: store.thoughts[petKey],
@@ -447,22 +458,41 @@ function rememberLook(key: string, body: any) {
   save();
 }
 
+/** What the chain says this pet can still spend today, in yoctoNEAR, minus what a purse already owes. */
+function room(pet: { compute: { budget: string; chargedToday: string; dailyCap: string } | null; petKey: string }, purse: boolean) {
+  const c = pet.compute;
+  if (!c) return 0n;
+  const left = [BigInt(c.budget), BigInt(c.dailyCap) - BigInt(c.chargedToday)].reduce((a, b) => (a < b ? a : b));
+  return left - (purse ? owed(store.thoughts[pet.petKey]) : 0n);
+}
+const COMMITTED = "sleeping: its compute budget is committed to another thought";
+
 async function petThink(key: string, body: any) {
   const event = str(body.event);
   if (!event) throw bad("event is required");
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
   const petKey = pet.petKey;
   rememberLook(key, body);
-  const blocked = purseGate(pet, pet.mood === "thriving" ? fees.smart : fees.cheap);
+  const fee = pet.mood === "thriving" ? fees.smart : fees.cheap;
+  const blocked = purseGate(pet, fee);
   if (blocked) return { action: "sleep", say: null, reason: blocked, requestId: null, fee: null };
-  const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
-  if (!r.requestId && pet.moodReason) r.reason = pet.moodReason; // no call was made; say why in the pet's words
-  store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
-  store.days[petKey] = markDay(store.days[petKey], utcDay());
-  save();
-  const fee = r.completionId ? (pet.mood === "thriving" ? fees.smart : fees.cheap) : 0n;
-  const payFor = fee ? bill(petKey, pet.purse, fee, r.completionId, r.action) : null;
-  return { ...r, fee: fee ? fee.toString() : null, payFor };
+  // hold the fee before the slow AI call, so a second thought sent meanwhile sees it as spent
+  const paid = pet.mood === "thriving" || pet.mood === "stable";
+  if (paid && !reserve.tryHold(petKey, room(pet, !!pet.purse), fee)) return { action: "sleep", say: null, reason: COMMITTED, requestId: null, fee: null };
+  let keep = false; // true while charge() owns the hold
+  try {
+    const r = await think({ event, mood: pet.mood, toolName: str(body.toolName), notificationType: str(body.notificationType) });
+    if (!r.requestId && pet.moodReason) r.reason = pet.moodReason; // no call was made; say why in the pet's words
+    store.thoughts[petKey] = addThought(store.thoughts[petKey], r);
+    store.days[petKey] = markDay(store.days[petKey], utcDay());
+    save();
+    const served = r.completionId ? fee : 0n;
+    const payFor = served ? bill(petKey, pet.purse, fee, r.completionId, r.action) : null;
+    keep = !!served && !pet.purse;
+    return { ...r, fee: served ? served.toString() : null, payFor };
+  } finally {
+    if (paid && !keep) reserve.release(petKey, fee); // no completion, a purse thought (now owed), or a failure
+  }
 }
 
 /** The opt-in diary entry (1.0 design §8): counts and tool names only, one cheap call, charged like a think. */
@@ -475,12 +505,24 @@ async function petDiary(key: string, body: any) {
   if (diaryDays.get(pet.petKey) === today) throw new HttpError(429, "one diary entry a day");
   const blocked = purseGate(pet, fees.cheap);
   if (blocked) return { entry: null, reason: blocked, requestId: null };
+  const paid = pet.mood === "thriving" || pet.mood === "stable"; // a hungry or asleep pet makes no call
+  if (paid && !reserve.tryHold(pet.petKey, room(pet, !!pet.purse), fees.cheap)) return { entry: null, reason: COMMITTED, requestId: null };
+  let keep = false;
+  try {
   const r = await diary({ mood: pet.mood, species: str(body?.species, 24), voice: str(body?.voice, 60), runs: n(body?.runs), failures: n(body?.failures),
     approvals: n(body?.approvals), tools, length: body?.length === "longer" ? "longer" : "short" });
-  if (!r.entry) return { entry: null, reason: pet.moodReason ?? r.reason, requestId: r.requestId ?? null };
+  if (!r.entry) {
+    // a completion that came back unusable was still served; the hold stays until it is charged
+    if (r.completionId) { bill(pet.petKey, pet.purse, fees.cheap, r.completionId, "diary"); keep = !pet.purse; }
+    return { entry: null, reason: pet.moodReason ?? r.reason, requestId: r.requestId ?? null };
+  }
   diaryDays.set(pet.petKey, today);
   const payFor = bill(pet.petKey, pet.purse, fees.cheap, r.completionId, "diary");
+  keep = !pet.purse;
   return { entry: r.entry, requestId: r.requestId, fee: fees.cheap.toString(), payFor };
+  } finally {
+    if (paid && !keep) reserve.release(pet.petKey, fees.cheap);
+  }
 }
 
 // ---------- the pet's purse (purse.ts) ----------
@@ -544,8 +586,7 @@ async function pursePaid(name: string, b: any) {
 
 /** charge_compute for one served completion; the tx hash lands on the thought. A failure is logged, never invented. */
 async function charge(petKey: string, fee: bigint, completionId: string) {
-  inflight.set(petKey, (inflight.get(petKey) ?? 0n) + fee);
-  try {
+  try { // the fee was held before the AI call (petThink); it comes off once the charge lands or fails
     const tx = await send("charge_compute", { pet_id: petKey, amount: fee.toString(), near_ai_completion_id: completionId });
     const t = store.thoughts[petKey]?.find((x) => x.requestId === completionId);
     if (t) t.chargeTx = tx;
@@ -554,32 +595,8 @@ async function charge(petKey: string, fee: bigint, completionId: string) {
   } catch (e) {
     console.error(`charge: ${petKey} completion ${completionId} was not charged: ${errMsg(e)}`);
   } finally {
-    inflight.set(petKey, (inflight.get(petKey) ?? fee) - fee);
+    reserve.release(petKey, fee);
   }
-}
-
-/** A brand brief from the web form. Field limits are the trust boundary; the claim checks run on top. */
-function parseBrief(b: any): Brief {
-  const field = (k: string, max: number, required: boolean) => {
-    const v = typeof b?.[k] === "string" ? b[k].trim() : "";
-    if (required && !v) throw bad(`${k} is required`);
-    if (v.length > max) throw bad(`${k} must be at most ${max} characters`);
-    return v;
-  };
-  return { product: field("product", 160, true), audience: field("audience", 120, true), offer: field("offer", 120, false), proof: field("proof", 600, false), cta: field("cta", 40, true) };
-}
-
-/** Brief + chosen hooks pass every claim check, or a 400 that names the hook and the reason. No AI call. */
-function checkCampaign(rawBrief: unknown, hooks: string[]) {
-  const brief = parseBrief(rawBrief);
-  const refused = checkBrief(brief);
-  if (refused) throw bad(refused);
-  if (hooks.length < 1 || hooks.length > 4) throw bad("pick 1 to 4 lines");
-  for (const hook of hooks) {
-    const why = checkHook(hook, brief);
-    if (why) throw bad(`"${hook}": ${why}`);
-  }
-  return brief;
 }
 
 /** 2 hooks per format from one NEAR AI call; hooks that fail the claim checks come back in `dropped` with the reason. */
@@ -609,27 +626,7 @@ async function saveCampaign(body: any) {
     if (!c) await new Promise((r) => setTimeout(r, 2000));
   }
   if (!c) throw new HttpError(404, "unknown campaign");
-  const brand = c.brand, onchainHash = `0x${c.line_hash}`;
-  const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
-  // first write wins: the line text is private until this save, so only the brand can make a matching hash; after
-  // that, nobody (who could now read the line) may swap the link, email or brief. A repeat of the same save is fine.
-  if (store.moments[id] !== undefined || store.urls[id] !== undefined || store.briefs[id] !== undefined) {
-    const same = (body.url === undefined || store.urls[id] === checkUrl(body.url)) && (body.email === undefined || store.emails[id] === body.email);
-    if (!same) throw new HttpError(409, "this campaign's details are already saved");
-    return { ok: true };
-  }
-  // the browser is not trusted to have run the checks: every hook, picked or hand-written, runs them again here
-  if (body.brief !== undefined) store.briefs[id] = checkCampaign(body.brief, String(line).split("\n"));
-  if (String(line).split("\n").length > 4) throw bad("at most 4 lines");
-  const h = checkLine(line, body.lineHash, onchainHash);
-  store.lines[h] = line;
-  store.moments[id] = momentTags(body.moments, String(line).split("\n").length);
-  if (body.url !== undefined) store.urls[id] = checkUrl(body.url);
-  // checked before payment (/campaigns/check); after the money moved a bad address is dropped, never an error
-  const email = (() => { try { return checkEmail(body.email); } catch { return undefined; } })();
-  if (email) store.emails[id] = email;
-  const name = str(body.brand, 40);
-  if (name) store.brands[brand] = name;
+  saveLine(store, id, c, body); // every check first, then the writes
   save();
   return { ok: true };
 }
@@ -923,13 +920,13 @@ function reviewGallery(req: IncomingMessage, id: string, b: any) {
 async function route(req: IncomingMessage) {
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://x");
   const m = req.method;
-  if (m === "GET" && pathname === "/health") return { ok: true }; // for the host's health check; touches nothing
+  if (m === "GET" && pathname === "/livez") return { ok: true }; // the process answers; touches nothing (the host's liveness probe)
   if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY!);
   if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
   const pair = pathname.match(/^\/pets\/([^/]+)\/device$/);
   if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
-  if (m === "POST" && pathname.startsWith("/settle/")) return settle(pathname.slice(8));
+  if (m === "POST" && pathname.startsWith("/settle/")) return settleRequest(req, pathname.slice(8));
   if (m === "GET" && pathname === "/campaigns/active") return activeCampaign();
   if (m === "POST" && pathname === "/campaigns/hooks") return campaignHooks(req, await readBody(req));
   if (m === "GET" && pathname === "/stats") return publicStats();
@@ -1021,9 +1018,9 @@ createServer((req, res) => {
       reply(res, 200, body);
     },
     (e) => {
-      const status = e instanceof HttpError ? e.status : 502; // anything else is the chain or RPC failing
-      if (status === 502) console.error(`${where}: ${errMsg(e)}`);
-      reply(res, status, { error: errMsg(e) });
+      const { status, message } = toHttp(e);
+      if (!(e instanceof HttpError)) console.error(`${where}: ${errMsg(e)}`); // the real reason stays in the log
+      reply(res, status, { error: message });
     },
   );
 }).listen(port, host, () => console.log(`server on ${host}:${port}, vault ${vault} on NEAR ${network}`));

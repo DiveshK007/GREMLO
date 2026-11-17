@@ -19,7 +19,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch {
-    throw new ApiError(0, `Can't reach the ${PRODUCT} server at ${SERVER_URL}. Is it running?`);
+    // the address helps a developer running it locally and means nothing to a visitor
+    throw new ApiError(0, process.env.NODE_ENV === "production" ? `Can't reach the ${PRODUCT} server right now. Check your connection and try again.` : `Can't reach the ${PRODUCT} server at ${SERVER_URL}. Is it running?`);
   }
   const text = await res.text();
   let body: unknown = undefined;

@@ -5,6 +5,13 @@ export class HttpError extends Error {
 }
 export const bad = (msg: string) => new HttpError(400, msg);
 
+/** What a failed request answers: our own errors as written, a bad URL encoding as a 400, anything else a plain 502. */
+export function toHttp(e: unknown): { status: number; message: string } {
+  if (e instanceof HttpError) return { status: e.status, message: e.message };
+  if (e instanceof URIError) return { status: 400, message: "the address has a broken % escape" };
+  return { status: 502, message: "The server couldn't finish that: the chain or a service it uses didn't answer. Try again in a minute." };
+}
+
 /** An error's message plus its cause chain, so "fetch failed" says why (ENOTFOUND, ECONNREFUSED, a timeout...). */
 export function errText(e: unknown): string {
   const parts: string[] = [];
