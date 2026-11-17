@@ -88,6 +88,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - run: brew install swiftlint # the runner image does not ship it
       - run: swiftlint lint --strict
         working-directory: apps/mac
       - run: swift build && swift test
