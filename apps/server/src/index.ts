@@ -1,13 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, network, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "./chain.ts";
 import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "./purse.ts";
 import { health } from "./health.ts";
-import { allow, cooldown, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
+import { allow, cooldown, countImpression, makeDailyCap, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor, type Pending } from "./batch.ts";
 import { campaignView, petView, type Compute } from "./views.ts";
 import { bad, errText, HttpError, makeRegister, toHttp, verifyWorldProof, type PetRecord } from "./register.ts";
 import { checkCampaign, parseBrief, saveLine, type Brief } from "./campaigns.ts";
 import { makeReserve } from "./reserve.ts";
+import { capSet, pruneHits, pruneStamps } from "./prune.ts";
+import { makeSaver } from "./saver.ts";
+import { streamLog } from "./logstream.ts";
 import { addThought, type Thought } from "./thoughts.ts";
 import { checkUrl, clickTarget, cors, WEB_ORIGIN, worldSign } from "./web.ts";
 import { canonical, checkOwnerSignature, checkSigned, deviceKey, keyId, mustBeFrom, pairMessage } from "./auth.ts";
@@ -92,11 +95,12 @@ for (const [id, list] of Object.entries(store.logs ?? {})) {
 }
 delete store.logs;
 store.settledViews ??= store.payouts.reduce((a, p) => a + p.views, 0);
-// write-then-rename, so a crash mid-write can never leave a truncated store
-const save = () => {
-  writeFileSync(`${STORE_FILE}.tmp`, JSON.stringify(store, null, 2));
-  renameSync(`${STORE_FILE}.tmp`, STORE_FILE);
-};
+// write-then-rename (so a crash mid-write never leaves a truncated store). save() coalesces a burst into one write
+// 250 ms later; saveNow() is for money, line text, pairing and the log head: a crash must not lose those.
+const saver = makeSaver(STORE_FILE, () => store);
+const save = saver.save, saveNow = saver.saveNow;
+for (const sig of ["SIGTERM", "SIGINT"] as const) process.on(sig, () => { saver.flush(); process.exit(0); });
+process.on("beforeExit", saver.flush);
 
 // Impressions are client-reported; this window plus one-human-one-pet is the defence. Mac app uses the same value.
 const IMPRESSION_WINDOW_MS = 60_000;
@@ -158,7 +162,7 @@ const registerPet = makeRegister({
   },
   accountExists,
   store,
-  save,
+  save: saveNow,
 });
 
 const errMsg = errText;
@@ -214,7 +218,7 @@ async function pairDevice(name: string, body: any) {
     // at most 5: the owner just signed for this one, so the oldest pairing makes room (a reinstalled Mac gets a new key)
     if (devices.length >= 5) console.log(`pair: ${pet.name} replaced its oldest device ${keyId(devices.shift()!)}`);
     devices.push(key);
-    save();
+    saveNow();
   }
   return { ok: true, pet: pet.name, device: keyId(key) };
 }
@@ -268,7 +272,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
     appendLog(id, { campaign: id, hour: Math.floor(Date.now() / 3_600_000), counts, pet: anonPet(petKey),
       key: signed ? h("x-gremlo-key") : null, time: signed ? h("x-gremlo-time") : null, sig: signed ? h("x-gremlo-sig") : null, body: raw });
   }
-  save();
+  saveNow(); // the log file and its head in the store must agree after a crash
   return { accepted, pending: store.pending };
 }
 
@@ -314,13 +318,13 @@ async function settle(id: string) {
         markSettled(store.pending[id], s.pet, s.count, "paid");
         store.settledViews = (store.settledViews ?? 0) + s.count;
         store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString(), tx: txHash }].slice(-5000);
-        save();
+        saveNow();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
         console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
       } catch (e: any) {
         markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
         if (e?.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
-        save();
+        saveNow();
         error = errMsg(e);
         break;
       }
@@ -560,7 +564,7 @@ function bill(petKey: string, purse: { account: string } | null, fee: bigint, co
   if (!t) { store.thoughts[petKey] = addThought(store.thoughts[petKey], { action, requestId: completionId }); t = store.thoughts[petKey][0]; }
   t.due = fee.toString();
   t.payTo = operatorId;
-  save();
+  saveNow();
   return { requestId: completionId, amount: t.due, payTo: operatorId, purse: purse.account };
 }
 /** The Mac reports a purse payment; it counts only once the chain shows the purse paid exactly this thought. */
@@ -579,7 +583,7 @@ async function pursePaid(name: string, b: any) {
   if (!paymentMatches(out, { purse: account, provider: t.payTo, amount: t.due, requestId })) throw new HttpError(400, "that transaction isn't this purse paying for this thought");
   t.chargeTx = tx;
   purseCache.delete(rec.name); // the balance moved
-  save();
+  saveNow();
   console.log(`purse: ${rec.name} paid ${t.due} yoctoNEAR for ${requestId}, tx ${tx}`);
   return { ok: true, tx };
 }
@@ -590,7 +594,7 @@ async function charge(petKey: string, fee: bigint, completionId: string) {
     const tx = await send("charge_compute", { pet_id: petKey, amount: fee.toString(), near_ai_completion_id: completionId });
     const t = store.thoughts[petKey]?.find((x) => x.requestId === completionId);
     if (t) t.chargeTx = tx;
-    save();
+    saveNow();
     console.log(`charge: ${petKey} paid ${fee} yoctoNEAR for completion ${completionId}, tx ${tx}`);
   } catch (e) {
     console.error(`charge: ${petKey} completion ${completionId} was not charged: ${errMsg(e)}`);
@@ -627,11 +631,16 @@ async function saveCampaign(body: any) {
   }
   if (!c) throw new HttpError(404, "unknown campaign");
   saveLine(store, id, c, body); // every check first, then the writes
-  save();
+  saveNow(); // the line text is only on this server; a crash must not lose it
   return { ok: true };
 }
 
-/** A sign click: counted at most once per pet per campaign per window, then off to the brand with UTM tags. */
+/**
+ * A sign click: counted at most once per pet per campaign per window, then off to the brand with UTM tags.
+ * It has to be a GET: the pet opens the browser on this address and the browser can only follow a redirect.
+ * It is idempotent per device signature: checkSigned refuses a signature it has seen, so repeating a click URL
+ * (a reload, a prefetch, a replay) still redirects but counts nothing, and the 10-minute window caps real clicks.
+ */
 function signClick(id: string, hookStr: string, petKey: string | null, q: URLSearchParams) {
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaign id must be a positive integer");
   const url = store.urls[id];
@@ -674,7 +683,7 @@ function release(id: string, ended: boolean) {
   if (r.ok.length) console.log(`release: campaign ${id}: ${r.ok.reduce((a, h) => a + h.n, 0)} views now payable`);
   if (r.voided.length) console.log(`fraud: campaign ${id} voided ${r.voided.reduce((a, h) => a + h.n, 0)} views`);
   store.held[id] = r.waiting;
-  save();
+  saveNow();
 }
 
 async function campaignStats(id: string) {
@@ -709,7 +718,7 @@ async function publicStats() {
 const tryHits = new Map<string, number[]>();
 const tryCache = new Map<string, { at: number; body: unknown }>();
 const TRY_DAILY_CAP = Number(process.env.TRY_DAILY_CAP ?? 100);
-let tryDay = { day: "", calls: 0 };
+const tryCap = makeDailyCap(TRY_DAILY_CAP);
 async function tryHook(req: IncomingMessage, body: any) {
   const product = str(body?.product, 160)?.trim();
   if (!product || product.length < 3) throw bad("say what your product is");
@@ -718,9 +727,8 @@ async function tryHook(req: IncomingMessage, body: any) {
   if (hit && Date.now() - hit.at < 24 * 3_600_000) return hit.body;
   const ip = clientIp(req);
   if (!allow(tryHits, ip, Date.now(), 3, 3_600_000)) throw new HttpError(429, "That's 3 tries this hour. Fund a campaign to get all 16 hooks.");
-  if (tryDay.day !== utcDay()) tryDay = { day: utcDay(), calls: 0 };
-  if (tryDay.calls >= TRY_DAILY_CAP) throw new HttpError(429, "Today's free tries are used up. Come back tomorrow, or fund a campaign.");
-  tryDay.calls++;
+  const today = utcDay();
+  if (!tryCap.take(today)) throw new HttpError(429, "Today's free tries are used up. Come back tomorrow, or fund a campaign.");
   try {
     const r = await suggestHooks({ product, audience: str(body?.audience, 120)?.trim() || "developers", offer: "", proof: "", cta: "Try it" });
     const seen = new Set<string>();
@@ -729,6 +737,7 @@ async function tryHook(req: IncomingMessage, body: any) {
     tryCache.set(key, { at: Date.now(), body: out });
     return out;
   } catch (e: any) {
+    tryCap.refund(today); // a call that failed doesn't use up one of the day's free tries
     if (e.code === "brief") throw bad(e.message);
     throw new HttpError(502, e.message);
   }
@@ -808,15 +817,31 @@ async function brandMail(id: string, budget: bigint, spent: bigint, lineHash: st
 }
 if (WORKER_ON) setInterval(workerPass, WORKER_MS);
 
+// The in-memory limit maps and replay sets only ever grew; trim them every 10 minutes (all windows are 24 h or less).
+setInterval(() => {
+  const now = Date.now(), DAY = 86_400_000;
+  for (const m of [hooksHits, tryHits, phoneHits, parkHits, visitHits, galleryHits, settleHits]) pruneHits(m, now, DAY);
+  pruneStamps(seenSigs, now, 60 * 60_000);
+  pruneStamps(settleAt, now, 60_000);
+  for (const [k, d] of diaryDays) if (d !== utcDay()) diaryDays.delete(k);
+  for (const [k, v] of tryCache) if (now - v.at > DAY) tryCache.delete(k);
+  for (const k of reported) if (!k.startsWith(utcDay())) reported.delete(k);
+  capSet(usedPairNonces, 5_000);
+  capSet(galleryReports, 50_000);
+}, 10 * 60_000).unref();
+
 /** A campaign's public log and what was billed from it; `gremlo verify <campaign>` checks one against the other. */
-function publicLog(id: string) {
+function logBilled(id: string) {
   const settled = store.payouts.filter((p) => p.id === id).reduce((a, p) => a + p.views, 0);
   const pending = Object.values(store.pending[id] ?? {}).reduce((a, b) => a + b, 0);
   const held = (store.held[id] ?? []).reduce((a, x) => a + x.n, 0);
   const voided = Object.values(store.voided[id] ?? {}).reduce((a, b) => a + b, 0);
-  const entries = existsSync(logFile(id)) ? readFileSync(logFile(id), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LogEntry) : [];
-  return { campaign: id, entries, billed: { settled, pending, held, voided } };
+  return { campaign: id, billed: { settled, pending, held, voided } };
 }
+/** GET /campaigns/:id/log[?after=i]: streamed from the file, never loaded whole; `after` returns only newer entries. */
+const publicLog = (id: string, after: number) => ({
+  pipe: (res: ServerResponse) => streamLog(res, logFile(id), logBilled(id), Number.isInteger(after) && after > 0 ? after : 0),
+});
 
 /** "Report" from the menu bar: a signed pet only, once per pet per line per day. Enough reports pause the line. */
 const reported = new Set<string>();
@@ -956,16 +981,24 @@ async function route(req: IncomingMessage) {
     return petThink(decodeURIComponent(thinkPath[1]), parse(raw));
   }
   const log = pathname.match(/^\/campaigns\/([1-9][0-9]*)\/log$/);
-  if (m === "GET" && log) return publicLog(log[1]);
+  if (m === "GET" && log) return publicLog(log[1], Number(searchParams.get("after") ?? 0));
   if (m === "POST" && pathname === "/lines/report") return reportLine(req, await readRaw(req));
   if (m === "GET" && pathname === "/park") return { pets: parkList(store.park, Date.now()) };
   if (m === "POST" && pathname === "/park") return joinPark(req, await readBody(req));
   const leave = pathname.match(/^\/park\/([a-f0-9]{16,32})$/);
   if (m === "DELETE" && leave) return leavePark(leave[1], searchParams.get("token"));
   if (m === "POST" && pathname === "/visits") return sendVisit(req, await readBody(req));
+  // taking visits deletes them, so it is a POST; the GET form stays one release for Macs installed before this
+  if (m === "POST" && pathname === "/visits/take") { const b = await readBody(req); return takeVisits(str(b?.id, 64) ?? null, str(b?.token, 128) ?? null); }
   if (m === "GET" && pathname === "/visits") return takeVisits(searchParams.get("id"), searchParams.get("token"));
   if (m === "POST" && pathname === "/relay/join") return relayJoin(store.relay, await readBody(req), Date.now());
   if (m === "POST" && pathname === "/relay/visit") { const r = relaySend(store.relay, await readBody(req), Date.now()); save(); return r; }
+  if (m === "POST" && pathname === "/relay/inbox") { // delivering marks visits as delivered, so it is a POST (the GET stays one release)
+    const b = await readBody(req);
+    const r = relayInbox(store.relay, new URLSearchParams({ team: String(b?.team ?? ""), handle: String(b?.handle ?? "") }), Date.now());
+    save();
+    return { visits: r };
+  }
   if (m === "GET" && pathname === "/relay/inbox") { const r = relayInbox(store.relay, searchParams, Date.now()); save(); return { visits: r }; }
   const phone = pathname.match(/^\/phone\/([a-f0-9]{32})\/(state|answers)$/);
   if (phone) {
@@ -1014,6 +1047,7 @@ createServer((req, res) => {
     (body: any) => {
       if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
       if (body?.httpStatus) { reply(res, body.httpStatus, body.body); return; }
+      if (body?.pipe) { res.writeHead(200, { "content-type": "application/json" }); body.pipe(res).catch((e: unknown) => { console.error(`${where}: ${errMsg(e)}`); res.destroy(); }); return; }
       if (body?.file) { res.writeHead(200, { "content-type": body.type, "cache-control": "public, max-age=3600" }); res.end(body.file); return; }
       reply(res, 200, body);
     },

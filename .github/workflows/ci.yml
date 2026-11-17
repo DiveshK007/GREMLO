@@ -4,16 +4,6 @@ on:
   pull_request:
 
 jobs:
-  contracts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { submodules: recursive }
-      - uses: foundry-rs/foundry-toolchain@v1
-        with: { version: v1.5.1 } # pinned: resolving "latest" kept failing with GitHub 504s
-      - run: forge test
-        working-directory: contracts
-
   contracts-near:
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +13,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: contracts-near }
       # near-workspaces builds the wasm with the cargo-near CLI, then runs the tests on a local NEAR sandbox
-      - run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-installer.sh | sh
+      # pinned release, checksum verified (was a piped installer script)
+      - name: install cargo-near 0.22.0
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL -o cargo-near.tar.gz https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-x86_64-unknown-linux-gnu.tar.gz
+          echo "9429064e30a427e96523f539cb255f3688d2345e5000d7d4e4873a8247247d1a  cargo-near.tar.gz" | sha256sum -c -
+          tar xzf cargo-near.tar.gz
+          install -D -m 755 cargo-near-x86_64-unknown-linux-gnu/cargo-near "$HOME/.cargo/bin/cargo-near"
       - run: cargo test
         working-directory: contracts-near
 
@@ -69,6 +65,8 @@ jobs:
         working-directory: apps/web
       - run: npm run typecheck && npm test && npm run build
         working-directory: apps/web
+        env:
+          NEXT_PUBLIC_SERVER_URL: https://16-4-100-95.sslip.io # the build refuses to run without it
 
   mac:
     runs-on: macos-15

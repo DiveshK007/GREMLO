@@ -265,7 +265,9 @@ async fn charge_compute_pays_operator_and_logs_the_completion_id() -> anyhow::Re
     assert_eq!(ev["data"][0]["near_ai_completion_id"], json!("chatcmpl-abc123"));
     // the operator paid gas for this tx, so it received the charge minus a small fee
     let gained = t.balance(&t.op).await? as i128 - before as i128;
-    assert!(gained > (MILLI / 2) as i128 - (MILLI / 2) as i128 / 2 && gained <= (MILLI / 2) as i128, "operator gained {gained}");
+    // at least the charge minus gas (about half of it). No upper bound: tests share this operator account and run in parallel,
+    // so another test's charge can land in the window; the exact amounts are asserted on the budget and spent views below.
+    assert!(gained > (MILLI / 5) as i128, "operator gained {gained}");
     assert_eq!(n(&t.view("compute_budget", json!({ "pet_id": "mochi" })).await?), MILLI * 3 / 2);
     assert_eq!(n(&t.view("compute_spent", json!({ "pet_id": "mochi" })).await?), MILLI / 2);
     assert_eq!(n(&t.view("charges_today", json!({ "pet_id": "mochi" })).await?), MILLI / 2);
@@ -287,8 +289,23 @@ async fn charge_compute_refusals() -> anyhow::Result<()> {
     t.fails(&t.op, "charge_compute", c(2 * MILLI + 1, "x"), 0, "OverComputeBudget").await?;
     t.fails(&t.op, "charge_compute", json!({ "pet_id": "nobody", "amount": "1", "near_ai_completion_id": "x" }), 0, "UnknownPet").await?;
     t.ok(&t.op, "charge_compute", c(2 * MILLI, "x"), 0).await?; // down to exactly zero
-    t.fails(&t.op, "charge_compute", c(1, "x"), 0, "OverComputeBudget").await?;
+    t.fails(&t.op, "charge_compute", c(1, "y"), 0, "OverComputeBudget").await?;
     assert_eq!(n(&t.view("compute_budget", json!({ "pet_id": "mochi" })).await?), 0);
+    assert_invariant(&t).await
+}
+
+#[tokio::test]
+async fn the_same_completion_id_is_not_charged_twice() -> anyhow::Result<()> {
+    let t = setup().await?;
+    let id = t.ready().await?;
+    t.ok(&t.op, "settle_impressions", json!({ "id": id, "pet_id": "mochi", "count": 50 }), 0).await?; // 10 milli to compute
+    let c = |cid: &str| json!({ "pet_id": "mochi", "amount": MILLI.to_string(), "near_ai_completion_id": cid });
+    t.ok(&t.op, "charge_compute", c("chatcmpl-a"), 0).await?;
+    t.fails(&t.op, "charge_compute", c("chatcmpl-a"), 0, "DuplicateCharge").await?; // a resend of the same charge
+    assert_eq!(n(&t.view("compute_spent", json!({ "pet_id": "mochi" })).await?), MILLI); // charged once
+    t.ok(&t.op, "charge_compute", c("chatcmpl-b"), 0).await?; // a new completion is fine
+    t.ok(&t.op, "charge_compute", c("chatcmpl-a"), 0).await?; // known limit: only the last id is remembered
+    assert_eq!(n(&t.view("compute_spent", json!({ "pet_id": "mochi" })).await?), 3 * MILLI);
     assert_invariant(&t).await
 }
 
@@ -297,14 +314,14 @@ async fn daily_cap_is_owner_set_and_enforced() -> anyhow::Result<()> {
     let t = setup().await?;
     let id = t.ready().await?;
     t.ok(&t.op, "settle_impressions", json!({ "id": id, "pet_id": "mochi", "count": 500 }), 0).await?; // 100 milli to compute
-    let c = |amount: u128| json!({ "pet_id": "mochi", "amount": amount.to_string(), "near_ai_completion_id": "chatcmpl-1" });
-    t.ok(&t.op, "charge_compute", c(15 * MILLI), 0).await?;
-    t.fails(&t.op, "charge_compute", c(5 * MILLI + 1), 0, "OverDailyCap").await?; // default cap 20 milli a day
-    t.ok(&t.op, "charge_compute", c(5 * MILLI), 0).await?;
+    let c = |amount: u128, cid: &str| json!({ "pet_id": "mochi", "amount": amount.to_string(), "near_ai_completion_id": cid });
+    t.ok(&t.op, "charge_compute", c(15 * MILLI, "chatcmpl-1"), 0).await?;
+    t.fails(&t.op, "charge_compute", c(5 * MILLI + 1, "chatcmpl-2"), 0, "OverDailyCap").await?; // default cap 20 milli a day
+    t.ok(&t.op, "charge_compute", c(5 * MILLI, "chatcmpl-2"), 0).await?;
     t.fails(&t.op, "set_compute_cap", json!({ "pet_id": "mochi", "daily_cap": (50 * MILLI).to_string() }), 0, "NotPetOwner").await?;
     t.ok(&t.owner, "set_compute_cap", json!({ "pet_id": "mochi", "daily_cap": (50 * MILLI).to_string() }), 0).await?;
-    t.ok(&t.op, "charge_compute", c(30 * MILLI), 0).await?;
-    t.fails(&t.op, "charge_compute", c(1), 0, "OverDailyCap").await?;
+    t.ok(&t.op, "charge_compute", c(30 * MILLI, "chatcmpl-3"), 0).await?;
+    t.fails(&t.op, "charge_compute", c(1, "chatcmpl-4"), 0, "OverDailyCap").await?;
     assert_eq!(n(&t.view("charges_today", json!({ "pet_id": "mochi" })).await?), 50 * MILLI);
     assert_invariant(&t).await
 }
@@ -378,7 +395,7 @@ async fn random_operations_keep_the_invariant() -> anyhow::Result<()> {
         x ^= x << 17;
         x % m
     };
-    for _ in 0..40 {
+    for step in 0..40 {
         let count = t.view("campaign_count", json!({})).await?.as_u64().unwrap();
         let id = 1 + rnd(count + 1);
         let a = rnd(1_000) as u128;
@@ -386,7 +403,7 @@ async fn random_operations_keep_the_invariant() -> anyhow::Result<()> {
             0 => t.call(&t.brand, "create_campaign", json!({ "line_hash": HASH, "rate": (MILLI * (1 + a % 5)).to_string(), "end_time": t.now().await? + 3600 }), NEAR / 20 + a * MILLI / 10).await?,
             1 => t.call(&t.brand, "top_up", json!({ "id": id }), a * MILLI / 10).await?,
             2 | 3 => t.call(&t.op, "settle_impressions", json!({ "id": id, "pet_id": "mochi", "count": a % 80 }), 0).await?,
-            4 => t.call(&t.op, "charge_compute", json!({ "pet_id": "mochi", "amount": (a * MILLI / 100 + 1).to_string(), "near_ai_completion_id": "chatcmpl-r" }), 0).await?,
+            4 => t.call(&t.op, "charge_compute", json!({ "pet_id": "mochi", "amount": (a * MILLI / 100 + 1).to_string(), "near_ai_completion_id": format!("chatcmpl-r{step}") }), 0).await?,
             _ => t.call(&t.owner, "set_compute_share", json!({ "pet_id": "mochi", "bps": a * 6 }), 0).await?,
         };
         let _ = r.into_result(); // refusals are expected here

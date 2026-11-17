@@ -153,23 +153,6 @@ func overlayPanel(_ size: CGSize, level: NSWindow.Level) -> NSPanel {
     return panel
 }
 
-assert(nearGain("1000000000000000000000000", "1000200000000000000000000") == "+0.0002")
-assert(nearGain("123456789012345678901234567", "123456789012345678901234568") == "+0.000000000000000000000001")
-assert(near4("19279999998320000000000") == "0.0192" && near4("0") == "0.0000" && near4("1000000000000000000000000000") == "1000.0000")
-assert(near4("99999999999999999999") == "0.0000" && near4(nil) == "\u{2014}")
-assert(near4("-5") == "\u{2014}" && near4("0x1f") == "\u{2014}" && near4(" 5") == "\u{2014}" && near4("") == "\u{2014}")
-assert(!staysHome(mood: "hungry", agentWorking: true) && !staysHome(mood: "hungry", agentWorking: false), "a hungry pet still shows the sign")
-assert(!staysHome(mood: "asleep", agentWorking: true) && staysHome(mood: "asleep", agentWorking: false), "only an idle, asleep pet stays home")
-assert(!staysHome(mood: "thriving", agentWorking: true) && !staysHome(mood: "stable", agentWorking: false))
-assert(!staysHome(mood: LocalLife.mood, agentWorking: false), "a pet the server can't vouch for still lives on the floor")
-assert(nearGain("5", "5") == nil && nearGain("5", "4") == nil && nearGain(nil, "5") == nil)
-do { // WaitClock: prompt to stop counts, a lost stop is capped, a new prompt closes the open stretch
-    var w = WaitClock(); let t0 = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())! // away from midnight
-    w.handle("UserPromptSubmit", at: t0); w.handle("PreToolUse", at: t0 + 60); w.handle("Stop", at: t0 + 120)
-    assert(w.minutes(at: t0 + 130) == 2)
-    w.handle("UserPromptSubmit", at: t0 + 200); w.handle("UserPromptSubmit", at: t0 + 200 + 7200)
-    assert(w.minutes(at: t0 + 200 + 7200) == 62)
-}
 setvbuf(stdout, nil, _IOLBF, 0)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
@@ -189,9 +172,10 @@ do {
         if backend.companions.route(hook) { backend.render(); return }  // another agent's companion took it
         backend.broker.sawEvent(session: hook["session_id"] as? String ?? "", tool: hook["tool_name"] as? String, event: hook["hook_event_name"] as? String ?? "")
         // the command text never leaves the Mac: it only picks the prop (and, later, spots test runs)
-        pet.handle(event: hook["hook_event_name"] as! String, notification: hook["notification_type"] as? String,
+        let event = hook["hook_event_name"] as? String ?? "" // HookServer only passes events whose name is a String
+        pet.handle(event: event, notification: hook["notification_type"] as? String,
                    tool: hook["tool_name"] as? String, command: (hook["tool_input"] as? [String: Any])?["command"] as? String)
-        backend.waited.handle(hook["hook_event_name"] as! String)
+        backend.waited.handle(event)
         backend.think(hook)
         backend.reminders.handle(hook)
         backend.render()

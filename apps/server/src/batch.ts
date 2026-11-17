@@ -129,3 +129,12 @@ export function cooldown(last: Map<string, number>, key: string, now: number, co
   last.set(key, now);
   return 0;
 }
+
+/** A per-day budget of calls whose slot comes back when the call fails. */
+export function makeDailyCap(limit: number) {
+  let day = "", calls = 0;
+  return {
+    take(today: string) { if (day !== today) { day = today; calls = 0; } if (calls >= limit) return false; calls++; return true; },
+    refund(today: string) { if (day === today && calls > 0) calls--; },
+  };
+}

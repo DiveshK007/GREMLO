@@ -24,8 +24,7 @@ final class SocialController {
 
     private func poll() {
         if !Self.team.isEmpty && !Self.handle.isEmpty {
-            let q = "team=\(enc(Self.team))&handle=\(enc(Self.handle))"
-            backend.request("/relay/inbox?\(q)") { [weak self] data, _ in
+            backend.request("/relay/inbox", body: ["team": Self.team, "handle": Self.handle]) { [weak self] data, _ in  // POST: delivering marks visits as delivered
                 guard let self, let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let list = o["visits"] as? [[String: Any]] else { return }
                 for v in list {
                     self.pendingVisits.append((v["from"] as? String ?? "a teammate", v["species"] as? String ?? "gremlo", v["pr"] as? Int, v["url"] as? String,
@@ -35,7 +34,7 @@ final class SocialController {
         }
         deliver()
         if PrivacyController.visitsOn, let id = defaults.string(forKey: "park.id"), let token = defaults.string(forKey: "park.token") {
-            backend.request("/visits?id=\(id)&token=\(token)") { [weak self] data, _ in
+            backend.request("/visits/take", body: ["id": id, "token": token]) { [weak self] data, _ in  // POST: taking visits deletes them
                 guard let self, let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let list = o["visits"] as? [[String: Any]] else { return }
                 for v in list {
                     self.backend.privacy.visit(v)  // the guestbook entry always lands; the walk-in waits for a quiet screen

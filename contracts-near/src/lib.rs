@@ -73,6 +73,11 @@ fn emit(event: &str, data: near_sdk::serde_json::Value) {
     let ev = json!({ "standard": "campaign_vault", "version": "1.0.0", "event": event, "data": [data] });
     env::log_str(&format!("EVENT_JSON:{ev}"));
 }
+/// Raw storage key holding the completion id a pet was last charged for. Kept outside the borsh state structs on
+/// purpose: adding a field to Pet or Vault would need a state migration, a raw key does not.
+fn last_charge_key(pet_id: &str) -> Vec<u8> {
+    [b"last-charge:".as_slice(), pet_id.as_bytes()].concat()
+}
 fn now() -> u64 {
     env::block_timestamp() / 1_000_000_000
 }
@@ -243,6 +248,10 @@ impl Vault {
         self.only_operator();
         require!(amount.0 > 0, "BadParams: amount must be > 0");
         require!((1..=128).contains(&near_ai_completion_id.len()), "BadParams: completion id must be 1-128 chars");
+        // shortcut: only the pet's last completion id is remembered (constant storage per pet), so a retried or resent
+        // charge is refused but an older id could be charged again; remember a hash set of ids if that ever matters
+        let last = last_charge_key(&pet_id);
+        require!(env::storage_read(&last).as_deref() != Some(near_ai_completion_id.as_bytes()), "DuplicateCharge: this completion id was just charged");
         let day = today();
         let pet = self.pets.get(&pet_id).unwrap_or_else(|| env::panic_str("UnknownPet"));
         let charged_today = if pet.charge_day == day { pet.charged_today.0 } else { 0 };
@@ -255,6 +264,7 @@ impl Vault {
         sub(&mut pet.compute_budget, amount.0);
         add(&mut pet.compute_spent, amount.0);
         let left = pet.compute_budget;
+        env::storage_write(&last, near_ai_completion_id.as_bytes());
         sub(&mut self.totals.compute_budgets, amount.0);
         add(&mut self.totals.compute_charged, amount.0);
         pay(&self.operator, amount.0);
