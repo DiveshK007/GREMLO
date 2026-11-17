@@ -23,7 +23,8 @@ test("a hold comes off when the call fails or is billed, and the budget is usabl
   assert.equal(r.tryHold("p", 1000n, 500n), false); // 1000 held of 1000
   r.release("p", 500n);
   assert.equal(r.tryHold("p", 1000n, 500n), true);
-  r.release("p", 500n); r.release("p", 500n);
+  r.release("p", 500n);
+  r.release("p", 500n);
   assert.equal(r.held("p"), 0n);
 });
 

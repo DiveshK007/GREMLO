@@ -20,10 +20,6 @@ async function read<T>(path: string): Promise<Read<T>> {
 export const DEMO_PET = process.env.NEXT_PUBLIC_DEMO_PET ?? "mochi";
 
 export async function readLive() {
-  const [stats, pet, campaign] = await Promise.all([
-    read<PublicStats>("/stats"),
-    read<PetPublic>(`/pets/${encodeURIComponent(DEMO_PET)}`),
-    read<ActiveCampaign>("/campaigns/active"),
-  ]);
+  const [stats, pet, campaign] = await Promise.all([read<PublicStats>("/stats"), read<PetPublic>(`/pets/${encodeURIComponent(DEMO_PET)}`), read<ActiveCampaign>("/campaigns/active")]);
   return { stats, pet, campaign, at: Date.now() };
 }

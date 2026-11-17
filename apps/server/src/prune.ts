@@ -10,5 +10,8 @@ export function pruneStamps(stamps: Map<string, number>, now: number, maxAgeMs: 
 }
 /** Keeps a set at `max` entries by dropping the oldest (a Set iterates in insertion order). */
 export function capSet(set: Set<string>, max: number) {
-  for (const k of set) { if (set.size <= max) break; set.delete(k); }
+  for (const k of set) {
+    if (set.size <= max) break;
+    set.delete(k);
+  }
 }

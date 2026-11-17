@@ -1,0 +1,39 @@
+# Matches the code as it is: dense, one-line blocks, long lines, short names. Only rules that catch real bugs are on;
+# style rules that would flag most of the codebase are off. CI runs `swiftlint lint --strict`.
+included:
+  - Sources
+  - Tests
+excluded:
+  - .build
+  - dist
+disabled_rules:
+  - line_length
+  - identifier_name
+  - type_name
+  - function_body_length
+  - type_body_length
+  - file_length
+  - cyclomatic_complexity
+  - function_parameter_count
+  - large_tuple
+  - nesting
+  - trailing_comma
+  - opening_brace
+  - statement_position
+  - comma
+  - colon
+  - control_statement
+  - vertical_whitespace
+  - trailing_whitespace
+  - todo
+  - multiple_closures_with_trailing_closure
+  - blanket_disable_command
+  - switch_case_alignment
+  - optional_data_string_conversion
+  - void_function_in_ternary
+  - static_over_final_class
+opt_in_rules:
+  - empty_count
+  - unused_optional_binding
+force_cast: error
+force_try: error

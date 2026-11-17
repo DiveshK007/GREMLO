@@ -269,7 +269,7 @@ public struct TranscriptUsageReader: Sendable {
             add.cacheWrite = u["cache_creation_input_tokens"] as? Int ?? 0
             add.cacheRead = u["cache_read_input_tokens"] as? Int ?? 0
             add.model = msg["model"] as? String
-            usage = usage + add
+            usage = usage + add // swiftlint:disable:this shorthand_operator
         }
     }
 }

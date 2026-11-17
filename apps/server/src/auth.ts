@@ -2,8 +2,8 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { baseDecode } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
 import { HttpError, type PetRecord } from "./register.ts";
-// @ts-expect-error plain ESM JS package, no types
 import { PRODUCT } from "../../../packages/brain/product.js";
+import type { Body } from "./json.ts";
 
 // Device signatures: each Mac install holds a P-256 key in the Secure Enclave. Requests that cost or earn money
 // carry a DER ECDSA signature over a canonical string, so a view, think or click can't be forged by a script.
@@ -68,7 +68,7 @@ export function decodeSignature(raw: unknown): Buffer {
   }
 }
 
-export async function checkOwnerSignature(body: any, owner: string, message: string, recipient: string, provider: Parameters<typeof verifyMessage>[0]["provider"], used: Set<string>) {
+export async function checkOwnerSignature(body: Body, owner: string, message: string, recipient: string, provider: Parameters<typeof verifyMessage>[0]["provider"], used: Set<string>) {
   const signature = decodeSignature(body?.signature);
   const nonce = Buffer.from(String(body?.nonce ?? ""), "base64");
   const publicKey = String(body?.publicKey ?? "");

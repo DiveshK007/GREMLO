@@ -7,20 +7,22 @@ const STAGES = ["hatchling", "buddy", "elder"];
 const ITEMS = ["party", "beanie", "scarf", "star", "bow", "cap", "glasses", "headphones", "flower", "shades", "crown", "wizard"];
 const TRICKS = ["backflip", "juggle", "moonwalk"];
 import { HttpError } from "./register.ts";
+import type { Body } from "./json.ts";
 const bad = (m: string) => new HttpError(400, m);
 
 export type ParkPet = { id: string; name: string; species: string; stage: string; outfit: string[]; tricks: string[] };
 /** The park stores exactly {id, name, species, stage, outfit, tricks}; anything else is dropped. Tricks let a tap show
  *  one the pet has really learned (R4 §14). */
-export function parkPet(b: any): ParkPet {
+export function parkPet(b: Body): ParkPet {
   const id = String(b?.id ?? ""), name = String(b?.name ?? "").trim();
   if (!/^[a-f0-9]{16,32}$/.test(id)) throw bad("id must be the pet's random park id");
   if (!name || name.length > 24) throw bad("name is 1-24 characters");
-  if (!SPECIES.includes(b?.species)) throw bad("unknown species");
-  if (!STAGES.includes(b?.stage)) throw bad("unknown stage");
+  const species = String(b?.species), stage = String(b?.stage);
+  if (!SPECIES.includes(species)) throw bad("unknown species");
+  if (!STAGES.includes(stage)) throw bad("unknown stage");
   const outfit = (Array.isArray(b?.outfit) ? b.outfit : []).filter((x: unknown) => ITEMS.includes(String(x))).slice(0, 3).map(String);
   const tricks = (Array.isArray(b?.tricks) ? b.tricks : []).filter((x: unknown) => TRICKS.includes(String(x))).slice(0, 3).map(String);
-  return { id, name, species: b.species, stage: b.stage, outfit, tricks };
+  return { id, name, species, stage, outfit, tricks };
 }
 export const newParkId = () => randomBytes(12).toString("hex");
 
@@ -47,24 +49,25 @@ const team = (t: unknown) => { const s = String(t ?? ""); if (!/^[a-z0-9-]{6,40}
 const handle = (h: unknown) => { const s = String(h ?? "").toLowerCase(); if (!/^[a-z0-9_-]{1,32}$/.test(s)) throw bad("handle is 1-32 of a-z, 0-9, _, -"); return s; };
 
 /** Opt-in: a member joins (and stays joined while it polls) with the team code. */
-export function relayJoin(r: Relay, b: any, now: number) {
+export function relayJoin(r: Relay, b: Body, now: number) {
   r.members[`${team(b?.team)}:${handle(b?.handle)}`] = now;
   return { ok: true };
 }
 
 /** Payload: team, sender handle, species, PR number, PR URL. Nothing else. Both sides must have joined. */
-export function relaySend(r: Relay, b: any, now: number) {
+export function relaySend(r: Relay, b: Body, now: number) {
   const t = team(b?.team), from = handle(b?.from), to = handle(b?.to);
   prune(r, now);
   if (!r.members[`${t}:${from}`] || !r.members[`${t}:${to}`]) throw bad("both of you need to join the team first");
-  if (!SPECIES.includes(b?.species)) throw bad("unknown species");
+  const species = String(b?.species);
+  if (!SPECIES.includes(species)) throw bad("unknown species");
   const pr = b?.pr == null ? null : Number(b.pr);
   if (pr !== null && !(Number.isInteger(pr) && pr > 0)) throw bad("pr must be a positive integer");
   const url = b?.url == null ? null : String(b.url);
   if (url !== null && !/^https:\/\/[a-z0-9.-]+\/[^\s]{0,300}$/i.test(url)) throw bad("url must be an https link");
   const recent = r.visits.filter((v) => v.team === t && v.to === to && now - v.at < 3_600_000).length;
   if (recent >= RELAY_PER_HOUR) throw new HttpError(429, "that teammate already had 3 visits this hour");
-  r.visits.push({ team: t, from, to, species: b.species, pr, url, at: now, delivered: false });
+  r.visits.push({ team: t, from, to, species, pr, url, at: now, delivered: false });
   return { ok: true };
 }
 

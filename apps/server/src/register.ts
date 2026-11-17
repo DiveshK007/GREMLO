@@ -1,4 +1,5 @@
 import { keccak256, stringToBytes } from "viem";
+import type { Body, Loose } from "./json.ts";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -15,7 +16,7 @@ export function toHttp(e: unknown): { status: number; message: string } {
 /** An error's message plus its cause chain, so "fetch failed" says why (ENOTFOUND, ECONNREFUSED, a timeout...). */
 export function errText(e: unknown): string {
   const parts: string[] = [];
-  for (let c: any = e, depth = 0; c && depth < 4; c = c.cause, depth++) {
+  for (let c: Loose = e, depth = 0; c && depth < 4; c = c.cause, depth++) {
     const m = c instanceof Error || typeof c === "object" ? [c.code, c.message].filter(Boolean).join(" ") : String(c);
     if (m && !parts.some((p) => p.includes(m))) parts.push(m);
   }
@@ -51,11 +52,11 @@ const canonical = (n: unknown) => {
  * do we read it from the proof, and then from the field the proof's own version binds (v4 responses[],
  * legacy nullifier_hash), so a stray extra field cannot pick the nullifier.
  */
-function findNullifier(json: any, proof: any) {
-  const fromPortal = json.nullifier ?? json.nullifier_hash ?? json.results?.find((r: any) => r?.success)?.nullifier;
+function findNullifier(json: Loose, proof: Loose) {
+  const fromPortal = json.nullifier ?? json.nullifier_hash ?? json.results?.find((r: Loose) => r?.success)?.nullifier;
   const v4 = String(proof?.protocol_version ?? "").startsWith("4") || Array.isArray(proof?.responses);
   const fromProof = v4
-    ? proof?.responses?.find((r: any) => r?.nullifier)?.nullifier
+    ? proof?.responses?.find((r: Loose) => r?.nullifier)?.nullifier
     : proof?.nullifier_hash ?? proof?.nullifier;
   return canonical(fromPortal ?? fromProof);
 }
@@ -80,7 +81,7 @@ export async function verifyWorldProof(result: unknown, rpId: string, action = R
     signal: AbortSignal.timeout(10_000),
   }).catch((e) => { throw new Error(`World verify ${new URL(WORLD_API).host}: ${errText(e)}`); });
   if (res.status >= 500) throw new Error(`World verify unavailable (${res.status})`);
-  const json: any = await res.json().catch(() => ({}));
+  const json: Loose = await res.json().catch(() => ({}));
   if (!res.ok || json.success !== true) return { ok: false, code: json.code ?? `http_${res.status}` };
   if (json.action && json.action !== action) return { ok: false, code: "wrong_action" };
   const nullifier = findNullifier(json, result);
@@ -94,8 +95,8 @@ export const signalHash = (signal: string) => `0x${(BigInt(keccak256(stringToByt
  * The proof must be made for this owner (the web passes signal = the owner's NEAR account id), so a proof seen once
  * can't register a pet for someone else's account. Every signal_hash in the result must match, and there must be one.
  */
-export function signalMatches(proof: any, owner: string) {
-  const hashes = [proof?.signal_hash, ...(Array.isArray(proof?.responses) ? proof.responses.map((r: any) => r?.signal_hash) : [])]
+export function signalMatches(proof: Loose, owner: string) {
+  const hashes = [proof?.signal_hash, ...(Array.isArray(proof?.responses) ? proof.responses.map((r: Loose) => r?.signal_hash) : [])]
     .filter((h) => h !== undefined && h !== null);
   const want = signalHash(owner);
   return hashes.length > 0 && hashes.every((h) => typeof h === "string" && h.toLowerCase() === want);
@@ -110,7 +111,7 @@ export function makeRegister(deps: {
 }) {
   const claiming = new Set<string>(); // nullifiers with a registration in flight
 
-  return async function registerPet(body: any) {
+  return async function registerPet(body: Body) {
     const owner = accountId(body.owner, "owner");
     const payout = accountId(body.payout ?? owner, "payout");
     const name = body.name;

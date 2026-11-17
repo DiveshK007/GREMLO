@@ -104,7 +104,7 @@ Reply with only a JSON object: {"entry": "<text>"}.`;
  */
 export async function diary(payload, opts = {}) {
   if (payload?.mood !== 'thriving' && payload?.mood !== 'stable') return { entry: null, reason: `${payload?.mood ?? 'unknown'}: no paid calls` };
-  const { mood, ...counts } = payload;
+  const { mood: _mood, ...counts } = payload;
   try {
     const { out, requestId, completionId } = await chat(DIARY_SYSTEM, JSON.stringify(counts), CHEAP, { ...opts, maxTokens: 1024 });
     const entry = typeof out?.entry === 'string' ? out.entry.replace(/\p{Extended_Pictographic}/gu, '').trim().slice(0, counts.length === 'longer' ? 600 : 300) : '';

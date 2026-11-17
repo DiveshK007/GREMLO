@@ -2,6 +2,7 @@
 // lists them. Only reviewed species can be earners. Nothing is sold; creators get credit.
 
 import { HttpError } from "./register.ts";
+import type { Loose } from "./json.ts";
 const bad = (m: string) => new HttpError(400, m);
 
 /** Width and height from a PNG's IHDR chunk, or null if it isn't a PNG. */
@@ -19,7 +20,7 @@ export function checkSubmission(files: Record<string, string>) {
   if (!json || !sheet) throw bad("pet.json and spritesheet.png are required");
   const total = Object.values(files).reduce((n, f) => n + Buffer.byteLength(f, "base64"), 0);
   if (total > MAX_BYTES) throw bad("a pack is at most 8 MB");
-  let meta: any;
+  let meta: Loose;
   try { meta = JSON.parse(Buffer.from(json, "base64").toString("utf8")).gremlo; } catch { throw bad("pet.json doesn't parse"); }
   if (!meta?.rows || !Array.isArray(meta.cell) || !meta.columns) throw bad("pet.json needs gremlo.rows, cell and columns");
   const rows = Object.keys(meta.rows).length;

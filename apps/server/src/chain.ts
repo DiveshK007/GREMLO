@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Account, actions, baseEncode, JsonRpcProvider, type Provider } from "near-api-js";
 import { errText } from "./register.ts";
 import { broadcastOnce, failover, parseUrls, viewCache, withTimeout } from "./rpc.ts";
+import type { Loose } from "./json.ts";
 
 // NEAR access for the vault (contracts-near). Views go through RPC, cached for a few seconds so many pollers cost
 // one call, with failover across RPC URLs on rate limits and timeouts. Changes are signed by the operator, whose key
@@ -33,7 +34,7 @@ const host = (url: string) => new URL(url).host;
 
 /** Every Provider method, run through the failover list (for the operator Account and NEP-413 checks). */
 export const provider = new Proxy({} as Provider, {
-  get: (_, method: string) => (...args: unknown[]) => fo.run((url) => (at(url) as any)[method](...args)),
+  get: (_, method: string) => (...args: unknown[]) => fo.run((url) => (at(url) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method](...args)),
 });
 const newOperator = () => new Account(operatorId, provider, env("NEAR_OPERATOR_PRIVATE_KEY") as `ed25519:${string}`);
 let operator = newOperator();
@@ -54,7 +55,7 @@ export const viewOn = <T>(contractId: string, method: string, args: Record<strin
 
 /** Balance and storage of an account, for what a purse can still spend. */
 export const accountInfo = async (id: string) => {
-  const a: any = await rpc(`view_account ${id}`, (url) => at(url).viewAccount({ accountId: id }));
+  const a: Loose = await rpc(`view_account ${id}`, (url) => at(url).viewAccount({ accountId: id }));
   return { amount: BigInt(a.amount), storageUsage: Number(a.storage_usage ?? a.storageUsage ?? 0) };
 };
 
@@ -93,7 +94,7 @@ export function send(methodName: string, args: Record<string, unknown>, deposit 
     const hash = baseEncode(createHash("sha256").update(signed.transaction.encode()).digest());
     tried = hash;
     // a send waits for execution, so it gets 30 s; a status check is a plain read and gets the usual 3 s
-    return broadcastOnce<any>(fo.order(), {
+    return broadcastOnce<Loose>(fo.order(), {
       send: (url) => withTimeout(at(url).sendTransactionUntil(signed, "EXECUTED_OPTIMISTIC"), 30_000),
       status: (url) => withTimeout(at(url).viewTransactionStatus({ txHash: hash, accountId: operatorId, waitUntil: "EXECUTED_OPTIMISTIC" }), 3_000).catch((e) => { if (unknownTx(e)) return null; throw e; }),
       ok: fo.ok,
@@ -101,7 +102,7 @@ export function send(methodName: string, args: Record<string, unknown>, deposit 
     });
   };
   const run = async () => {
-    let r: any;
+    let r: Loose;
     try {
       r = await attempt();
     } catch (e) {
@@ -115,7 +116,7 @@ export function send(methodName: string, args: Record<string, unknown>, deposit 
     }
     views.clear(); // the next read sees this write
     const hash: string = r?.transaction?.hash ?? r?.transaction_outcome?.id;
-    const failure = r?.status?.Failure ?? r?.receipts_outcome?.find((o: any) => o?.outcome?.status?.Failure)?.outcome?.status?.Failure;
+    const failure = r?.status?.Failure ?? r?.receipts_outcome?.find((o: Loose) => o?.outcome?.status?.Failure)?.outcome?.status?.Failure;
     if (failure) throw Object.assign(new Error(`tx ${hash} failed: ${panicOf(failure)}`), { txHash: hash });
     return hash;
   };

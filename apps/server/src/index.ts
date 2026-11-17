@@ -25,12 +25,9 @@ import { addAnswer, getState, prune as prunePhones, putState, takeAnswers, type 
 import { hold, review, type Held } from "./fraud.ts";
 import { checkViewable } from "./viewable.ts";
 import { alertDue, bestHook, checkEmail, mailOn, sendMail, sumSince, usedPct, WEEK_MS, weeklyReport, type Payout } from "./mail.ts";
-// @ts-expect-error plain ESM JS package, no types
 import { diary, suggestHooks, think } from "../../../packages/brain/index.js";
-// @ts-expect-error plain ESM JS package, no types
-import { checkBrief, checkHook } from "../../../packages/brain/claims.js";
-// @ts-expect-error plain ESM JS package, no types
 import { PRODUCT } from "../../../packages/brain/product.js";
+import { coded, type Body, type Loose } from "./json.ts";
 
 type Store = {
   pets: Record<string, PetRecord>; // keyed by name
@@ -207,7 +204,7 @@ const usedPairNonces = new Set<string>();
  * Pair a device to a pet: the pet's owner signs the pairing message with their NEAR wallet (NEP-413), using a
  * full-access key of the owner account. recipient is the vault id; the 32-byte nonce is never accepted twice.
  */
-async function pairDevice(name: string, body: any) {
+async function pairDevice(name: string, body: Body) {
   const pet = findPet(name);
   if (!pet) throw new HttpError(404, "unknown pet");
   const key = String(body?.key ?? "");
@@ -230,7 +227,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
   const signed = signer(req, "/impressions", raw); // verified once per request, then checked per row
   const ipTag = createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 12); // for the one-network rule; raw IP never stored
   // validate all entries before touching the store so a bad batch changes nothing
-  const rows = body.impressions.map((i: any) => {
+  const rows = body.impressions.map((i: Body) => {
     const pet = findPet(String(i?.petKey ?? ""));
     if (!pet) throw bad(`unknown pet ${i?.petKey}`);
     // a view is money: it counts only from a paired Mac, locally too, so every paid view is a signed report that
@@ -321,9 +318,10 @@ async function settle(id: string) {
         saveNow();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
         console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
-      } catch (e: any) {
-        markSettled(store.pending[id], s.pet, s.count, e?.unconfirmedTx ? "unconfirmed" : "failed");
-        if (e?.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
+      } catch (err) {
+        const e = coded(err);
+        markSettled(store.pending[id], s.pet, s.count, e.unconfirmedTx ? "unconfirmed" : "failed");
+        if (e.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
         saveNow();
         error = errMsg(e);
         break;
@@ -453,9 +451,10 @@ const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) :
 const LOOK_SPECIES = ["gremlo", "gremlo-pip", "gremlo-moss", "gremlo-gloop", "gremlo-byte", "gremlo-puff", "gremlo-wisp", "gremlo-tako"];
 const LOOK_STAGES = ["egg", "hatchling", "buddy", "elder"];
 /** The Mac says which species it is and how grown, so the pet page can draw it. Cosmetic only: never money or mood. */
-function rememberLook(key: string, body: any) {
+function rememberLook(key: string, body: Body) {
   const rec = findPet(key);
-  const species = LOOK_SPECIES.includes(body?.species) ? body.species : undefined, stage = LOOK_STAGES.includes(body?.stage) ? body.stage : undefined;
+  const sp = String(body?.species), st = String(body?.stage);
+  const species = LOOK_SPECIES.includes(sp) ? sp : undefined, stage = LOOK_STAGES.includes(st) ? st : undefined;
   if (!rec || (!species && !stage) || (rec.species === (species ?? rec.species) && rec.stage === (stage ?? rec.stage))) return;
   if (species) rec.species = species;
   if (stage) rec.stage = stage;
@@ -471,7 +470,7 @@ function room(pet: { compute: { budget: string; chargedToday: string; dailyCap: 
 }
 const COMMITTED = "sleeping: its compute budget is committed to another thought";
 
-async function petThink(key: string, body: any) {
+async function petThink(key: string, body: Body) {
   const event = str(body.event);
   if (!event) throw bad("event is required");
   const pet = await getPet(key); // 404s for unknown pets; mood comes from the same place as GET /pets/:name
@@ -491,7 +490,7 @@ async function petThink(key: string, body: any) {
     store.days[petKey] = markDay(store.days[petKey], utcDay());
     save();
     const served = r.completionId ? fee : 0n;
-    const payFor = served ? bill(petKey, pet.purse, fee, r.completionId, r.action) : null;
+    const payFor = r.completionId ? bill(petKey, pet.purse, fee, r.completionId, r.action) : null;
     keep = !!served && !pet.purse;
     return { ...r, fee: served ? served.toString() : null, payFor };
   } finally {
@@ -501,7 +500,7 @@ async function petThink(key: string, body: any) {
 
 /** The opt-in diary entry (1.0 design §8): counts and tool names only, one cheap call, charged like a think. */
 const diaryDays = new Map<string, string>(); // pet -> UTC day of its last entry: one a day
-async function petDiary(key: string, body: any) {
+async function petDiary(key: string, body: Body) {
   const pet = await getPet(key);
   const n = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 100_000 ? (v as number) : 0);
   const tools = Object.fromEntries(Object.entries(body?.tools ?? {}).filter(([k]) => /^[A-Za-z0-9_.:-]{1,64}$/.test(k)).slice(0, 20).map(([k, v]) => [k, n(v)]));
@@ -521,8 +520,8 @@ async function petDiary(key: string, body: any) {
     return { entry: null, reason: pet.moodReason ?? r.reason, requestId: r.requestId ?? null };
   }
   diaryDays.set(pet.petKey, today);
-  const payFor = bill(pet.petKey, pet.purse, fees.cheap, r.completionId, "diary");
-  keep = !pet.purse;
+  const payFor = r.completionId ? bill(pet.petKey, pet.purse, fees.cheap, r.completionId, "diary") : null;
+  keep = !!r.completionId && !pet.purse;
   return { entry: r.entry, requestId: r.requestId, fee: fees.cheap.toString(), payFor };
   } finally {
     if (paid && !keep) reserve.release(pet.petKey, fees.cheap);
@@ -568,7 +567,7 @@ function bill(petKey: string, purse: { account: string } | null, fee: bigint, co
   return { requestId: completionId, amount: t.due, payTo: operatorId, purse: purse.account };
 }
 /** The Mac reports a purse payment; it counts only once the chain shows the purse paid exactly this thought. */
-async function pursePaid(name: string, b: any) {
+async function pursePaid(name: string, b: Body) {
   const rec = findPet(name);
   if (!rec) throw new HttpError(404, "unknown pet");
   const requestId = str(b?.requestId, 128), tx = str(b?.tx, 64);
@@ -605,7 +604,7 @@ async function charge(petKey: string, fee: bigint, completionId: string) {
 
 /** 2 hooks per format from one NEAR AI call; hooks that fail the claim checks come back in `dropped` with the reason. */
 const hooksHits = new Map<string, number[]>();
-async function campaignHooks(req: IncomingMessage, body: any) {
+async function campaignHooks(req: IncomingMessage, body: Body) {
   if (body?.attest !== true) throw bad("confirm the proof points are your own, accurate claims");
   // each call is a large NEAR AI request: 10 per visitor per hour
   if (!allow(hooksHits, clientIp(req), Date.now(), 10, 3_600_000)) throw new HttpError(429, "That's 10 hook sets this hour. Pick from the ones you have, or try again later.");
@@ -613,14 +612,15 @@ async function campaignHooks(req: IncomingMessage, body: any) {
   checkUrl(body?.url);
   try {
     return await suggestHooks(brief);
-  } catch (e: any) {
+  } catch (err) {
+    const e = coded(err);
     if (e.code === "brief") throw bad(e.message);
     throw Object.assign(new HttpError(502, e.message), { requestId: e.requestId });
   }
 }
 
 /** Saves the line text for a campaign the brand just paid for, once it hashes to the onchain lineHash. */
-async function saveCampaign(body: any) {
+async function saveCampaign(body: Body) {
   const id = String(body.campaignId ?? "");
   if (!/^[1-9][0-9]*$/.test(id)) throw bad("campaignId must be a positive integer");
   // the web app posts right after its tx; give RPC nodes a few seconds to see the new campaign
@@ -719,7 +719,7 @@ const tryHits = new Map<string, number[]>();
 const tryCache = new Map<string, { at: number; body: unknown }>();
 const TRY_DAILY_CAP = Number(process.env.TRY_DAILY_CAP ?? 100);
 const tryCap = makeDailyCap(TRY_DAILY_CAP);
-async function tryHook(req: IncomingMessage, body: any) {
+async function tryHook(req: IncomingMessage, body: Body) {
   const product = str(body?.product, 160)?.trim();
   if (!product || product.length < 3) throw bad("say what your product is");
   const key = product.toLowerCase().replace(/\s+/g, " ");
@@ -736,7 +736,8 @@ async function tryHook(req: IncomingMessage, body: any) {
     const out = { hooks, requestId: r.requestId, example: true };
     tryCache.set(key, { at: Date.now(), body: out });
     return out;
-  } catch (e: any) {
+  } catch (err) {
+    const e = coded(err);
     tryCap.refund(today); // a call that failed doesn't use up one of the day's free tries
     if (e.code === "brief") throw bad(e.message);
     throw new HttpError(502, e.message);
@@ -863,7 +864,7 @@ function reportLine(req: IncomingMessage, raw: string) {
 
 const phoneHits = new Map<string, number[]>(); // per pairing channel; kept in memory, not saved
 const parkHits = new Map<string, number[]>();
-function joinPark(req: IncomingMessage, b: any) {
+function joinPark(req: IncomingMessage, b: Body) {
   if (!allow(parkHits, clientIp(req), Date.now(), 30, 3_600_000)) throw new HttpError(429, "slow down");
   const pet = parkPet({ ...b, id: b?.id || newParkId() });
   const token = store.parkTokens[pet.id] ?? randomBytes(16).toString("hex");
@@ -880,11 +881,11 @@ function leavePark(id: string, token: string | null) {
   return { ok: true };
 }
 const visitHits = new Map<string, number[]>();
-function sendVisit(req: IncomingMessage, b: any) {
+function sendVisit(req: IncomingMessage, b: Body) {
   if (!allow(visitHits, clientIp(req), Date.now(), 20, 3_600_000)) throw new HttpError(429, "slow down");
   const to = String(b?.to ?? "");
   if (!store.park[to]) throw new HttpError(404, "that pet isn't in the park");
-  const { id: _, tricks: __, ...from } = parkPet({ ...b?.from, id: newParkId() });
+  const { id: _, tricks: __, ...from } = parkPet({ ...(typeof b?.from === "object" && b.from ? (b.from as Body) : {}), id: newParkId() });
   store.visits = [...store.visits.filter((v) => Date.now() - v.at < VISIT_TTL_MS), { to, from, at: Date.now() }].slice(-5000);
   save();
   return { ok: true };
@@ -928,7 +929,7 @@ function reportGallery(req: IncomingMessage, id: string) {
   return { status: s.status };
 }
 /** A reviewer (GALLERY_REVIEW_TOKEN) who played every row approves; two different reviewers list it. */
-function reviewGallery(req: IncomingMessage, id: string, b: any) {
+function reviewGallery(req: IncomingMessage, id: string, b: Body) {
   const token = process.env.GALLERY_REVIEW_TOKEN ?? "", got = String(req.headers["x-review-token"] ?? "");
   if (!token || got.length !== token.length || !timingSafeEqual(Buffer.from(got), Buffer.from(token))) throw new HttpError(403, "reviewers only");
   const s = store.gallery.find((x) => x.id === id);
@@ -1044,7 +1045,7 @@ createServer((req, res) => {
   if (cors(req, res)) return;
   const where = `${req.method} ${new URL(req.url ?? "/", "http://x").pathname}`;
   route(req).then(
-    (body: any) => {
+    (body: Loose) => { // a route result: JSON to send, or { redirect | httpStatus | file | pipe }
       if (body?.redirect) { res.writeHead(302, { Location: body.redirect }); res.end(); return; }
       if (body?.httpStatus) { reply(res, body.httpStatus, body.body); return; }
       if (body?.pipe) { res.writeHead(200, { "content-type": "application/json" }); body.pipe(res).catch((e: unknown) => { console.error(`${where}: ${errMsg(e)}`); res.destroy(); }); return; }

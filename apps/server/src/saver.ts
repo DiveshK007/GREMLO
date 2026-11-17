@@ -9,7 +9,10 @@ export function makeSaver(file: string, get: () => unknown, delayMs = 250) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let dirty = false;
   const write = () => {
-    if (timer) { clearTimeout(timer); timer = null; }
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
     dirty = false;
     writeFileSync(`${file}.tmp`, JSON.stringify(get()));
     renameSync(`${file}.tmp`, file);
@@ -17,10 +20,15 @@ export function makeSaver(file: string, get: () => unknown, delayMs = 250) {
   return {
     save() {
       dirty = true;
-      timer ??= setTimeout(() => { timer = null; if (dirty) write(); }, delayMs);
+      timer ??= setTimeout(() => {
+        timer = null;
+        if (dirty) write();
+      }, delayMs);
       timer.unref?.();
     },
     saveNow: write,
-    flush() { if (dirty) write(); },
+    flush() {
+      if (dirty) write();
+    },
   };
 }

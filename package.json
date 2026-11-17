@@ -1,0 +1,22 @@
+{
+  "name": "gremlo",
+  "private": true,
+  "description": "Repo-level tooling only (lint and format). Each app keeps its own package.json.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "eslint apps/server/src apps/web/app apps/web/components apps/web/lib packages/brain",
+    "format": "prettier --write \"apps/server/src/**/*.ts\" \"apps/web/{app,components,lib}/**/*.{ts,tsx,css}\" \"packages/brain/*.js\"",
+    "format:check": "prettier --check \"apps/server/src/**/*.ts\" \"apps/web/{app,components,lib}/**/*.{ts,tsx,css}\" \"packages/brain/*.js\""
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "eslint": "9.17.0",
+    "eslint-plugin-react-hooks": "5.1.0",
+    "globals": "15.14.0",
+    "prettier": "3.4.2",
+    "typescript": "5.6.3",
+    "typescript-eslint": "8.18.2"
+  }
+}

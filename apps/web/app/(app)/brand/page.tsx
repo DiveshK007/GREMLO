@@ -102,7 +102,7 @@ export default function FundCampaign() {
   useEffect(() => {
     const c = new URLSearchParams(window.location.search).get("c");
     if (c && /^\d+$/.test(c)) { setTab("dash"); setLookupId(c); void loadCampaign(c); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (busy === "fund") notch.set("wait", "confirm in your wallet");

@@ -12,7 +12,7 @@ const TX = { registerTx: "Htx1", verifyTx: "Htx2" };
 type Chain = () => Promise<{ registerTx: string; verifyTx: string }>;
 const exists = async () => true;
 
-function setup(verdict: Verdict, chain: Chain = async () => TX, accountExists = exists) {
+function setup(verdict: Verdict, chain: Chain = async () => TX, accountExists: (id: string) => Promise<boolean> = exists) {
   const store = { pets: {}, nullifiers: [] as string[] };
   const register = makeRegister({ verify: async () => verdict, registerOnChain: chain, accountExists, store, save() {} });
   return { store, register };

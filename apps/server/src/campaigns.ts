@@ -2,8 +2,8 @@ import { bad, HttpError } from "./register.ts";
 import { checkEmail } from "./mail.ts";
 import { momentTags } from "./trust.ts";
 import { checkLine, checkUrl } from "./web.ts";
-// @ts-expect-error plain ESM JS package, no types
 import { checkBrief, checkHook } from "../../../packages/brain/claims.js";
+import type { Body } from "./json.ts";
 
 export type Brief = { product: string; audience: string; offer: string; proof: string; cta: string };
 /** The slices of the store a campaign save touches. */
@@ -19,9 +19,10 @@ export type LineStore = {
 const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
 /** A brand brief from the web form. Field limits are the trust boundary; the claim checks run on top. */
-export function parseBrief(b: any): Brief {
+export function parseBrief(b: unknown): Brief {
+  const o = (b && typeof b === "object" ? b : {}) as Body;
   const field = (k: string, max: number, required: boolean) => {
-    const v = typeof b?.[k] === "string" ? b[k].trim() : "";
+    const v = typeof o[k] === "string" ? (o[k] as string).trim() : "";
     if (required && !v) throw bad(`${k} is required`);
     if (v.length > max) throw bad(`${k} must be at most ${max} characters`);
     return v;
@@ -47,8 +48,8 @@ export function checkCampaign(rawBrief: unknown, hooks: string[]) {
  * lineHash. Every check runs before the first write, so a refused request leaves the store untouched: nobody
  * can lock a campaign out by sending a bad hash first.
  */
-export function saveLine(store: LineStore, id: string, c: { brand: string; line_hash: string }, body: any) {
-  const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : body.line;
+export function saveLine(store: LineStore, id: string, c: { brand: string; line_hash: string }, body: Body) {
+  const line = Array.isArray(body.hooks) ? body.hooks.map((x: unknown) => String(x)).join("\n") : String(body.line ?? "");
   // first write wins: the line text is private until this save, so only the brand can make a matching hash; after
   // that, nobody (who could now read the line) may swap the link, email or brief. A repeat of the same save is fine.
   if (store.moments[id] !== undefined || store.urls[id] !== undefined || store.briefs[id] !== undefined) {
@@ -63,7 +64,13 @@ export function saveLine(store: LineStore, id: string, c: { brand: string; line_
   const hash = checkLine(line, body.lineHash, `0x${c.line_hash}`);
   const url = body.url !== undefined ? checkUrl(body.url) : undefined;
   // checked before payment (/campaigns/check); after the money moved a bad address is dropped, never an error
-  const email = (() => { try { return checkEmail(body.email); } catch { return undefined; } })();
+  const email = (() => {
+    try {
+      return checkEmail(body.email);
+    } catch {
+      return undefined;
+    }
+  })();
   const name = str(body.brand, 40);
 
   store.lines[hash] = line;

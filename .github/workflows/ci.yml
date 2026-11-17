@@ -35,6 +35,20 @@ jobs:
       - run: cargo test
         working-directory: contracts-accounts
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      # advisory for now: old files are hand-formatted and move to Prettier as they are edited
+      - name: prettier on changed files
+        continue-on-error: true
+        run: scripts/format-changed.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
+
   server:
     runs-on: ubuntu-latest
     steps:
@@ -42,6 +56,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: apps/server/package-lock.json }
       - run: npm ci
+        working-directory: apps/server
+      - run: npm run typecheck
         working-directory: apps/server
       - run: npm test
         working-directory: apps/server
@@ -72,6 +88,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - run: swiftlint lint --strict
+        working-directory: apps/mac
       - run: swift build && swift test
         working-directory: apps/mac
       - run: ./scripts/release-mac.sh # unsigned here; signing and notarization need your Apple secrets

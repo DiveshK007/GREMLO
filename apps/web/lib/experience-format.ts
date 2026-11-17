@@ -7,8 +7,7 @@ export function near4(yocto: string | bigint): string {
 }
 
 /** "15 Nov, 03:50" in IST; seconds since the epoch in, as the API sends them. */
-export const istWhen = (sec: number) =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(sec * 1000);
+export const istWhen = (sec: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(sec * 1000);
 
 export const shortHash = (h: string) => `${h.slice(0, 8)}…${h.slice(-4)}`;
 /** A NEAR AI request id, shortened: "chatcmpl-5132d660…" or "49b3f9ca…7ae7". */

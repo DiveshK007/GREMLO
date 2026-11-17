@@ -4,6 +4,7 @@
 // and stops paid thinking while a thought stays unpaid. Pure: the chain reads are in index.ts.
 
 import type { Thought } from "./thoughts.ts";
+import type { Loose } from "./json.ts";
 
 export const BYTE_COST = 10n ** 19n; // yoctoNEAR per byte of storage
 export const RESERVE = 5n * 10n ** 23n; // 0.5 NEAR the purse never spends (contracts-accounts/purse RESERVE)
@@ -34,12 +35,12 @@ export const owed = (list: Thought[] = []) => list.reduce((n, t) => (t.due && !t
  * True when a transaction is the purse paying exactly this: signed by the purse's own key, sent to the purse,
  * successful in every receipt, and logging paid_for_thinking with this provider, amount and request id.
  */
-export function paymentMatches(outcome: any, want: { purse: string; provider: string; amount: string; requestId: string }) {
+export function paymentMatches(outcome: Loose, want: { purse: string; provider: string; amount: string; requestId: string }) {
   const tx = outcome?.transaction;
   if (tx?.signer_id !== want.purse || tx?.receiver_id !== want.purse) return false;
-  if (outcome?.status?.Failure || (outcome?.receipts_outcome ?? []).some((r: any) => r?.outcome?.status?.Failure)) return false;
+  if (outcome?.status?.Failure || (outcome?.receipts_outcome ?? []).some((r: Loose) => r?.outcome?.status?.Failure)) return false;
   if (!outcome?.status || !("SuccessValue" in outcome.status || "SuccessReceiptId" in outcome.status)) return false;
-  const logs: string[] = (outcome?.receipts_outcome ?? []).flatMap((r: any) => r?.outcome?.logs ?? []);
+  const logs: string[] = (outcome?.receipts_outcome ?? []).flatMap((r: Loose) => r?.outcome?.logs ?? []);
   return logs.some((l) => {
     if (!l.startsWith("EVENT_JSON:")) return false;
     try {

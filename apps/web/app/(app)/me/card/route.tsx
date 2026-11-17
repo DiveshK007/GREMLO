@@ -70,7 +70,6 @@ export async function GET(req: Request) {
         <div style={{ flex: 1, display: "flex", position: "relative", alignItems: "flex-end", justifyContent: "center", background: "#141414" }}>
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 420, display: "flex", backgroundImage: `radial-gradient(circle at 50% 100%, ${sp.accent}66, transparent 70%)` }} />
           <div style={{ position: "absolute", top: 0, left: 130, width: 220, height: 40, background: "#000", borderRadius: "0 0 18px 18px" }} />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={still} width={384} height={416} style={{ marginBottom: 34 }} alt="" />
         </div>
       </div>

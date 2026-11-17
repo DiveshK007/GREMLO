@@ -65,7 +65,7 @@ case "submit":
         if let d = FileManager.default.contents(atPath: dir.appendingPathComponent(f).path) { files[f] = d.base64EncodedString() }
     }
     guard files["spritesheet.png"] != nil else { fail("submit needs spritesheet.png (export the webp to png)") }
-    let body = try! JSONSerialization.data(withJSONObject: ["name": dir.lastPathComponent, "creator": creator, "ownArt": true, "files": files])
+    guard let body = try? JSONSerialization.data(withJSONObject: ["name": dir.lastPathComponent, "creator": creator, "ownArt": true, "files": files]) else { fail("couldn't build the upload") }
     guard let reply = fetch("/gallery", body: body), let o = try? JSONSerialization.jsonObject(with: reply) as? [String: Any] else { fail("upload failed") }
     if let e = o["error"] as? String { fail(e) }
     print("submitted for review: \(o["id"] ?? "")\n\(o["note"] ?? "")")

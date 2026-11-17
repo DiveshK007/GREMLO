@@ -98,13 +98,13 @@ import Testing
     @Test func tamperingAndBillMismatchesShow() throws {
         let log = try fixture()
         var json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(log)) as? [String: Any])
-        var entries = json["entries"] as! [[String: Any]]
+        var entries = try #require(json["entries"] as? [[String: Any]])
         entries[2]["counts"] = [3, 0, 0, 0, 0]
         json["entries"] = entries
         let forged = try JSONDecoder().decode(PublicLog.self, from: JSONSerialization.data(withJSONObject: json))
         let r = LogVerify.run(forged)
         #expect(!r.ok && r.problems.contains { $0.contains("entry 2: hash") } && r.problems.contains { $0.contains("signed report has 1") })
-        var billed = json; billed["entries"] = (try JSONSerialization.jsonObject(with: JSONEncoder().encode(log)) as! [String: Any])["entries"]
+        var billed = json; billed["entries"] = (try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(log)) as? [String: Any]))["entries"]
         billed["billed"] = ["settled": 5, "pending": 1, "held": 1, "voided": 0]
         let over = LogVerify.run(try JSONDecoder().decode(PublicLog.self, from: JSONSerialization.data(withJSONObject: billed)))
         #expect(over.problems == ["the log has 4 sightings, the bill accounts for 7"])

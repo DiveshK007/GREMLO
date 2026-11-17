@@ -9,7 +9,9 @@ import type { Writable } from "node:stream";
  * with index > after (a verifier that already holds the earlier ones asks for the rest). Same JSON shape as before.
  */
 export async function streamLog(out: Writable, file: string, head: object, after = 0) {
-  const put = async (s: string) => { if (!out.write(s)) await once(out, "drain"); };
+  const put = async (s: string) => {
+    if (!out.write(s)) await once(out, "drain");
+  };
   await put(`${JSON.stringify(head).slice(0, -1)},"entries":[`);
   let first = true;
   if (existsSync(file)) {

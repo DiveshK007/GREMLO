@@ -3,8 +3,20 @@ import assert from "node:assert/strict";
 import { clearDraft, keepDraft, loadDraft, type Draft } from "./draft.ts";
 import { plainError } from "./errors.ts";
 
-const mem = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) }; };
-const d: Draft = { campaignId: "7", hooks: ["a line", "another"], moments: ["any", "any"], lineHash: "0x" + "ab".repeat(32), brand: "b.testnet", txHash: "Tx1", url: "https://x.example", brief: { product: "p", audience: "a", offer: "", proof: "", cta: "c" } };
+const mem = () => {
+  const m = new Map<string, string>();
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+};
+const d: Draft = {
+  campaignId: "7",
+  hooks: ["a line", "another"],
+  moments: ["any", "any"],
+  lineHash: "0x" + "ab".repeat(32),
+  brand: "b.testnet",
+  txHash: "Tx1",
+  url: "https://x.example",
+  brief: { product: "p", audience: "a", offer: "", proof: "", cta: "c" },
+};
 
 test("a draft survives a reload and is gone once cleared", () => {
   const s = mem();

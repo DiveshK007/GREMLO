@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { canonical, checkSigned, keyId, mustBeFrom, pairMessage } from "./auth.ts";
+import type { Body } from "./json.ts";
 
 // a P-256 key like the Secure Enclave's, exported the way CryptoKit's x963Representation is
 function device() {
@@ -71,7 +72,7 @@ test("NEP-413 owner signature: real ed25519, the exact message and recipient, fu
   const good = await sign(key, msg);
   await checkOwnerSignature(good, "owner.testnet", msg, "vault.gremlo.testnet", provider, used);
   await assert.rejects(checkOwnerSignature(good, "owner.testnet", msg, "vault.gremlo.testnet", provider, used), (e: any) => e.status === 401); // replay
-  const code = async (body: object, m = msg) => checkOwnerSignature(body, "owner.testnet", m, "vault.gremlo.testnet", provider, new Set()).then(() => 200, (e: any) => e.status);
+  const code = async (body: Body, m = msg) => checkOwnerSignature(body, "owner.testnet", m, "vault.gremlo.testnet", provider, new Set()).then(() => 200, (e: any) => e.status);
   assert.equal(await code(await sign(key, msg), pairMessage("mochi", "other-device")), 403); // signed a different message
   assert.equal(await code(await sign(key, msg, "evil.testnet")), 403); // signed for another recipient
   assert.equal(await code(await sign(other, msg)), 403); // not a full-access key of the owner
