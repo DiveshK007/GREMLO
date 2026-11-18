@@ -1,7 +1,7 @@
 "use client";
 
 import { formatNear, formatWhen } from "@/lib/config";
-import { toast } from "@/components/Shell";
+import { copyText } from "@/components/Shell";
 import { ReceiptStage, Tx, type Funded } from "./shared";
 
 /** What the brand sees after paying: the receipt, or "paid, hooks not saved yet" with Retry. */
@@ -82,10 +82,7 @@ export function Receipt({
               <button
                 type="button"
                 className="btn ghost"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(`Campaign #${funded.campaignId} · tx ${funded.txHash}`);
-                  toast("Receipt copied");
-                }}
+                onClick={() => void copyText(`Campaign #${funded.campaignId} · tx ${funded.txHash}`, "Receipt copied")}
               >
                 Copy receipt
               </button>

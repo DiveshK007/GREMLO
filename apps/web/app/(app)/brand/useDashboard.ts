@@ -4,6 +4,7 @@ import { useState } from "react";
 import { arkivCampaign, campaignStats, settleImpressions, type ArkivView, type Settlement, type Stats } from "@/lib/api";
 import { closeCampaign, readCampaign, topUpCampaign } from "@/lib/chain";
 import { parseNear } from "@/lib/config";
+import { plainError } from "@/lib/errors";
 import type { Lookup } from "./shared";
 
 /** The campaign dashboard's state: look a campaign up, settle its views, top it up, close it. */
@@ -45,7 +46,7 @@ export function useDashboard({ account, busy: _busy, setBusy }: { account: strin
     try {
       await f();
     } catch (e) {
-      setCampaignError((e as Error).message.split("\n")[0]);
+      setCampaignError(plainError(e));
     } finally {
       setBusy("");
     }

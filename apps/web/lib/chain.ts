@@ -2,7 +2,7 @@
 import { keccak256, toHex } from "viem";
 import type { NearConnector } from "@hot-labs/near-connect";
 import { NETWORK, RPC_URLS, VAULT_ID } from "./config";
-import { PaidError } from "./paid";
+import { PaidError, UnsureError } from "./paid";
 
 /** The slice of a JSON-RPC query reply this file reads. */
 type RpcReply = { error?: { code?: number }; result?: { error?: unknown; result: number[] } };
@@ -59,6 +59,7 @@ async function call(account: string, methodName: string, args: object, deposit: 
     actions: [{ type: "FunctionCall", params: { methodName, args, gas: "100000000000000", deposit: deposit.toString() } }],
   })) as unknown as TxOutcome | undefined; // the wallet's own result shape differs by wallet; only these fields are read
   const hash = r?.transaction?.hash ?? r?.transaction_outcome?.id ?? "";
+  if (!hash) throw new UnsureError(); // a payment is only claimed with a tx hash to show for it
   const failure = r?.status?.Failure;
   if (failure) throw new Error(`Transaction ${hash} failed: ${JSON.stringify(failure).match(/Smart contract panicked: ([^"\\]+)/)?.[1] ?? JSON.stringify(failure).slice(0, 200)}`);
   const ok = r?.status?.SuccessValue;

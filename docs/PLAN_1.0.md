@@ -66,3 +66,12 @@ settlement that could be paid twice after a timeout, an unauthenticated campaign
 gremlo:// link, pets left visible during a screen share, and the pairing key leaving the Keychain. All suites and CI green.
 Not fixed on purpose: the brand console names the token on amounts (brands pay with it); the unused approve-spend World action.
 
+
+## After the hackathon
+From the UX audit of 2026-11-18 (the small fixes landed the same day):
+- World ID burned before the name is checked: `register.ts` sends the proof to the portal before checking the name or registering on chain. If `register-pet` allows one verification per human, losing the name in the 3-minute scan (or a failed register tx) locks that person out. Check the portal setting; re-check the name before verify and keep a verified-but-unused nullifier for the retry.
+- Payout account checked only after the World scan; a typo means scanning again. Check it before the scan, like the name.
+- One unsaved-campaign slot on the device (`lib/draft.ts`): a second failed hook save overwrites the first paid campaign's hooks. Key drafts by campaign id.
+- Notch approvals: a deny in the terminal sends no PostToolUse, so the card stays up to 105 s; two pending approvals for the same tool are both released by one PostToolUse. Release on the session's next hook event and match the tool-use id, not the tool name (`GremloCore/NotchLive.swift` `sawEvent`).
+- `/brand` picks error states by matching message prefixes (`useFunding.ts` `briefBad`); give the errors a kind instead.
+- `/brand` has no "Your campaigns" list for a connected wallet; a payment with no campaign number points to the Campaign dashboard lookup for now.

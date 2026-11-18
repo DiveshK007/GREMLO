@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { ApiError, checkCampaign, FORMATS, recordCampaign, suggestHooks, type Brief, type Dropped, type Hook } from "@/lib/api";
 import { connectWallet, createCampaign, lineHash } from "@/lib/chain";
 import { clearDraft, keepDraft, loadDraft, type Draft } from "@/lib/draft";
-import { formatWhen, parseNear } from "@/lib/config";
+import { formatNear, formatWhen, minBudget, parseNear, viewsFor } from "@/lib/config";
 import { plainError } from "@/lib/errors";
-import { PaidError } from "@/lib/paid";
+import { PaidError, UnsureError } from "@/lib/paid";
 import { useNotch } from "@/components/Shell";
 import { useRotate } from "@/components/useRotate";
 import { emptyBrief, MAX_HOOK, MAX_PICK, MIN_HOOK, MIN_PICK, type Funded } from "./shared";
@@ -112,8 +112,8 @@ export function useFunding({ account, setAccount, busy, setBusy, onPaid }: { acc
     }
     const h = Number(hours);
     if (!(rateWei > 0n)) return setError("Price per view must be more than 0.");
-    if (budgetWei < rateWei) return setError("Budget must cover at least one view.");
-    if (!(h > 0)) return setError("Duration must be more than 0 hours.");
+    if (budgetWei < minBudget(rateWei)) return setError(`Budget must be at least ${formatNear(minBudget(rateWei))} NEAR: one view plus a one-time storage fee.`);
+    if (!(h >= 1)) return setError("Run it for at least 1 hour.");
 
     setBusy("check");
     try {
@@ -154,8 +154,9 @@ export function useFunding({ account, setAccount, busy, setBusy, onPaid }: { acc
     } catch (e) {
       if (e instanceof PaidError) {
         setPaidTx(e.txHash);
-        setError(`${e.message} Open the receipt below, then look for your campaign under "Your campaigns".`);
-      } else setError(`Nothing was paid: ${plainError(e)}`);
+        setError(`${e.message} Open the receipt below; it shows the campaign number to look up on the Campaign dashboard tab.`);
+      } else if (e instanceof UnsureError) setError(`${e.message} If it went through, the transaction shows the campaign number; look it up on the Campaign dashboard tab.`);
+      else setError(`Nothing was paid: ${plainError(e)}`);
     } finally {
       setBusy("");
     }
@@ -182,7 +183,7 @@ export function useFunding({ account, setAccount, busy, setBusy, onPaid }: { acc
   const estimate = (() => {
     try {
       const r = parseNear(rate);
-      return r > 0n ? (parseNear(budget) / r).toString() : "–";
+      return r > 0n ? viewsFor(parseNear(budget), r).toString() : "–";
     } catch {
       return "–";
     }

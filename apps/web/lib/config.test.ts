@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatNear, formatWhen, parseNear } from "./config.ts";
+import { formatNear, formatWhen, minBudget, parseNear, viewsFor } from "./config.ts";
 
 test("NEAR amounts: exact 24-decimal parse and format, refusing anything else", () => {
   assert.equal(parseNear("0.001"), 1_000_000_000_000_000_000_000n);
@@ -18,4 +18,13 @@ test("formatWhen: one fixed 24-hour format, in the timezone given (the viewer's 
   assert.equal(formatWhen(t, "UTC"), "Fri 13 Nov, 16:37 UTC");
   assert.equal(formatWhen(t, "Asia/Kolkata"), "Fri 13 Nov, 22:07 GMT+5:30");
   assert.doesNotMatch(formatWhen(t, "America/New_York"), /am|pm/i);
+});
+
+test("budget floor: one view plus the storage fee margin, and views counted after the fee", () => {
+  const rate = parseNear("0.001");
+  assert.equal(minBudget(rate), parseNear("0.006"));
+  assert.equal(viewsFor(parseNear("0.1"), rate), 95n);
+  assert.equal(viewsFor(parseNear("0.006"), rate), 1n);
+  assert.equal(viewsFor(parseNear("0.005"), rate), 0n);
+  assert.equal(viewsFor(parseNear("1"), 0n), 0n);
 });

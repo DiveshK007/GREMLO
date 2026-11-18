@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toast, useNotch } from "@/components/Shell";
+import { copyText, useNotch } from "@/components/Shell";
 import { BriefStep } from "./BriefStep";
 import { BudgetStep } from "./BudgetStep";
 import { Dashboard } from "./Dashboard";
@@ -40,9 +40,8 @@ export default function FundCampaign() {
     else notch.base("rest");
   }, [busy, notch]);
 
-  function share(id: string) {
-    void navigator.clipboard?.writeText(`${window.location.origin}/brand?c=${id}`);
-    toast("Link copied");
+  async function share(id: string) {
+    if (!(await copyText(`${window.location.origin}/brand?c=${id}`, "Link copied"))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -182,12 +181,14 @@ export default function FundCampaign() {
           </div>
           <Summary f={f} />
         </div>
-        <div className="mobibar">
-          <span>{n ? `${n} line${n === 1 ? "" : "s"} · ~${f.estimate} views · ${f.budget} NEAR` : "Pick a hook to fund"}</span>
-          <a className="btn solid sm" href="#s3">
-            Review &amp; fund
-          </a>
-        </div>
+        {f.hooks.length > 0 && (
+          <div className="mobibar">
+            <span>{n ? `${n} line${n === 1 ? "" : "s"} · ~${f.estimate} views · ${f.budget} NEAR` : "Pick a hook to fund"}</span>
+            <a className="btn solid sm" href="#s3">
+              Review &amp; fund
+            </a>
+          </div>
+        )}
       </div>
     </>
   );

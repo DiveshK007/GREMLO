@@ -39,3 +39,10 @@ test("plainError: wallet cancels and code noise become sentences, our messages p
   assert.match(plainError(new TypeError("Cannot read properties of undefined (reading 'x')")), /went wrong on our side/);
   assert.equal(plainError(new Error("Campaign #3 was just settled. Try again in 40 seconds.")), "Campaign #3 was just settled. Try again in 40 seconds.");
 });
+
+test("plainError: vault refusals read as sentences, never raw contract codes", () => {
+  assert.match(plainError(new Error("Transaction AbC failed: BadParams: deposit must cover storage (2500 yoctoNEAR) plus at least one impression")), /storage fee plus at least one view/);
+  assert.match(plainError(new Error("Transaction AbC failed: BadParams: rate must be > 0 and end_time in the future")), /end time in the future/);
+  assert.match(plainError(new Error("Transaction AbC failed: BadParams: count must be > 0")), /contract refused this/);
+  assert.doesNotMatch(plainError(new Error("Transaction AbC failed: {\"ActionError\":1}")), /ActionError/);
+});

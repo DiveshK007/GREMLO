@@ -26,7 +26,7 @@ export function BudgetStep({ f }: { f: Funding }) {
             <Field id="hrs" label="Runs for" value={hours} onChange={setHours} suffix="hours" />
           </div>
           <p className="note" style={{ marginTop: -6 }}>
-            {Number(hours) > 0 ? `Ends ${endsAt || "…"}. Views can still be paid for 1 hour after that; then the unspent budget is refunded.` : "Enter the hours it should run."}
+            {Number(hours) >= 1 ? `Ends ${endsAt || "…"}. Views can still be paid for 1 hour after that; then the unspent budget is refunded.` : "Run it for at least 1 hour."}
           </p>
           <Field id="em" label="Email for budget alerts and a weekly report" value={email} onChange={setEmail} max={254} opt type="email" hint="Only used to email you about this campaign. Never shown or shared." />
         </>

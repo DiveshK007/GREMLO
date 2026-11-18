@@ -57,6 +57,18 @@ export function toast(msg: string) {
   toastTimer = setTimeout(() => el!.classList.remove("on"), 2000);
 }
 
+/** Copies text; says "copied" only when the write worked. Returns whether it did. */
+export async function copyText(text: string, done = "Copied") {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(done);
+    return true;
+  } catch {
+    toast("Couldn't copy. Select it and copy it by hand.");
+    return false;
+  }
+}
+
 const NAV: [string, string][] = [["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/money", "Money"], ["/live", "Live"], ["/experience", "For judges"]];
 const FOOT: [string, string][] = [["/", "Home"], ["/pet", "Get your pet"], ["/me", "Your pet"], ["/brand", "Fund a campaign"], ["/park", "Park"], ["/gallery", "Gallery"], ["/money", "Money"], ["/live", "Live numbers"], ["/experience", "For judges"]];
 const ThemeIcon = () => (

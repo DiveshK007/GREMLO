@@ -36,6 +36,14 @@ export function formatNear(yocto: bigint) {
   const frac = (v % YOCTO).toString().padStart(24, "0").replace(/0+$/, "");
   return `${neg ? "-" : ""}${v / YOCTO}${frac ? `.${frac}` : ""}`;
 }
+/** What create_campaign keeps for the campaign's storage, rounded up: a record is ~250 bytes at 10^19 yocto a byte
+ *  (0.0025 NEAR), the vault refuses a deposit that doesn't cover it plus one view. */
+export const STORAGE_MARGIN = 5n * 10n ** 21n; // 0.005 NEAR
+/** The smallest budget the vault takes at this price per view. */
+export const minBudget = (rate: bigint) => rate + STORAGE_MARGIN;
+/** Views a budget pays for once the storage fee is taken; 0 when it doesn't cover one. */
+export const viewsFor = (budget: bigint, rate: bigint) => (rate > 0n && budget > STORAGE_MARGIN ? (budget - STORAGE_MARGIN) / rate : 0n);
+
 /** "0.5" NEAR to yoctoNEAR; throws on anything that isn't a plain non-negative decimal with at most 24 places. */
 export function parseNear(s: string) {
   const m = s.trim().match(/^(\d+)(?:\.(\d{1,24}))?$/);

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { ApiError, nameFree, registerPet, worldSign } from "@/lib/api";
 import { connectWallet } from "@/lib/chain";
 import { txLink, WORLD_APP_ID, WORLD_ENV, WORLD_PRESET, WORLD_RP_ID } from "@/lib/config";
 import { Pet } from "@/components/Pet";
-import { toast, useNotch } from "@/components/Shell";
+import { copyText, useNotch } from "@/components/Shell";
 import { cleanPetName, nameCandidates, validPetName } from "@/lib/petname";
 import "./pet.css";
 
@@ -55,7 +55,9 @@ function Countdown({ until }: { until: number }) {
 export default function GetYourPet() {
   const notch = useNotch();
   const [owner, setOwner] = useState<string | null>(null);
-  const [name, setName] = useState("mochi");
+  const [name, setName] = useState("");
+  const scan = useRef<AbortController | null>(null); // the World ID poll in flight; Cancel aborts it
+  useEffect(() => () => scan.current?.abort(), []);
   const [payout, setPayout] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [walletError, setWalletError] = useState("");
@@ -82,6 +84,11 @@ export default function GetYourPet() {
     }
   }
 
+  function cancelScan() {
+    scan.current?.abort();
+    setPhase({ kind: "form" });
+    setBusy(false);
+  }
   function validate(): string {
     if (!owner) return "Connect your wallet first.";
     if (!validPetName(name)) return "Name: 2-24 letters, numbers or dashes, not starting or ending with a dash.";
@@ -107,6 +114,8 @@ export default function GetYourPet() {
     if (err || !owner) return;
     setBusy(true);
     notch.set("think");
+    const ac = new AbortController();
+    scan.current = ac;
     try {
       // check the name before the scan, so nobody proves they're human only to hear it's taken
       if (!(await nameFree(name))) { setTaken(await suggestions(name)); notch.base("rest"); return; }
@@ -122,7 +131,8 @@ export default function GetYourPet() {
       } as Parameters<typeof IDKit.request>[0]).preset(preset);
 
       setPhase({ kind: "scan", uri: request.connectorURI, until: Date.now() + SCAN_MS });
-      const completion = await request.pollUntilCompletion({ pollInterval: 2000, timeout: SCAN_MS });
+      const completion = await request.pollUntilCompletion({ pollInterval: 2000, timeout: SCAN_MS, signal: ac.signal });
+      if (ac.signal.aborted) return; // cancelled: the form is already back
       if (!completion.success) {
         setPhase({ kind: "error", title: "World ID didn’t finish.", message: `World ID didn't complete: ${String(completion.error ?? "cancelled")}` });
         return;
@@ -131,6 +141,7 @@ export default function GetYourPet() {
       const res = await registerPet({ name, owner, payout: payout.trim(), worldProof: completion.result });
       setPhase({ kind: "done", name: res.name ?? name, txHash: res.txHash, verifyTx: res.verifyTx, at: Date.now() });
     } catch (e) {
+      if (ac.signal.aborted) return;
       const msg = (e as Error).message;
       if (e instanceof ApiError && e.status === 409 && msg === "already has a pet") setPhase({ kind: "denied" });
       else if (e instanceof ApiError && e.status === 409 && msg === "pet already registered") { setPhase({ kind: "form" }); setTaken(await suggestions(name)); }
@@ -172,7 +183,7 @@ export default function GetYourPet() {
           {walletError && <div className="bad" role="alert">{walletError}</div>}
           <div className="field" data-invalid={bad || undefined}>
             <label htmlFor="nm">Pet name</label>
-            <input id="nm" className="big" value={name} autoComplete="off" spellCheck={false} maxLength={24} aria-describedby="nmh" aria-invalid={bad || undefined}
+            <input id="nm" className="big" value={name} placeholder="e.g. pixel-fox" autoComplete="off" spellCheck={false} maxLength={24} aria-describedby="nmh" aria-invalid={bad || undefined}
               onChange={(e) => { setName(cleanPetName(e.target.value)); setTaken(null); }} />
             <span className="echo" aria-hidden="true">{name}</span>
             {taken ? (
@@ -222,7 +233,8 @@ export default function GetYourPet() {
                   : "Open World App and scan this code."}
               </p>
               <div className="actions">
-                <button type="button" className="btn ghost sm" onClick={() => { void navigator.clipboard?.writeText(phase.uri); toast("Link copied"); }}>Copy link</button>
+                <button type="button" className="btn ghost sm" onClick={() => void copyText(phase.uri, "Link copied")}>Copy link</button>
+                <button type="button" className="btn ghost sm" onClick={cancelScan}>Cancel</button>
               </div>
               <p className="note" role="status" style={{ marginTop: 22 }}><span className="spin" aria-hidden="true" />Waiting for your phone…</p>
               <Countdown until={phase.until} />
