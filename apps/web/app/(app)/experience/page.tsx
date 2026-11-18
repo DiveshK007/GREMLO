@@ -569,24 +569,24 @@ export default async function Experience() {
           </Head>
           <div className="xp-videos">
             {[
-              { href: "https://youtu.be/g5L31kJ2dRQ", img: "/experience/poster-demo.jpg", alt: "Video poster: Meet Gremlo, 1:30", t: "Watch the 1:30 demo", b: "The whole idea, fast. YouTube." },
+              { src: "/demo-1m30.mp4", img: "/experience/poster-demo.jpg", alt: "Video poster: Meet Gremlo, 1:30", t: "Watch the 1:30 demo", b: "The whole idea, fast." },
               {
-                href: "https://youtu.be/-QK3U_Z1n5s",
+                src: "/walkthrough.mp4",
                 img: "/experience/poster-walkthrough.jpg",
                 alt: "Video poster: the full walkthrough, 4:40",
                 t: "The full walkthrough · 4:40",
                 b: "One view, start to finish, with the real transactions.",
               },
             ].map((v) => (
-              <a key={v.href} className="xp-link xp-video" href={v.href} target="_blank" rel="noreferrer">
-                <img src={v.img} alt={v.alt} width={1200} height={676} loading="lazy" decoding="async" />
+              <div key={v.src} className="xp-link xp-video">
+                <video controls preload="none" poster={v.img} aria-label={v.alt} src={v.src} />
                 <span>
                   <span className="xp-h3" style={{ fontSize: 24 }}>
                     {v.t}
                   </span>
                   <span className="xp-small">{v.b}</span>
                 </span>
-              </a>
+              </div>
             ))}
           </div>
           <div className="xp-links">

@@ -31,7 +31,7 @@
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-F4F2ED">
 </p>
 
-<p align="center"><a href="https://youtu.be/g5L31kJ2dRQ"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (1:30)"></a></p>
+<p align="center"><a href="https://gremlo.vercel.app/demo-1m30.mp4"><img src="docs/media/readme/poster.png" width="820" alt="Watch the explainer (1:30)"></a></p>
 
 **Judging? Two minutes, no Mac, no wallet, no keys.**
 
@@ -111,7 +111,7 @@ In the final run each view paid 0.003 NEAR: 0.0024 to the owner's payout account
 
 ## The full walkthrough
 
-<p align="center"><a href="https://youtu.be/-QK3U_Z1n5s"><img src="docs/media/readme/explainer.png" width="820" alt="Watch the full walkthrough (4:40)"></a></p>
+<p align="center"><a href="https://gremlo.vercel.app/walkthrough.mp4"><img src="docs/media/readme/explainer.png" width="820" alt="Watch the full walkthrough (4:40)"></a></p>
 
 4:40. One view from start to finish: the brand's campaign, the signed view, settlement on NEAR testnet, the compute budget, and the ten transactions from the final run.
 

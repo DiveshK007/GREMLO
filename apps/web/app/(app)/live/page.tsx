@@ -17,8 +17,10 @@ const FORMAT: Record<string, string> = { humour: "Humour", sarcasm: "Sarcasm", o
 const TRY_PETS = ["pip", "byte", "gloop"];
 // The pet this page follows live: a real, paired pet on the hosted server.
 const DEMO_PET = process.env.NEXT_PUBLIC_DEMO_PET ?? "mochi";
-const VIDEO = "https://youtu.be/g5L31kJ2dRQ";
-const WALKTHROUGH = "https://youtu.be/-QK3U_Z1n5s";
+const VIDEOS = [
+  { src: "/demo-1m30.mp4", poster: "/experience/poster-demo.jpg", label: "Meet Gremlo, 1:30" },
+  { src: "/walkthrough.mp4", poster: "/experience/poster-walkthrough.jpg", label: "The full walkthrough, 4:40" },
+];
 const INSTALL = "https://github.com/DiveshK007/GREMLO#try-it-in-two-minutes";
 const near4 = (w: string | null | undefined) => (w == null ? null : Number(formatNear(BigInt(w))).toFixed(4));
 
@@ -77,11 +79,15 @@ export default function Live() {
         <div>
           <p>No Mac needed. A real pet on the hosted server, the line it holds this minute, every payment on chain, and one AI call you can make yourself. The story lives on the <Link href="/">home page</Link>.</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-            <a className="btn solid sm" href={VIDEO} target="_blank" rel="noreferrer">Watch the 1:30 demo</a>
-            <a className="btn ghost sm" href={WALKTHROUGH} target="_blank" rel="noreferrer">Full walkthrough</a>
             <a className="btn ghost sm" href={INSTALL} target="_blank" rel="noreferrer">Have a Mac? Install it</a>
           </div>
         </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 24 }}>
+        {VIDEOS.map((v) => (
+          <video key={v.src} controls preload="none" poster={v.poster} aria-label={v.label} src={v.src} style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: 12, background: "#000" }} />
+        ))}
       </div>
 
       <div className="stage now">

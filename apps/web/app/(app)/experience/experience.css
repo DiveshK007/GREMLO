@@ -177,7 +177,7 @@ html:is(:not([data-theme]), [data-theme]):has(.xp) body { --accent-text: var(--a
 .xp .xp-link { text-decoration: none; color: inherit; display: flex; flex-direction: column; border: 1.5px solid #2A2A30; border-radius: 22px; background: var(--cardbg); transition: transform .18s ease, border-color .18s ease; min-width: 0; }
 .xp .xp-link:hover { transform: translateY(-3px); border-color: #FF5A3C; color: inherit; }
 .xp-video { overflow: hidden; }
-.xp-video img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.xp-video img, .xp-video video { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
 .xp-video > span { padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; }
 .xp .xp-lk { gap: 6px; border-radius: 18px; padding: 18px 20px; min-height: 112px; }
 .xp-oneline { border: 1.5px solid #FF5A3C; border-radius: 24px; padding: 30px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; background: #1A0F0C; }
