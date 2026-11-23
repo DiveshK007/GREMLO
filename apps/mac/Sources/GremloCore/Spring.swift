@@ -9,8 +9,11 @@ public struct SpringParams: Equatable, Sendable {
     public var damping: Double    // 0 wobbles forever, 1 critically damped (no overshoot)
     public init(response: Double, damping: Double) { self.response = response; self.damping = damping }
 
-    public static let open    = SpringParams(response: 0.42, damping: 0.70)  // ~6% overshoot, haptic on the peak
-    public static let close   = SpringParams(response: 0.30, damping: 0.88)
+    // Retuned 23 Nov 2026 toward Finotch's measured timing: width rises 10-90% in about 220 ms opening and 190 ms
+    // closing. To go back to the snappier feel, put the old values back (open .42/.70, ~140 ms rise, ~6% overshoot;
+    // close .30/.88, ~130 ms rise); the first test in SpringTests will need its bounds back too.
+    public static let open    = SpringParams(response: 0.60, damping: 0.75)  // ~220 ms rise, ~3% overshoot, haptic on the peak
+    public static let close   = SpringParams(response: 0.38, damping: 0.95)  // ~190 ms rise, no overshoot
     public static let press   = SpringParams(response: 0.14, damping: 0.60)  // the dent
     public static let release = SpringParams(response: 0.22, damping: 0.45)  // springs back past 100% once
     public static let lean    = SpringParams(response: 0.25, damping: 0.80)

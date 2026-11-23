@@ -19,17 +19,32 @@ import Testing
         let (v, peak) = run(Spring(190), to: 560, .open)
         let top = try #require(v.max()), maxFrame = try #require(v.firstIndex(of: top)) + 1
         let overshoot = (top - 560) / (560 - 190)
-        #expect(overshoot > 0.03 && overshoot < 0.08, "a few percent past the target, got \(overshoot)")
+        #expect(overshoot > 0.02 && overshoot < 0.05, "a couple of percent past the target, got \(overshoot)")
         #expect(peak == maxFrame, "the tap fires on frame \(String(describing: peak)), the overshoot is on frame \(maxFrame)")
         #expect(abs(v.last! - 560) < 0.05, "and it settles")
         let (v60, peak60) = run(Spring(190), to: 560, .open, frames: 120, hz: 60)
         #expect(peak60 == v60.firstIndex(of: v60.max()!)! + 1, "on the overshoot frame at the 60 Hz Low Power cap too")
     }
 
+    /// Seconds for the spring to go from 10% to 90% of the way to its target.
+    func rise(_ p: SpringParams, up: Bool) -> Double {
+        Motion.reduce = false
+        let (from, to) = up ? (190.0, 560.0) : (560.0, 190.0)
+        let (v, _) = run(Spring(from), to: to, p, frames: 480, hz: 240)
+        let at = { (f: Double) in Double(v.firstIndex { up ? $0 >= from + f * (to - from) : $0 <= from + f * (to - from) }!) / 240 }
+        return at(0.9) - at(0.1)
+    }
+
+    @Test func openingAndClosingRiseInAboutTheMeasuredTime() {
+        let o = rise(.open, up: true), c = rise(.close, up: false)
+        #expect(abs(o - 0.220) < 0.015, "open rises in about 220 ms, got \(o * 1000)")
+        #expect(abs(c - 0.190) < 0.015, "close rises in about 190 ms, got \(c * 1000)")
+    }
+
     @Test func closingBarelySettlesAndHeightLandsLater() {
         Motion.reduce = false
         let (v, _) = run(Spring(560), to: 190, .close)
-        #expect(v.min()! > 190 - 0.02 * 370, "close is snappy with a tiny settle")
+        #expect(v.min()! >= 190 - 0.5, "close has no visible overshoot")
         #expect(SpringParams.open.heavier.response == SpringParams.open.response + 0.03)
     }
 
