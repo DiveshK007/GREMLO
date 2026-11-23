@@ -62,6 +62,18 @@ jobs:
       - run: npm test
         working-directory: apps/server
 
+  # reads public testnet RPC and the live API; no secrets. A red run here can also mean an RPC or the API is down.
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/server/package-lock.json }
+      - run: npm ci
+        working-directory: apps/server
+      - run: npm run verify:public
+        working-directory: apps/server
+
   brain:
     runs-on: ubuntu-latest
     steps:

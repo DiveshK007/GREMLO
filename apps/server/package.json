@@ -6,9 +6,10 @@
   },
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env --import tsx src/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx src/index.ts",
     "test": "node --import tsx --test src/*.test.ts",
-    "verify": "node --env-file=.env --import tsx scripts/verify.ts",
+    "verify": "node --env-file-if-exists=.env --import tsx scripts/verify.ts",
+    "verify:public": "node --import tsx scripts/verify-public.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

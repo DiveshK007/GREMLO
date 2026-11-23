@@ -1,0 +1,21 @@
+{
+  "network": "testnet",
+  "vault": "vault.gremlo.testnet",
+  "codeHash": "AeXXhh355asstWmnF9XzLHowUBoTXtAao7VR4WhF7gdb",
+  "rpc": ["https://archival-rpc.testnet.fastnear.com", "https://archival-rpc.testnet.near.org"],
+  "api": "https://16-4-100-95.sslip.io",
+  "minPaidYocto": "6000000000000000000000",
+  "minComputeChargedYocto": "1200000000000000000000",
+  "txs": [
+    { "step": 1, "what": "register_pet", "signer": "operator.gremlo.testnet", "hash": "5xuUysyigMP4bARt3WdRHTW9byCyKiifiwi4oPd8fWho" },
+    { "step": 2, "what": "set_verified", "signer": "operator.gremlo.testnet", "hash": "6EAhsDt7Ae6mqq1ipxBgP22Yra9ccWB1fSJ9sdsdzu9X" },
+    { "step": 3, "what": "create_campaign", "signer": "notchi.testnet", "hash": "214EyrLM5Jwqsn2R2gDbGrnBYXsKQsLnZXvCXXTougn7" },
+    { "step": 4, "what": "settle_impressions", "signer": "operator.gremlo.testnet", "hash": "FFdmieVQ26YyJcHwkvcSnSveA4EfG6SxYUE2JwWBQUQB" },
+    { "step": 5, "what": "charge_compute", "signer": "operator.gremlo.testnet", "hash": "E1vh3VKeVobQJPZjC5PKcpmiTfWzoqkGurW4KhCSMH1d" },
+    { "step": 6, "what": "charge_compute", "signer": "operator.gremlo.testnet", "hash": "GHMAHr4ad8hZKJf7jR9Mgz92K1wXKBh4srFTbanCrBzq" },
+    { "step": 7, "what": "top_up", "signer": "notchi.testnet", "hash": "Akz9UDRZqkSM5AjjEubTZhfv6QD7U52kjsPQ63R4tNcr" },
+    { "step": 8, "what": "settle_impressions", "signer": "operator.gremlo.testnet", "hash": "CNvNmMvBLdgdXzCUFr852CRdjRCrWb43sVLjSuoUa95M" },
+    { "step": 9, "what": "charge_compute", "signer": "operator.gremlo.testnet", "hash": "8gDVVjKkHYh7VkGWpwvJ5hS7AdpYUUAAWMRVZuWj1V9Z" },
+    { "step": 10, "what": "charge_compute", "signer": "operator.gremlo.testnet", "hash": "J6a5MxUP1EV5591XNVRV8i4B194hAuGnv8wW8eggU5cg" }
+  ]
+}
