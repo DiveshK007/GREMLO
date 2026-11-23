@@ -345,7 +345,8 @@ final class Backend: NSObject {
             pet.setMood(i.mood, reason: i.moodReason)
         }
         if showingDemo { return }
-        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / 60) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / 60))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))"
+        let tick = privacy.pomodoro?.fast == true ? 1.0 : 60.0  // the fast test timing counts seconds
+        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))"
         if key == shown { return }
         shown = key
         UI.setAccent(pet.skin.species)
@@ -382,13 +383,14 @@ final class Backend: NSObject {
         if let f = privacy.focus {
             let end = Btn("End", style: .secondary, target: self, action: #selector(endFocusNow)); end.small = true
             let block = privacy.pomodoro.map { " Block \($0.cycle) of \(Pomodoro.cycles)." } ?? ""
-            let r = UI.hstack([UI.notice("Focus: \(Int(f.remaining(Date()) / 60) + 1) min left.\(block) Lines off, not earning.", UI.accent, width: w - 60), UI.spacer(), end])
+            let left = privacy.pomodoro?.left(f.remaining(Date())) ?? "\(Int(f.remaining(Date()) / 60) + 1) min"
+            let r = UI.hstack([UI.notice("Focus: \(left) left.\(block) Lines off, not earning.", UI.accent, width: w - 60), UI.spacer(), end])
             r.widthAnchor.constraint(equalToConstant: w).isActive = true
             notes.append(r)
         } else if let p = privacy.pomodoro, p.onBreak {
             let end = Btn("End", style: .secondary, target: self, action: #selector(endFocusNow)); end.small = true
-            let left = Int(p.breakRemaining(Date()) / 60) + 1
-            let r = UI.hstack([UI.notice("Break: \(left) min left. Block \(p.cycle + 1) of \(Pomodoro.cycles) is next.", UI.accent, width: w - 60), UI.spacer(), end])
+            let left = p.left(p.breakRemaining(Date()))
+            let r = UI.hstack([UI.notice("Break: \(left) left. Block \(p.cycle + 1) of \(Pomodoro.cycles) is next.", UI.accent, width: w - 60), UI.spacer(), end])
             r.widthAnchor.constraint(equalToConstant: w).isActive = true
             notes.append(r)
         }

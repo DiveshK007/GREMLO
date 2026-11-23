@@ -102,3 +102,9 @@ Full map (adds to round 3's `HAPTICS.md`):
 | Typing pace | Accessibility | **off**, ask in Settings |
 | Music bop | Automation (Music, Spotify) | **off**, ask in Settings |
 | Sound | none | Subtle |
+
+## 8. Pomodoro and its test timing
+
+Settings, Privacy, Focus, **Pomodoro** (off by default). With it on, a 25-minute focus starts a run: four 25-minute blocks with a 5-minute break after each of the first three. Each block is the ordinary Focus session (pet focus state, `focus-start` and `focus-end` sounds, 2 stars when it finishes). Ending early (End, ⌥⌘F, `gremlo focus`, or starting another session) stops the whole run. The 50 and 90 minute sessions never start a run.
+
+**Test timing (not for users).** Launch the app with `GREMLO_POMODORO_FAST=1` and a Pomodoro run uses 25-second blocks and 5-second breaks, so all four blocks take about two minutes. The popover notices count in seconds. It changes nothing for a normal focus session, and it is read only from the environment, never from Settings. Example: `GREMLO_POMODORO_FAST=1 swift run Gremlo` from `apps/mac`, then turn Pomodoro on in Settings and press 25m.

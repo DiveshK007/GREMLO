@@ -86,12 +86,15 @@ final class PrivacyController {
     func toggleFocus(_ minutes: Int) {
         if focus != nil { endFocus(finished: false); return }
         stopPomodoro()  // starting during a break begins a fresh run
-        if Pomodoro.startsRun(minutes: minutes, enabled: defaults.bool(forKey: "pomodoro")) { pomodoro = Pomodoro() }
+        if Pomodoro.startsRun(minutes: minutes, enabled: defaults.bool(forKey: "pomodoro")) { pomodoro = Pomodoro(fast: Self.pomodoroFast) }
         beginFocus(minutes)
     }
 
+    /// Test only: GREMLO_POMODORO_FAST=1 makes a Pomodoro's blocks 25 s and its breaks 5 s (see NOTCH_FEEL.md).
+    private static var pomodoroFast: Bool { ProcessInfo.processInfo.environment["GREMLO_POMODORO_FAST"] == "1" }
+
     private func beginFocus(_ minutes: Int) {
-        focus = FocusSession(start: Date(), minutes: minutes)
+        focus = FocusSession(start: Date(), minutes: minutes, seconds: pomodoro?.fast == true ? Pomodoro.fastFocusSeconds : nil)
         silence.focus = true
         Feel.sound("focus-start")
         if pet.path == .floor { pet.set(.focus) } else { pet.comeOut(then: .focus) }
@@ -130,7 +133,7 @@ final class PrivacyController {
             pomodoro = nil
             pet.say("All \(Pomodoro.cycles) blocks done", for: 8)
         case .startBreak:
-            pet.say("Break: \(Pomodoro.breakMinutes) minutes", for: 6)
+            pet.say("Break: \(p.breakLabel)", for: 6)
             breakTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 guard let self else { return }
                 if self.pomodoro?.breakFinished(Date()) == true { self.breakOver() }

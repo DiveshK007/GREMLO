@@ -29,6 +29,23 @@ struct PomodoroTests {
         #expect(!p.onBreak)
     }
 
+    @Test func fastTimingShrinksTheBreakAndKeepsTheShape() {
+        var p = Pomodoro(fast: true)
+        #expect(p.focusEnded(at: t0) == .startBreak)
+        #expect(p.breakRemaining(t0) == 5)
+        #expect(p.breakLabel == "5 seconds")
+        #expect(p.left(3.2) == "4 s")
+        #expect(Pomodoro().left(299) == "5 min")
+        #expect(p.breakFinished(t0.addingTimeInterval(5)))
+    }
+
+    @Test func aFocusSessionCanBeShorterThanItsMinutesOnlyWhenToldTo() {
+        let s = FocusSession(start: t0, minutes: 25)
+        #expect(s.length == 1500 && s.end == t0.addingTimeInterval(1500))
+        let f = FocusSession(start: t0, minutes: 25, seconds: 25)
+        #expect(f.end == t0.addingTimeInterval(25) && f.progress(t0.addingTimeInterval(5)) == 0.2)
+    }
+
     @Test func aBreakCountsDown() {
         var p = Pomodoro()
         _ = p.focusEnded(at: t0)

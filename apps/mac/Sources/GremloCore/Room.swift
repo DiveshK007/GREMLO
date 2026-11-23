@@ -78,12 +78,15 @@ public struct GuestbookEntry: Codable, Equatable, Sendable {
 public struct FocusSession: Codable, Equatable, Sendable {
     public static let durations = [25, 50, 90]
     public let start: Date, minutes: Int
-    public init(start: Date, minutes: Int) { self.start = start; self.minutes = minutes }
-    public var end: Date { start.addingTimeInterval(Double(minutes) * 60) }
+    /// Overrides `minutes * 60`. Only the fast Pomodoro test timing sets it; nil everywhere else.
+    public var seconds: TimeInterval?
+    public init(start: Date, minutes: Int, seconds: TimeInterval? = nil) { self.start = start; self.minutes = minutes; self.seconds = seconds }
+    public var length: TimeInterval { seconds ?? Double(minutes) * 60 }
+    public var end: Date { start.addingTimeInterval(length) }
     public func remaining(_ now: Date) -> TimeInterval { max(0, end.timeIntervalSince(now)) }
     public func finished(_ now: Date) -> Bool { now >= end }
     /// The ring: 0 at the start, 1 at the end.
-    public func progress(_ now: Date) -> Double { min(1, max(0, now.timeIntervalSince(start) / (Double(minutes) * 60))) }
+    public func progress(_ now: Date) -> Double { min(1, max(0, now.timeIntervalSince(start) / length)) }
     public func label(_ now: Date) -> String { let s = Int(remaining(now)); return "\(s / 60):\(String(format: "%02d", s % 60))" }
 }
 
