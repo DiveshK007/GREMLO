@@ -210,6 +210,7 @@ enum UI {
 final class Box: NSView {
     var fill: NSColor? { didSet { needsDisplay = true } }
     var stroke: NSColor? { didSet { needsDisplay = true } }
+    var strokeWidth: CGFloat = 1.5 { didSet { needsDisplay = true } }
     var radius: CGFloat
     init(fill: NSColor?, radius: CGFloat = 0, stroke: NSColor? = nil) {
         self.fill = fill; self.radius = radius; self.stroke = stroke
@@ -221,7 +222,7 @@ final class Box: NSView {
     override func updateLayer() {
         layer?.backgroundColor = fill?.cgColor
         layer?.cornerRadius = radius
-        layer?.borderWidth = stroke == nil ? 0 : 1.5
+        layer?.borderWidth = stroke == nil ? 0 : strokeWidth
         layer?.borderColor = stroke?.cgColor
     }
 }
@@ -449,7 +450,10 @@ final class MenuPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
         isReleasedWhenClosed = false
         surface.layer?.masksToBounds = true
-        surface.stroke = nil
+        surface.fill = UI.surface.withAlphaComponent(Surface.popover.glassAlpha)
+        surface.stroke = Surface.edgeColor
+        surface.strokeWidth = 1
+        Surface.glass(under: surface, Surface.popover)
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.scrollerStyle = .overlay

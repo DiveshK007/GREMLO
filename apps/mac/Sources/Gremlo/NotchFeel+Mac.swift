@@ -161,6 +161,7 @@ final class SpriteView: NSView {
 final class NotchShapeLayer: CALayer {
     let body = CAShapeLayer()
     private let glow = CAShapeLayer()
+    private let edge = Surface.edgeLayer(Surface.notch)   // the 1 pt highlight, above the body
     private let rimBox = CALayer()            // masked to a 3 pt stroke of the path; never rotates
     private let rim = CAGradientLayer()       // the conic gradient inside it; this is what spins
     private let rimMask = CAShapeLayer()
@@ -175,13 +176,10 @@ final class NotchShapeLayer: CALayer {
     override init() {
         super.init()
         body.fillColor = NSColor.black.cgColor
-        body.shadowColor = NSColor.black.cgColor
-        body.shadowOpacity = 0
-        body.shadowRadius = 24
-        body.shadowOffset = CGSize(width: 0, height: -10)   // 10 pt down onto the desktop
+        Surface.applyShadow(body, Surface.notch, strength: 0)   // the depth shadow; apply() scales it with how open the notch is
         glow.fillColor = NSColor.black.cgColor
-        glow.shadowRadius = 28
-        glow.shadowOffset = CGSize(width: 0, height: -6)
+        glow.shadowRadius = Surface.notch.glow?.radius ?? 28
+        glow.shadowOffset = CGSize(width: 0, height: Surface.notch.glow?.dy ?? -6)
         glow.shadowOpacity = 0
         rim.type = .conic
         rim.startPoint = CGPoint(x: 0.5, y: 0.5)
@@ -196,7 +194,7 @@ final class NotchShapeLayer: CALayer {
         interior.opacity = 0
         lip.fillColor = NSColor(white: 1, alpha: 0.42).cgColor
         lip.opacity = 0
-        for l in [glow, rimBox, body, interior, lip] as [CALayer] { addSublayer(l) }
+        for l in [glow, rimBox, body, edge, interior, lip] as [CALayer] { addSublayer(l) }
         actions = ["sublayerTransform": NSNull()]
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -207,6 +205,7 @@ final class NotchShapeLayer: CALayer {
         body.path = path; glow.path = path; rimMask.path = path
         body.shadowPath = path
         glow.shadowPath = path
+        Surface.updateEdge(edge, path: path, box: CGRect(x: cx - g.width / 2, y: top - g.height, width: g.width, height: g.height))
         let room = max(0, mouth)
         interior.opacity = room > 2 ? 1 : 0
         if room > 2 {
@@ -231,7 +230,7 @@ final class NotchShapeLayer: CALayer {
         t = CATransform3DScale(t, sx, sy, 1)
         t = CATransform3DTranslate(t, -cx, -top, 0)
         sublayerTransform = t
-        body.shadowOpacity = Float(0.45 * max(0, min(1, open)))
+        Surface.applyShadow(body, Surface.notch, strength: open)
     }
 
     /// The Konami disco: the rim cycles through the hues for 3.6 s, then goes back to what it was.

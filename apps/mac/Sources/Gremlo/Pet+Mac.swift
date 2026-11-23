@@ -545,6 +545,8 @@ final class Pet {
         signPanel.contentView?.layer?.contents = image
         signPanel.contentView?.layer?.contentsScale = backing
         CATransaction.commit()
+        signPanel.hasShadow = true  // the window shadow follows the plate's alpha; it has to be redrawn for each new image
+        signPanel.invalidateShadow()
     }
 
     func placeSign() {
