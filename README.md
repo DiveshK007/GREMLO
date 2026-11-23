@@ -38,7 +38,9 @@
 1. Take the [guided tour](https://gremlo.vercel.app/experience): the pet, the money loop and live testnet numbers.
 2. Check the API yourself: `curl https://16-4-100-95.sslip.io/stats` returns campaigns, settled views, NEAR paid and NEAR charged for AI. A share of each payment (20% now) is credited to the pet's AI budget; "charged" is the part it has spent so far, so it is at most 20% of paid.
 3. Open any "charged on chain" link on [/live](https://gremlo.vercel.app/live). Each is a `charge_compute` call on `vault.gremlo.testnet` carrying the NEAR AI completion id.
-4. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `rust-toolchain.toml`).
+4. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `contracts-near/rust-toolchain.toml`).
+
+Last verified: 23 Nov 2026. `npm run verify:public` (in `apps/server`) passed all 15 checks, and the API's `/health` answered 200.
 
 Gremlo was built for the NEAR Hackathon (Nov 2026) and is now in active development as a product. The submission snapshot is the [`hackathon-submission`](https://github.com/DiveshK007/GREMLO/tree/hackathon-submission) tag.
 
@@ -75,7 +77,7 @@ Run the same line again to update. To quit, use the bottom of the menu bar panel
 <details>
 <summary>Why build from source, and what about a download?</summary>
 
-There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. A `.dmg` will appear under [Releases](https://github.com/DiveshK007/GREMLO/releases) when the first `v*` tag is pushed; it will be ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`.
+There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. The `.dmg` is on [Releases](https://github.com/DiveshK007/GREMLO/releases/tag/v1.0.0): [Gremlo-1.0.0.dmg](https://github.com/DiveshK007/GREMLO/releases/download/v1.0.0/Gremlo-1.0.0.dmg), sha256 `a8c0e9c76e7a27a6dad27961e91b935687cd5fc5b45f6f7c056015e9ce99f892` (the same hash is in `Gremlo-1.0.0.dmg.sha256` next to it; check with `shasum -a 256`). It is ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`.
 </details>
 
 ## How it works
@@ -165,7 +167,7 @@ Known limits:
 
 ## Run the full loop from source
 
-Needs macOS 13+ with Swift 5.9+ for the Mac app, Node 22+, and Rust 1.95 (pinned in `rust-toolchain.toml`) plus `cargo-near` 0.22 for the contracts. Everything except the Mac app also builds on Linux; the commands below are bash.
+Needs macOS 13+ with Swift 5.9+ for the Mac app, Node 22+, and Rust 1.95 (pinned in `contracts-near/rust-toolchain.toml` and `contracts-accounts/rust-toolchain.toml`) plus `cargo-near` 0.22 for the contracts. Everything except the Mac app also builds on Linux; the commands below are bash.
 
 ```bash
 git clone https://github.com/DiveshK007/GREMLO.git && cd GREMLO
@@ -221,8 +223,7 @@ Gremlo started at ETHGlobal Mumbai 2026 as **Notchi**, on a different stack. Tha
 
 ## Team
 
-<!-- TODO(you): names, roles, X handles -->
-Built by [@DiveshK007](https://github.com/DiveshK007).
+Built by Divesh Kumar ([@DiveshK007](https://github.com/DiveshK007)), solo.
 
 ## License
 
