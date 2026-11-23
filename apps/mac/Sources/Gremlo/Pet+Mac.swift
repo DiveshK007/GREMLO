@@ -70,6 +70,8 @@ final class Pet {
     // Tricks: the backflip's jump arc lifts the whole window; the moonwalk slides against the facing.
     var trickStart = Date.distantPast
     var liftY: CGFloat = 0
+    /// Music is playing and the bop setting is on (set by the notch controller); draw() decides whether to bob.
+    var musicPlaying = false
     // Pets alive (Alive+Pet.swift)
     var scheduler = IdleScheduler(now: Date(), seed: SeededRNG.daySeed(Date()))
     var schedulerDay = SeededRNG.daySeed(Date())
@@ -596,6 +598,11 @@ final class Pet {
         let phase = Double(frame) + animClock
         if mood == "thriving" && path == .floor && state == .walk {
             t = t.translatedBy(x: 0, y: abs(sin(phase * .pi / 2)) * 3)
+        }
+        // Bops to music: a quiet 2 Hz bounce while the pet stands about. Not mid-walk, so it never fights a step cycle.
+        if MusicBob.allowed(playing: musicPlaying, reduceMotion: Motion.reduce, visible: panel.isVisible && panel.alphaValue > 0, onFloor: path == .floor,
+                            calm: [.idle, .sit, .gaze, .focus].contains(state), gate: silence) {
+            t = t.translatedBy(x: 0, y: MusicBob.offset(at: CACurrentMediaTime()))
         }
         // Emotions from hooks: happy = squash + bounce, sad = slump, approval = jump.
         if path == .floor {

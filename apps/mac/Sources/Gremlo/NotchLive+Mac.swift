@@ -114,7 +114,7 @@ final class NotchLiveController: NSObject {
     var momentUntil = Date.distantPast
     var breathUntil = Date.distantPast
     /// True while Music or Spotify is playing and the bop setting is on. The title stays in the menu bar.
-    var hearingMusic = false { didSet { if hearingMusic != oldValue { syncBop() } } }
+    var hearingMusic = false { didSet { if hearingMusic != oldValue { syncBop(); backend?.pet.musicPlaying = hearingMusic } } }
 
     /// Bobs the housing while music plays and the pointer is near. The ticker leaves when either stops, so the clock can pause.
     func syncBop() {
