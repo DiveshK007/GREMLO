@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.2 (23 Nov 2026)
+
+Mac app polish. Nothing changed in the web app, the API or the contract.
+
+- **One surface style.** The notch, the menu bar popover and the sign share one set of numbers (`Surface+Mac.swift`): a glass fill where black is not required, a 1 pt edge highlight, a soft shadow and an optional glow.
+- **Notch springs retuned.** Opening now takes about 220 ms (was about 140) with about 3% overshoot, closing about 190 ms (was about 130) with none. The old values are in `NOTCH_FEEL.md` if you want them back.
+- **Progress wings.** Two slim strips beside the notch while an agent runs, then one green glow when it finishes (red, no glow, if it failed). No percentage is shown, because a run has no known length.
+- **Pomodoro.** Off by default, in Settings, Privacy, Focus. 25 minutes of focus and a 5-minute break, four blocks, on top of the existing Focus session. Each finished block still earns 2 stars. `GREMLO_POMODORO_FAST=1` shortens it for testing only.
+- **Bops to music.** The pet now bobs along, not only the notch. Off under Reduce Motion. The permission text says exactly what is read: whether something is playing, with the track name dropped.
+
 ## v1.0.1 (23 Nov 2026)
 
 Changes since v1.0.0.
