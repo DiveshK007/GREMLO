@@ -83,6 +83,7 @@ final class NotchLiveController: NSObject {
     private var generation = 0           // a newer transition cancels an older one's content swap
     // Notch feel: the notch is one spring-driven path in a fixed, transparent panel (NotchFeel+Mac.swift).
     let shape = NotchShapeLayer()
+    let wings = WingsLayer()   // the progress strips beside the housing while an agent runs
     let W = Spring(190), H = Spring(32), R = Spring(12)
     let lean = Spring(0, .lean), squash = Spring(0, .squash), press = Spring(1, .press), openness = Spring(0, .close)
     private var leanGrow: (w: Double, h: Double) = (0, 0)
@@ -157,6 +158,7 @@ final class NotchLiveController: NSObject {
         panel.contentView = drop
         drop.wantsLayer = true
         drop.layer?.addSublayer(shape)  // the black notch: always black, whatever the theme
+        drop.layer?.addSublayer(wings)
         panel.acceptsMouseMovedEvents = true
         panel.ignoresMouseEvents = true  // clicks pass through everywhere but the notch itself
         panel.allowsKey = { [weak self] in self?.needsKeys ?? false }
@@ -274,6 +276,14 @@ final class NotchLiveController: NSObject {
         return i
     }
 
+    /// The strips follow the run: working while it is open, one green glow (or a red fill) when it ends.
+    private func syncWings() {
+        let m = Wings.mode(working: run.started != nil && run.endedAt == nil, endedAt: run.endedAt, failed: run.errors > 0, now: Date(),
+                           quiet: silence.silent || backend?.privacy.duck == .hidden)
+        wings.agentColor = nsColor(hex: NotchFeel.agentColor(run.agent))
+        wings.set(m, reduceMotion: Motion.reduce)
+    }
+
     func update() {
         // the panel can shrink out from under the pointer (an answered approval folds the card), and then no
         // mouseExited comes; without this the run-over ticker stayed up for good instead of folding to rest
@@ -296,6 +306,7 @@ final class NotchLiveController: NSObject {
         // Resign the keyboard without ordering the panel out. Ordering it out and back was a visible jerk on every click.
         if panel.isKeyWindow, state != .knock, state != .queue, NSEvent.pressedMouseButtons == 0 { panel.resignKey() }
         passThrough()
+        syncWings()
         SpriteClock.shared.visible = backend?.privacy.duck != .hidden
         heartbeatTick()
     }
@@ -472,6 +483,7 @@ final class NotchLiveController: NSObject {
         shape.apply(g, centerX: b.midX + lean.value, top: b.maxY, squash: Motion.reduce ? 0 : squash.value, press: press.value,
                     open: openness.value, mouth: mouthDrop, showLip: !NotchFeel.grows.contains(state))
         ride(in: b, path: g.path(centerX: b.midX + lean.value, top: b.maxY))
+        wings.layout(centerX: b.midX + lean.value, housingWidth: CGFloat(W.value), top: b.maxY, band: notchHeight > 0 ? notchHeight : 24)
         CATransaction.commit()
     }
 
