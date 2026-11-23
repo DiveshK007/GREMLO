@@ -46,7 +46,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Gremlo</string><key>CFBundleURLSchemes</key><array><string>gremlo</string></array></dict></array>
-  <key>NSAppleEventsUsageDescription</key><string>Only if you turn on Bops to music: Gremlo asks Music and Spotify for the playing track's name.</string>
+  <key>NSAppleEventsUsageDescription</key><string>You turned on Bops to music in Settings. Every 5 seconds Gremlo asks Music and Spotify whether something is playing, so the notch can bob along. It reads the track name for that check and does not keep or send it.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Five minutes before a meeting the pet checks its watch. Event titles never leave this Mac.</string>
 </dict></plist>
 PLIST

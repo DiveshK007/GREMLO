@@ -128,8 +128,10 @@ final class TypingWatch {
     }
 }
 
-/// #27, opt-in: AppleScript asks Music and Spotify what's playing every 5 s while it's on (Automation consent), and
-/// the pet bops at a steady 2 Hz under the track name. No beat detection, no MediaRemote.
+/// #27, opt-in: AppleScript asks Music and Spotify whether something is playing every 5 s while it's on (Automation
+/// consent). The track name is read only to tell "playing" from silence and is dropped; the notch bobs at a steady 2 Hz
+/// while the pointer is over it. A denied prompt or a closed app returns nothing, so there is no bob and no error.
+/// No beat detection, no MediaRemote.
 final class MusicWatch {
     private var timer: Timer?
     private let script = """
