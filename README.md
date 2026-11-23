@@ -4,6 +4,8 @@
   <b>A tiny pet that lives behind your MacBook notch, reacts to Claude Code, and earns from one sponsored line while your agent works.</b>
 </p>
 
+<p align="center"><b>Judging? Start with <a href="JUDGE.md">JUDGE.md</a>: the two-minute path, what is simulated, and the known limits.</b></p>
+
 <p align="center">
   <a href="#try-it-in-two-minutes">Try it</a> ·
   <a href="#how-it-works">How it works</a> ·
