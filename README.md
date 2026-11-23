@@ -74,7 +74,7 @@ That builds Gremlo from source on your Mac (a few minutes the first time), puts 
 
 Run the same line again to update. To quit, use the bottom of the menu bar panel.
 
-> **Hosted server:** `https://16-4-100-95.sslip.io` (NEAR testnet). Point the app at it with `GREMLO_SERVER=https://16-4-100-95.sslip.io GREMLO_WEB=https://gremlo.vercel.app` (for an app opened from Finder, use `launchctl setenv`). Without it the app talks to `http://localhost:8787`, so you can also [run the full loop yourself](#run-the-full-loop-from-source).
+> **Hosted server:** the app talks to `https://16-4-100-95.sslip.io` (NEAR testnet) and opens pages on [gremlo.vercel.app](https://gremlo.vercel.app) by default, so sponsored lines, earnings and the pet's thoughts work out of the box. To use your own server instead, set `GREMLO_SERVER` and `GREMLO_WEB` (see [Run the full loop from source](#run-the-full-loop-from-source)).
 
 <details>
 <summary>Why build from source, and what about a download?</summary>
@@ -179,7 +179,7 @@ cp apps/web/.env.example apps/web/.env          # server URL, vault id, World ap
 
 (cd apps/server && npm ci && npm start)         # :8787
 (cd apps/web && npm ci && npm run dev)          # :3000
-(cd apps/mac && swift run Gremlo)               # then menu bar → Settings → General → Claude Code → Connect
+(cd apps/mac && GREMLO_SERVER=http://localhost:8787 GREMLO_WEB=http://localhost:3000 swift run Gremlo)   # then menu bar → Settings → General → Claude Code → Connect
 ```
 
 Then open `http://localhost:3000/pet` to get a pet, `/pair` to pair this Mac, and `/brand` to fund a campaign. Every env var name is listed in [HANDOFF.md](HANDOFF.md).

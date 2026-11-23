@@ -8,7 +8,7 @@ import UserNotifications
 
 // Talks to apps/server. Server down means the popover says so; nothing is invented.
 final class Backend: NSObject {
-    let base = Legacy.env("SERVER") ?? "http://localhost:8787"
+    let base = Legacy.env("SERVER") ?? "https://16-4-100-95.sslip.io" // the hosted server; GREMLO_SERVER=http://localhost:8787 for a local one
     let petName = startupPetName()
     let pet: Pet
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -589,14 +589,14 @@ final class Backend: NSObject {
         menu.dismiss()
     }
     @objc func openPetPage() {
-        let web = Legacy.env("WEB") ?? "http://localhost:3000"
+        let web = Legacy.env("WEB") ?? "https://gremlo.vercel.app"
         let pet = petName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? petName
         if let u = URL(string: "\(web)/me?pet=\(pet)") { NSWorkspace.shared.open(u) }
         menu.dismiss()
     }
     @objc func pairDevice() {
         guard let key = devicePublicKey else { return }
-        let web = Legacy.env("WEB") ?? "http://localhost:3000"
+        let web = Legacy.env("WEB") ?? "https://gremlo.vercel.app"
         let pet = petName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? petName
         if let u = URL(string: "\(web)/pair?pet=\(pet)&key=\(key)") { NSWorkspace.shared.open(u) }
         menu.dismiss()

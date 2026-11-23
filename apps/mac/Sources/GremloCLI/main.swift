@@ -11,7 +11,7 @@ if (CommandLine.arguments[0] as NSString).lastPathComponent == Legacy.cliName {
     FileHandle.standardError.write(Data("`\(Legacy.cliName)` is now `gremlo`; the old name works for one more release.\n".utf8))
 }
 func flag(_ f: String) -> String? { argv.firstIndex(of: f).flatMap { argv.indices.contains($0 + 1) ? argv[$0 + 1] : nil } }
-let server = flag("--server") ?? Legacy.env("SERVER") ?? "http://localhost:8787"
+let server = flag("--server") ?? Legacy.env("SERVER") ?? "https://16-4-100-95.sslip.io"
 
 /// GET (or POST with a JSON body) against the server; the body of any HTTP answer, or nil on a network error.
 func fetch(_ path: String, body: Data? = nil) -> Data? {
