@@ -12,6 +12,9 @@ final class PrivacyController {
     unowned let backend: Backend
     var duck = Duck.none
     var focus: FocusSession?
+    /// A Pomodoro run (Settings, Privacy, off by default): focus blocks with breaks between them. nil outside one.
+    var pomodoro: Pomodoro?
+    private var breakTimer: Timer?
     var limiter = LineLimiter()
     var lineWasUp = false
     var stream: StreamServer?
@@ -82,6 +85,12 @@ final class PrivacyController {
 
     func toggleFocus(_ minutes: Int) {
         if focus != nil { endFocus(finished: false); return }
+        stopPomodoro()  // starting during a break begins a fresh run
+        if Pomodoro.startsRun(minutes: minutes, enabled: defaults.bool(forKey: "pomodoro")) { pomodoro = Pomodoro() }
+        beginFocus(minutes)
+    }
+
+    private func beginFocus(_ minutes: Int) {
         focus = FocusSession(start: Date(), minutes: minutes)
         silence.focus = true
         Feel.sound("focus-start")
@@ -101,8 +110,47 @@ final class PrivacyController {
         focus = nil
         silence.focus = false
         if finished { backend.growth.focusFinished(id: "\(Int(f.start.timeIntervalSince1970))"); Feel.sound("focus-end") }
-        if pet.state == .focus { pet.set(.walk) }
+        else { stopPomodoro() }  // ending a block early ends the run
+        if finished, pomodoro != nil {
+            if pet.state == .focus { pet.set(.celebrate, then: .walk) }
+            blockFinished()
+        } else if pet.state == .focus { pet.set(.walk) }
         backend.shown = ""; backend.render(); backend.live.update()
+    }
+
+    // MARK: Pomodoro
+
+    /// A block ended: start the break, or say the run is done after the last block. The block already earned its 2 stars.
+    private func blockFinished() {
+        guard var p = pomodoro else { return }
+        let next = p.focusEnded(at: Date())
+        pomodoro = p
+        switch next {
+        case .finished:
+            pomodoro = nil
+            pet.say("All \(Pomodoro.cycles) blocks done", for: 8)
+        case .startBreak:
+            pet.say("Break: \(Pomodoro.breakMinutes) minutes", for: 6)
+            breakTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                if self.pomodoro?.breakFinished(Date()) == true { self.breakOver() }
+                self.backend.live.update()
+            }
+        case .startFocus: break
+        }
+    }
+
+    private func breakOver() {
+        breakTimer?.invalidate(); breakTimer = nil
+        guard var p = pomodoro, case .startFocus(let block) = p.breakEnded() else { return }
+        pomodoro = p
+        pet.say("Focus block \(block) of \(Pomodoro.cycles)", for: 5)
+        beginFocus(Pomodoro.focusMinutes)
+    }
+
+    func stopPomodoro() {
+        breakTimer?.invalidate(); breakTimer = nil
+        pomodoro = nil
     }
 
     // MARK: Stream mode
@@ -446,6 +494,8 @@ extension Backend {
         let focus = UI.group("Focus", [
             UI.row("Start a focus session", "Lines off and no earning while it runs. \u{2325}\u{2318}F starts 25 minutes.",
                    Seg(FocusSession.durations.map { "\($0)m" }, selected: -1, momentary: true, target: self, action: #selector(startFocus(_:))), width: w),
+            UI.row("Pomodoro", "Off by default. With it on, a 25-minute focus is followed by a 5-minute break, four blocks in all. The pet celebrates each block, and each finished block still earns 2 stars. Ending early stops the run.",
+                   Toggle(on: defaults.bool(forKey: "pomodoro"), target: self, action: #selector(togglePomodoro(_:)), label: "Pomodoro"), width: w),
         ], width: w)
         let sharing = UI.group("Sharing", [
             UI.row("Stream mode", "An OBS overlay on 127.0.0.1:\(StreamServer.port)/overlay. Lines off, views not counted.",
@@ -467,7 +517,8 @@ extension Backend {
         if privacy.focus != nil { privacy.endFocus(finished: false) }
         privacy.toggleFocus(FocusSession.durations[max(0, s.selectedSegment)])
     }
-    @objc func endFocusNow() { privacy.endFocus(finished: false) }
+    @objc func endFocusNow() { privacy.endFocus(finished: false); privacy.stopPomodoro() }
+    @objc func togglePomodoro(_ b: NSButton) { defaults.set(b.state == .on, forKey: "pomodoro") }
     @objc func openRoom() { live.roomOpen = true; live.update() }
     @objc func makePostcardNow() { privacy.makePostcard() }
     @objc func savePostcard() {
