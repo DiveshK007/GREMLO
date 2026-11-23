@@ -1,11 +1,8 @@
 // The product name, in one place, for every user-facing string in the web app.
 export const PRODUCT = "Gremlo";
 
-// A production build without it would ship pages that call localhost, so it fails here instead (dev still defaults).
-if (!process.env.NEXT_PUBLIC_SERVER_URL && process.env.NODE_ENV === "production") {
-  throw new Error("NEXT_PUBLIC_SERVER_URL is not set. Set it to the Gremlo API address (for example https://16-4-100-95.sslip.io) before building.");
-}
-export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:8787";
+// Production falls back to the hosted API so a build with no env still serves live pages; dev talks to a local server.
+export const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? (process.env.NODE_ENV === "production" ? "https://16-4-100-95.sslip.io" : "http://localhost:8787");
 export const WORLD_APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID ?? "";
 export const WORLD_RP_ID = process.env.NEXT_PUBLIC_WORLD_RP_ID ?? "";
 export const WORLD_PRESET = process.env.NEXT_PUBLIC_WORLD_PRESET === "device" ? "device" : "orb";

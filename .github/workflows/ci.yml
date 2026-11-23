@@ -80,9 +80,7 @@ jobs:
       - run: npm ci
         working-directory: apps/web
       - run: npm run typecheck && npm test && npm run build
-        working-directory: apps/web
-        env:
-          NEXT_PUBLIC_SERVER_URL: https://16-4-100-95.sslip.io # the build refuses to run without it
+        working-directory: apps/web # no env set on purpose: the build must work from a clean checkout
 
   mac:
     runs-on: macos-15
