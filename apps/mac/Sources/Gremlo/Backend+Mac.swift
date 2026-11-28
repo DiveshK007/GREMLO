@@ -241,6 +241,17 @@ final class Backend: NSObject {
     }
     func resizeMenu() { if menu.isVisible { menu.fit(stack, under: item.button) } }
 
+    /// The icon's state: orange while an approval waits, dimmed while away or quiet; VoiceOver and the tooltip say why.
+    func menuBarState() {
+        let s = MenuBarState.of(approvalWaiting: pet.waiting || !broker.queue.waiting.isEmpty, server: localWhy ?? (serverError != nil ? .serverDown : nil),
+                                paused: paused, focus: privacy.focus != nil)
+        guard let b = item.button else { return }
+        b.contentTintColor = s == .approval ? .systemOrange : nil
+        switch s { case .away, .quiet: b.appearsDisabled = true; case .normal, .approval: b.appearsDisabled = false }
+        b.setAccessibilityLabel(s.label(productName))
+        b.toolTip = s.label(productName)
+    }
+
     var petPath: String { "/pets/" + (petName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? petName) }
 
     func request(_ path: String, body: [String: Any]? = nil, done: @escaping (Data?, String?) -> Void) {
@@ -351,6 +362,7 @@ final class Backend: NSObject {
             if localWhy == .offline { localWhy = nil; hinted = nil }  // back online, and the server knows the pet
             pet.setMood(i.mood, reason: i.moodReason)
         }
+        menuBarState()
         if showingDemo { return }
         let tick = privacy.pomodoro?.fast == true ? 1.0 : 60.0  // the fast test timing counts seconds
         let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))|\(lastView.map { "\($0.at)\($0.refused ?? "")" } ?? "")|\(social.parkStatus ?? "")|\(silence.silent)"
@@ -434,7 +446,8 @@ final class Backend: NSObject {
 
         // the line it holds right now, drawn as the plate with its AD tab
         let off = !sponsoredOn ? "Sponsored lines are off" : inQuietHours() ? "Quiet hours: no lines until 08:00"
-            : (info?.impressionsToday ?? 0) >= dailyViewCap ? "Daily limit reached: no more lines today" : campaign == nil ? "No active campaign" : nil
+            : (info?.impressionsToday ?? 0) >= dailyViewCap ? "Daily limit reached: no more lines today"
+            : campaign == nil ? "No campaign is running right now. The pet still works; lines come back when a brand funds one." : nil
         var showing: [NSView] = [UI.caption("Now showing")]
         if let off { showing.append(UI.label(off, UI.body(13), UI.text2, width: w)) }
         else if let c = campaign {
@@ -450,7 +463,7 @@ final class Backend: NSObject {
         // its last paid thoughts, each with the completion id (click copies it)
         var thoughts: [NSView] = [UI.caption("Last thoughts")]
         let last = info?.lastThoughts.prefix(3) ?? []
-        if last.isEmpty { thoughts.append(UI.label("None yet", UI.body(12), UI.text3)) }
+        if last.isEmpty { thoughts.append(UI.label("None yet. The pet thinks during a Claude Code run, when its compute budget can pay for a thought.", UI.body(12), UI.text3, width: w)) }
         else { thoughts.append(UI.group(nil, last.map { copyButton($0.action.uppercased(), $0.requestId) }, width: w)) }
         if let tx = info?.lastThoughts.first(where: { $0.chargeTx != nil })?.chargeTx {
             let b = Btn("Receipt for the last AI charge", style: .ghost, symbol: "arrow.up.right", target: self, action: #selector(openLastCharge))

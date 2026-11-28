@@ -160,13 +160,21 @@ extension Backend {
         let setupGroup = UI.group("Setup", [
             UI.row("First-run setup", "Your pet, pairing this Mac, Claude Code and a test, in about two minutes.", Btn("Run setup", target: self, action: #selector(runSetup)), width: w),
         ], width: w)
+        // every shortcut the app registers (Privacy+Mac, NotchLive+Mac, the panel); risky approvals never get one
+        let keys = [("\u{2325}\u{2318}P", "Pause everything, or resume"), ("\u{2325}\u{2318}F", "Start a 25-minute focus"),
+                    ("\u{2325}\u{2318}N", "Open or fold the notch"), ("\u{2325}\u{21A9}", "In the notch: allow an approval once"),
+                    ("\u{2325}\u{232B}", "In the notch: deny"), ("\u{2325}\u{2193}", "In the notch: next approval"),
+                    ("\u{2190} \u{2192}", "In the notch: pick a waiting approval"), ("esc", "Fold the notch, or close the panel"),
+                    ("\u{21A9}", "In the panel: bring the terminal forward to approve"), ("\u{2318}Q", "In the panel: quit")]
+        let shortcuts = UI.group("Keyboard shortcuts", keys.map { UI.kv($0.1, $0.0, width: w) },
+                                 note: "Approvals that delete, push or spend money have no shortcut: they always need a click.", width: w)
         let cli = UI.group("Command line", [
             UI.row("gremlo", "Talk to the pet from any terminal.", Btn("Install", target: self, action: #selector(installCommand)), width: w),
         ], width: w)
         let quit = UI.group("Gremlo", [
             UI.row("Quit Gremlo", "The pet and its hook server stop until you open Gremlo again.", Btn("Quit", target: self, action: #selector(quitApp)), width: w),
         ], width: w)
-        return [claude, setupGroup, screen, cli, updatesGroup(), quit]
+        return [claude, setupGroup, screen, shortcuts, cli, updatesGroup(), quit]
     }
 
     // MARK: Pet

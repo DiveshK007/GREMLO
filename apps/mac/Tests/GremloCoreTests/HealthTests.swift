@@ -24,3 +24,13 @@ struct HealthTests {
         #expect(Health.views(today: 2, held: 2, payable: nil, settledToday: nil, holdbackHours: 0) == "2 today \u{00B7} 2 on hold", "an older server sends no queue numbers")
     }
 }
+
+struct MenuBarStateTests {
+    @Test func approvalWinsThenTheServerThenQuiet() {
+        #expect(MenuBarState.of(approvalWaiting: true, server: .serverDown, paused: true, focus: false) == .approval)
+        #expect(MenuBarState.of(approvalWaiting: false, server: .serverDown, paused: true, focus: false) == .away("can't reach the server"))
+        #expect(MenuBarState.of(approvalWaiting: false, server: nil, paused: false, focus: true) == .quiet("focus"))
+        #expect(MenuBarState.of(approvalWaiting: false, server: nil, paused: false, focus: false).label("Gremlo") == "Gremlo")
+        #expect(MenuBarState.approval.label("Gremlo") == "Gremlo: needs your approval")
+    }
+}

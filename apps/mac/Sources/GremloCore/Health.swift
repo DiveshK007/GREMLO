@@ -44,3 +44,29 @@ public enum Health {
         return parts.joined(separator: " \u{00B7} ")
     }
 }
+
+/// What the menu bar icon says at a glance, and the same words for VoiceOver. Approval first: it is the one that waits on you.
+public enum MenuBarState: Equatable, Sendable {
+    case normal, approval, away(String), quiet(String)
+
+    public static func of(approvalWaiting: Bool, server: LocalLife.Why?, paused: Bool, focus: Bool) -> MenuBarState {
+        if approvalWaiting { return .approval }
+        switch server {
+        case .offline: return .away("offline")
+        case .serverDown: return .away("can't reach the server")
+        case .unregistered: return .away("pet not registered")
+        case nil: break
+        }
+        if paused { return .quiet("paused") }
+        if focus { return .quiet("focus") }
+        return .normal
+    }
+
+    public func label(_ product: String) -> String {
+        switch self {
+        case .normal: return product
+        case .approval: return "\(product): needs your approval"
+        case .away(let why), .quiet(let why): return "\(product): \(why)"
+        }
+    }
+}
