@@ -163,7 +163,7 @@ extension Backend {
         let quit = UI.group("Gremlo", [
             UI.row("Quit Gremlo", "The pet and its hook server stop until you open Gremlo again.", Btn("Quit", target: self, action: #selector(quitApp)), width: w),
         ], width: w)
-        return [claude, screen, cli, quit]
+        return [claude, screen, cli, updatesGroup(), quit]
     }
 
     // MARK: Pet

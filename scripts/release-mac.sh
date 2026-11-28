@@ -6,6 +6,8 @@
 #                   xcrun notarytool store-credentials gremlo --apple-id you@x.com --team-id TEAMID --password <app-specific password>
 #                   or APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD in the environment (release.yml)
 # Without SIGN_ID it signs ad hoc and skips notarization: fine for your own Mac, Gatekeeper blocks it elsewhere.
+#   SPARKLE_PUBLIC_KEY  the EdDSA public key for auto-update (docs/RELEASE.md); without it the app has no updater
+#   SPARKLE_FEED    the appcast URL (default: the appcast.xml attached to the latest GitHub release)
 #   ARCH=native     build for this Mac only (install.sh); default is universal (arm64 + x86_64)
 #   NO_DMG=1        stop after Gremlo.app (install.sh)
 set -euo pipefail
@@ -25,6 +27,14 @@ rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/assets"
 cp "$BIN/Gremlo" "$APP/Contents/MacOS/Gremlo"
 cp "$BIN/GremloCLI" "$APP/Contents/MacOS/gremlo-cli"
+# Sparkle is linked, so every build carries it; only a build with SPARKLE_PUBLIC_KEY turns the updater on
+mkdir -p "$APP/Contents/Frameworks" && ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+FEED="${SPARKLE_FEED:-https://github.com/DiveshK007/GREMLO/releases/latest/download/appcast.xml}"
+UPDATES=""
+if [ -n "${SPARKLE_PUBLIC_KEY:-}" ]; then
+  UPDATES="<key>SUFeedURL</key><string>$FEED</string><key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/><key>SUAutomaticallyUpdate</key><true/>"
+fi
 cp Sources/Gremlo/Resources/gremlo-hook.sh Sources/Gremlo/Resources/gremlo-git-hook.sh "$APP/Contents/Resources/"
 # shared assets at the repo root: species packs and the Inter font for the plate
 cp -R ../../assets/pets "$APP/Contents/Resources/assets/pets"
@@ -50,11 +60,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Gremlo</string><key>CFBundleURLSchemes</key><array><string>gremlo</string></array></dict></array>
   <key>NSAppleEventsUsageDescription</key><string>You turned on Bops to music in Settings. Every 5 seconds Gremlo asks Music and Spotify whether something is playing, so your pet can bob along. It reads the track name for that check and does not keep or send it.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Five minutes before a meeting the pet checks its watch. Event titles never leave this Mac.</string>
+  $UPDATES
 </dict></plist>
 PLIST
 
 if [ -n "${SIGN_ID:-}" ]; then
-  # nested code first (the CLI), then the bundle
+  # nested code first, inside out (Sparkle's helpers, then the framework, the CLI), then the bundle
+  sign() { codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$@"; }
+  FW="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+  sign "$FW/XPCServices/Installer.xpc"
+  sign --preserve-metadata=entitlements "$FW/XPCServices/Downloader.xpc"
+  sign "$FW/Autoupdate"
+  sign "$FW/Updater.app"
+  sign "$APP/Contents/Frameworks/Sparkle.framework"
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/gremlo-cli"
   codesign --force --options runtime --timestamp --entitlements Gremlo.entitlements --sign "$SIGN_ID" "$APP"
 else

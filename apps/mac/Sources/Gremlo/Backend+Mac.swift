@@ -465,7 +465,13 @@ final class Backend: NSObject {
         quit.small = true
         quit.keyEquivalent = "q"
         quit.keyEquivalentModifierMask = .command
-        let foot = UI.hstack([UI.spacer(), UI.label("\u{2318}Q", UI.mono(10, .regular), UI.text3, wrap: false), quit], spacing: 6)
+        var footer: [NSView] = []
+        if Updates.shared.available {
+            let up = Btn("Check for updates", style: .ghost, symbol: "arrow.triangle.2.circlepath", target: self, action: #selector(checkForUpdates))
+            up.small = true
+            footer.append(up)
+        }
+        let foot = UI.hstack(footer + [UI.spacer(), UI.label("\u{2318}Q", UI.mono(10, .regular), UI.text3, wrap: false), quit], spacing: 6)
         foot.widthAnchor.constraint(equalToConstant: w).isActive = true
         stack.addArrangedSubview(foot)
         resizeMenu()

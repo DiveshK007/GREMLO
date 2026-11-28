@@ -192,6 +192,7 @@ _ = backend.commandSocket  // the gremlo CLI, Shortcuts and Raycast
 _ = backend.social  // team relay, park, guestbook visits
 _ = backend.phone  // the paired phone and Watch
 _ = backend.github  // opt-in: merged PRs and review visits through gh
+_ = Updates.shared  // release builds only: Sparkle checks once a day
 NSAppleEventManager.shared().setEventHandler(backend, andSelector: #selector(Backend.handleURL(_:withReplyEvent:)),
                                              forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")

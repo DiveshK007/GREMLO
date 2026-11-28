@@ -1,6 +1,7 @@
 name: release
 # Pushing a tag like v1.1.0 builds the universal Gremlo dmg, signs it with the Developer ID, notarizes and staples it,
-# and attaches it to that tag's GitHub release. Without the signing secrets the job fails rather than ship an unsigned dmg.
+# signs the update for Sparkle, and attaches the dmg and appcast.xml to that tag's GitHub release. Without the signing
+# secrets the job fails rather than ship an unsigned dmg. Setup: docs/RELEASE.md.
 on:
   push:
     tags: ["v*"]
@@ -38,7 +39,41 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/release-mac.sh
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+        run: |
+          [ -n "$SPARKLE_PUBLIC_KEY" ] || { echo "repo variable SPARKLE_PUBLIC_KEY is not set (docs/RELEASE.md)"; exit 1; }
+          VERSION="${GITHUB_REF_NAME#v}" ./scripts/release-mac.sh
+      - name: Sign the update and write the appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "secret SPARKLE_PRIVATE_KEY is not set (docs/RELEASE.md)"; exit 1; }
+          # sign_update from the same pinned Sparkle zip as Package.swift, checked before it ever sees the key
+          curl -sSL -o "$RUNNER_TEMP/sparkle.zip" https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-for-Swift-Package-Manager.zip
+          echo "4c2e48a3e50ebcc2c88a58a4c7264a1a99c3c31857ce754357afb9cdb323022a  $RUNNER_TEMP/sparkle.zip" | shasum -a 256 -c
+          unzip -q "$RUNNER_TEMP/sparkle.zip" bin/sign_update -d "$RUNNER_TEMP/sparkle"
+          v="${GITHUB_REF_NAME#v}"; dmg="apps/mac/dist/Gremlo-$v.dmg"
+          # the key goes in on stdin, never as an argument or a file
+          sig="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/sign_update" --ed-key-file - "$dmg")"
+          case "$sig" in *edSignature=*length=*) ;; *) echo "sign_update gave no signature"; exit 1 ;; esac
+          cat > apps/mac/dist/appcast.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Gremlo</title>
+              <item>
+                <title>Gremlo $v</title>
+                <pubDate>$(date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+                <sparkle:version>$v</sparkle:version>
+                <sparkle:shortVersionString>$v</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+                <sparkle:releaseNotesLink>https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME</sparkle:releaseNotesLink>
+                <enclosure url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Gremlo-$v.dmg" type="application/octet-stream" $sig />
+              </item>
+            </channel>
+          </rss>
+          XML
+          xmllint --noout apps/mac/dist/appcast.xml
       - name: Attach the dmg to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,7 +90,8 @@ jobs:
           EOF
           )"
           fi
-          gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" --clobber
+          # the app's feed is releases/latest/download/appcast.xml, so publishing the release publishes the update
+          gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" apps/mac/dist/appcast.xml --clobber
       - name: Remove the keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
