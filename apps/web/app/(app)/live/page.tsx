@@ -22,6 +22,15 @@ const VIDEOS = [
   { src: "/walkthrough.mp4", poster: "/experience/poster-walkthrough.jpg", label: "The full walkthrough, 4:40" },
 ];
 const INSTALL = "https://github.com/DiveshK007/GREMLO#try-it-in-two-minutes";
+// The one real mainnet run (28 Nov 2026): fixed hashes, totals read live from the mainnet API. README and PROOF.md say the same.
+const MAINNET = {
+  api: "https://mainnet.16-4-100-95.sslip.io",
+  vault: "vault.divzzz007.near",
+  settle: "8deWGCfcZkw6X6iAMwkbJGZSBpDkKffNEBbkrke8v3VJ",
+  charge: "BiQ5xUEWLR3i9TS3pquvqzaSkT6RYwLZp2ky4pzt8yjk",
+  completion: "chatcmpl-30c8f76f-e514-44ab-96d8-3295700a9523",
+};
+const mainnetTx = (h: string) => `https://nearblocks.io/txns/${h}`;
 const near4 = (w: string | null | undefined) => (w == null ? null : Number(formatNear(BigInt(w))).toFixed(4));
 
 export default function Live() {
@@ -36,6 +45,7 @@ export default function Live() {
   const [requestId, setRequestId] = useState("");
   const [tryError, setTryError] = useState("");
   const [pet, setPet] = useState<PetPublic | null | undefined>(undefined);
+  const [mn, setMn] = useState<PublicStats | null | undefined>(undefined);
 
   useEffect(() => {
     notch.set("think");
@@ -43,6 +53,7 @@ export default function Live() {
       activeCampaign().then((c) => setCampaign(c)).catch(() => setCampaign(null)),
       publicStats().then(setS).catch((e) => { setS(null); setStatsError((e as Error).message); }),
       getPet(DEMO_PET).then(setPet).catch(() => setPet(null)),
+      fetch(`${MAINNET.api}/stats`).then((r) => (r.ok ? r.json() : null)).then(setMn).catch(() => setMn(null)),
     ]).then(() => notch.base("rest"));
   }, [notch]);
 
@@ -171,6 +182,22 @@ export default function Live() {
           )}
         </div>
       </div>
+
+      <div className="sub-head"><div><div className="eyebrow">Proof · technical</div><h2 style={{ fontSize: 18 }}>The NEAR mainnet run</h2></div><span className="n">28 Nov 2026</span></div>
+      <p className="tech">
+        One view, signed by a paired Mac, <a href={mainnetTx(MAINNET.settle)} target="_blank" rel="noreferrer">settled on NEAR mainnet</a>, and its share{" "}
+        <a href={mainnetTx(MAINNET.charge)} target="_blank" rel="noreferrer">paid for one AI thought</a> (completion <b style={{ wordBreak: "break-all" }}>{MAINNET.completion}</b>, signature checked
+        against NEAR AI’s attestation). Vault <b>{MAINNET.vault}</b>. It isn’t locked yet, the campaign was funded by the pet’s owner, and views are settled by the operator.
+      </p>
+      {mn === null && <p className="faint" style={{ fontSize: 13 }}>Can’t read the mainnet totals right now.</p>}
+      {mn && (
+        <div className="totals" style={{ marginTop: 12 }}>
+          {tot("Mainnet campaigns", String(mn.campaigns))}
+          {tot("Views settled", mn.settledViews)}
+          {tot("Paid out (NEAR)", Number(formatNear(BigInt(mn.paidWei))).toFixed(4))}
+          {tot("AI charged (NEAR)", Number(formatNear(BigInt(mn.computeChargedWei))).toFixed(4))}
+        </div>
+      )}
 
       <div className="sub-head"><div><div className="eyebrow">Proof · technical</div><h2 style={{ fontSize: 18 }}>What this page reads</h2></div></div>
       <p className="tech">
