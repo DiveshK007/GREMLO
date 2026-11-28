@@ -491,7 +491,7 @@ extension Backend {
         let w = pageWidth
         let rows = [("Code, prompts, diffs", "never read"), ("Screen contents", "never read"), ("File paths, repo names", "stay on this Mac"),
                     ("Tool names and counts", "only for the diary, if on"), ("Impression counts", "a signed number per campaign"),
-                    ("Identity", "one anonymous proof of personhood")]
+                    ("Identity", "one anonymous proof of personhood"), ("Diagnostics", DiagnosticsController.on ? "on: counts and crash types, below" : "off")]
         let ledger = UI.group("What leaves this Mac", rows.map { UI.kv($0.0, $0.1, width: w, valueColor: UI.text) },
                               note: "Always on: pets duck when the screen is shared or recorded, sleep in meetings and hide in full screen. \u{2325}\u{2318}P pauses everything.", width: w)
         let focus = UI.group("Focus", [
@@ -510,7 +510,7 @@ extension Backend {
             UI.row("Export", "Everything the pet keeps on this Mac, as files.", Btn("Export\u{2026}", target: self, action: #selector(exportData)), width: w),
             UI.row("Delete", "Removes it from this Mac. Asks first.", Btn("Delete\u{2026}", target: self, action: #selector(deleteData)), width: w),
         ], width: w)
-        return [ledger, focus, sharing, data]
+        return [ledger, focus, sharing, data, diagnosticsGroup()]
     }
     @objc func exportData() { privacy.export() }
     @objc func deleteData() { privacy.deleteAll() }

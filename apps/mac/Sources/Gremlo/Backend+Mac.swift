@@ -75,6 +75,7 @@ final class Backend: NSObject {
     lazy var purse: PurseController = PurseController(backend: self)
     lazy var github: GitHubController = GitHubController(backend: self)
     lazy var setup: SetupWindow = SetupWindow(backend: self)
+    lazy var diagnostics: DiagnosticsController = DiagnosticsController(backend: self)
     var teamFields: (NSTextField, NSTextField)?
     var visitFields: (NSTextField, NSTextField)?
     lazy var commandSocket: CommandSocket = CommandSocket { [unowned self] in self.handle($0) }
@@ -202,7 +203,7 @@ final class Backend: NSObject {
                                    "shownMs": Int(Date().timeIntervalSince(since) * 1000), "unlocked": true, "visible": true, "idleS": Int(idle)]
         print("view: posting campaign \(c.campaignId) hook \(currentHook), sign up \(Int(Date().timeIntervalSince(since)))s")
         request("/impressions", body: ["impressions": [view]]) { data, err in
-            if let err { print("view: not sent: \(err)") }
+            if let err { print("view: not sent: \(err)"); self.diagnostics.count(err.hasPrefix("HTTP ") ? .viewRefused : .viewNotSent) }
             else { print("view: server answered \(String(decoding: data ?? Data(), as: UTF8.self).prefix(120))") }
             let accepted = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["accepted"] as? Int
             self.lastView = (Date(), err.map(ServerError.text) ?? (accepted == 0 ? "one a minute per campaign, at most \(dailyViewCap) a day" : nil))
@@ -282,6 +283,7 @@ final class Backend: NSObject {
                 self.goLocal(LocalLife.why(error: err))
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
+                if new.views?.settleError != nil && self.info?.views?.settleError == nil { self.diagnostics.count(.settleStuck) }
                 // it eats when a settlement refills its onchain compute budget (real tx), or when its payout grows
                 if self.info?.seeded == new.seeded, let gain = nearGain(self.info?.computeBalance, new.computeBalance) {
                     self.pet.eat(gain + " food" + (new.seeded ? " [seeded]" : ""))
@@ -310,7 +312,7 @@ final class Backend: NSObject {
                                    "species": pet.skin.name, "stage": growth.isEgg ? "egg" : "\(growth.p.stage)"]
         request(petPath + "/think", body: body) { data, err in
             self.thinking = false
-            if let err { self.lastThink = "think failed: \(err)" }
+            if let err { self.lastThink = "think failed: \(err)"; self.diagnostics.count(.thinkFailed) }
             else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
                 if let pay = r.payFor { self.purse.pay(pay) }  // a purse pet pays for this thought itself
                 let id = r.requestId.map { "completion \($0)" } ?? "no AI call"
@@ -599,7 +601,11 @@ final class Backend: NSObject {
     func goLocal(_ why: LocalLife.Why) {
         localWhy = why
         pet.setMood(LocalLife.mood, reason: nil)
-        if hinted != why { hinted = why; pet.say(LocalLife.bubble(why, pet: petName), for: 6) }
+        if hinted != why {
+            hinted = why
+            pet.say(LocalLife.bubble(why, pet: petName), for: 6)
+            if why == .serverDown { diagnostics.count(.serverUnreachable) }
+        }
     }
 
     /** Asked once: sponsored hooks are opt-in. */

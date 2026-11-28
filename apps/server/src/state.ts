@@ -97,6 +97,7 @@ export const utcDay = () => new Date().toISOString().slice(0, 10);
 const LOG_DIR = process.env.LOG_DIR ?? new URL("../logs", import.meta.url).pathname;
 mkdirSync(LOG_DIR, { recursive: true });
 export const logFile = (id: string) => `${LOG_DIR}/campaign-${id}.jsonl`;
+export const diagnosticsFile = `${LOG_DIR}/diagnostics.jsonl`; // opt-in Mac reports (routes/diagnostics.ts)
 export function appendLog(id: string, e: Omit<LogEntry, "i" | "prev" | "hash">) {
   const entry = nextEntry(store.logHeads[id] ?? null, e);
   appendFileSync(logFile(id), JSON.stringify(entry) + "\n");

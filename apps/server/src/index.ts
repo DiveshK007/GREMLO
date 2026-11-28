@@ -7,6 +7,7 @@ import { HttpError, toHttp } from "./register.ts";
 import { errMsg, housekeeping as stateHousekeeping, NOT_HANDLED, REQUIRE_SIGNED } from "./state.ts";
 import { cors } from "./web.ts";
 import * as campaigns from "./routes/campaigns.ts";
+import * as diagnostics from "./routes/diagnostics.ts";
 import * as gallery from "./routes/gallery.ts";
 import * as health from "./routes/health.ts";
 import * as park from "./routes/park.ts";
@@ -14,7 +15,7 @@ import * as pets from "./routes/pets.ts";
 import * as relay from "./routes/relay.ts";
 import * as settle from "./routes/settle.ts";
 
-const routes = [health, pets, campaigns, settle, park, relay, gallery];
+const routes = [health, pets, campaigns, settle, park, relay, gallery, diagnostics];
 
 async function route(req: IncomingMessage) {
   const url = new URL(req.url ?? "/", "http://x");
@@ -30,7 +31,7 @@ setInterval(() => {
   const now = Date.now();
   stateHousekeeping(now);
   pets.housekeeping();
-  for (const r of [campaigns, settle, park, relay, gallery]) r.housekeeping(now);
+  for (const r of [campaigns, settle, park, relay, gallery, diagnostics]) r.housekeeping(now);
 }, 10 * 60_000).unref();
 
 const reply = (res: ServerResponse, status: number, body: unknown) => {

@@ -126,6 +126,7 @@ final class SocialController {
                 // a 403 means the saved park id isn't ours any more: forget it so the next heartbeat joins fresh
                 if err?.hasPrefix("HTTP 403") == true { defaults.removeObject(forKey: "park.id"); defaults.removeObject(forKey: "park.token") }
                 self?.parkStatus = "couldn't join: \(err.map(ServerError.text) ?? "no answer")"
+                self?.backend.diagnostics.count(.parkFailed)
                 return
             }
             defaults.set(id, forKey: "park.id"); defaults.set(t, forKey: "park.token")
