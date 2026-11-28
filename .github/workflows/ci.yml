@@ -73,6 +73,8 @@ jobs:
         working-directory: apps/server
       - run: npm run verify:public
         working-directory: apps/server
+      - run: npm run verify:public:mainnet
+        working-directory: apps/server
 
   brain:
     runs-on: ubuntu-latest

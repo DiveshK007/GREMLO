@@ -1,0 +1,59 @@
+{
+  "network": "mainnet",
+  "vault": "vault.divzzz007.near",
+  "codeHash": "5pu1xBnBucsruBkTV4jg5j9WBMk2w95nNySpz9E58RSZ",
+  "rpc": [
+    "https://archival-rpc.mainnet.fastnear.com"
+  ],
+  "rpcLive": [
+    "https://rpc.mainnet.fastnear.com"
+  ],
+  "api": "https://mainnet.16-4-100-95.sslip.io",
+  "minPaidYocto": "3000000000000000000000",
+  "minComputeChargedYocto": "500000000000000000000",
+  "txs": [
+    {
+      "step": 1,
+      "what": "deploy",
+      "signer": "vault.divzzz007.near",
+      "hash": "GNXUhMtkQaqCAk6gspC6xiGZaUHywn7WcFTcjnvUDvtP"
+    },
+    {
+      "step": 2,
+      "what": "register_pet",
+      "signer": "operator.divzzz007.near",
+      "hash": "FFRc8bahstnTHpBHo3ATBZMN4W9wuGG3TU8oMuDt4REH"
+    },
+    {
+      "step": 3,
+      "what": "set_verified",
+      "signer": "operator.divzzz007.near",
+      "hash": "FVvqeJwLSnpSF6GNnmB8T3qkTvvwphKYbiyVXdz4WqTY"
+    },
+    {
+      "step": 4,
+      "what": "create_campaign",
+      "signer": "divzzz007.near",
+      "hash": "GHV83PKm31hQsi7LRVvw3AXyDvbu4JcrY3zQBt4KeLEv"
+    },
+    {
+      "step": 5,
+      "what": "settle_impressions",
+      "signer": "operator.divzzz007.near",
+      "hash": "8deWGCfcZkw6X6iAMwkbJGZSBpDkKffNEBbkrke8v3VJ"
+    },
+    {
+      "step": 6,
+      "what": "charge_compute",
+      "signer": "operator.divzzz007.near",
+      "hash": "BiQ5xUEWLR3i9TS3pquvqzaSkT6RYwLZp2ky4pzt8yjk",
+      "completionId": "chatcmpl-30c8f76f-e514-44ab-96d8-3295700a9523"
+    },
+    {
+      "step": 7,
+      "what": "settle_impressions",
+      "signer": "operator.divzzz007.near",
+      "hash": "8BzX62XxcWEJzSXmgFkh2hY6uPt9Cv8RkagXyFQib2h1"
+    }
+  ]
+}

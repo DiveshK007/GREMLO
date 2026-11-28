@@ -10,6 +10,7 @@
     "test": "node --import tsx --test src/*.test.ts",
     "verify": "node --env-file-if-exists=.env --import tsx scripts/verify.ts",
     "verify:public": "node --import tsx scripts/verify-public.ts",
+    "verify:public:mainnet": "node --import tsx scripts/verify-public.ts --fixture fixtures/public-proof.mainnet.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

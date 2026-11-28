@@ -1,11 +1,16 @@
-// npm run verify:public: checks the published proof against NEAR testnet and the live API. No API key, no .env.
-// Exit 0 if every check passes, 1 if any fails.
+// npm run verify:public (testnet) / verify:public:mainnet: checks a published proof against public NEAR RPC and the
+// live API. No API key, no .env. --fixture <path> picks the run. Exit 0 if every check passes, 1 if any fails.
 import { readFileSync } from "node:fs";
 
-type Tx = { step: number; what: string; signer: string; hash: string };
-const fx = JSON.parse(readFileSync(new URL("../fixtures/public-proof.json", import.meta.url), "utf8")) as {
-  vault: string; codeHash: string; rpc: string[]; api: string; network: string; minPaidYocto: string; minComputeChargedYocto: string; txs: Tx[];
+// what: the method called, or "deploy" for a deploy (+ init) of the vault. completionId: must be in the tx's events.
+type Tx = { step: number; what: string; signer: string; hash: string; completionId?: string };
+const fixtureArg = process.argv.indexOf("--fixture");
+const fixturePath = fixtureArg > 0 ? new URL(process.argv[fixtureArg + 1], `file://${process.cwd()}/`) : new URL("../fixtures/public-proof.json", import.meta.url);
+const fx = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+  vault: string; codeHash: string; rpc: string[]; rpcLive?: string[]; api: string; network: string; minPaidYocto: string; minComputeChargedYocto: string; txs: Tx[];
 };
+const live = [...(fx.rpcLive ?? ["https://test.rpc.fastnear.com"]), ...fx.rpc]; // current state; fx.rpc is archival, for old txs
+console.log(`${fx.network}: ${fx.vault}, ${fx.txs.length} transactions`);
 const api = (process.env.GREMLO_API || fx.api).replace(/\/$/, "");
 
 async function rpc(method: string, params: unknown, urls = fx.rpc) {
@@ -35,9 +40,14 @@ for (const t of fx.txs) {
   try {
     const r = await rpc("EXPERIMENTAL_tx_status", { tx_hash: t.hash, sender_account_id: t.signer, wait_until: "FINAL" });
     const tx = r.transaction;
-    const method = tx.actions[0]?.FunctionCall?.method_name;
+    const kinds = tx.actions.map((a: object) => (typeof a === "string" ? a : Object.keys(a)[0]));
+    const method = tx.actions.find((a: { FunctionCall?: object }) => typeof a === "object" && a.FunctionCall)?.FunctionCall?.method_name;
+    const did = t.what === "deploy" ? kinds.includes("DeployContract") : method === t.what;
     const failedReceipt = r.receipts_outcome.some((o: { outcome: { status: object } }) => "Failure" in o.outcome.status);
-    check("SuccessValue" in r.status && !failedReceipt && tx.receiver_id === fx.vault && tx.signer_id === t.signer && method === t.what, `tx ${t.step} ${t.what} ${t.hash.slice(0, 8)}...`);
+    const logs: string[] = r.receipts_outcome.flatMap((o: { outcome: { logs: string[] } }) => o.outcome.logs);
+    const carries = !t.completionId || logs.some((l) => l.includes(`"near_ai_completion_id":"${t.completionId}"`));
+    check("SuccessValue" in r.status && !failedReceipt && tx.receiver_id === fx.vault && tx.signer_id === t.signer && did && carries,
+      `tx ${t.step} ${t.what} ${t.hash.slice(0, 8)}...${t.completionId ? ` carries ${t.completionId.slice(0, 18)}...` : ""}`);
   } catch (e) {
     check(false, `tx ${t.step} ${t.what} ${t.hash.slice(0, 8)}...: ${(e as Error).message}`);
   }
@@ -45,7 +55,7 @@ for (const t of fx.txs) {
 
 // 2. the vault's deployed code is the code that ran
 try {
-  const a = await rpc("query", { request_type: "view_account", finality: "final", account_id: fx.vault }, ["https://test.rpc.fastnear.com", ...fx.rpc]);
+  const a = await rpc("query", { request_type: "view_account", finality: "final", account_id: fx.vault }, live);
   check(a.code_hash === fx.codeHash, `code hash ${a.code_hash}${a.code_hash === fx.codeHash ? "" : ` (expected ${fx.codeHash})`}`);
 } catch (e) {
   check(false, `code hash: ${(e as Error).message}`);
@@ -54,8 +64,10 @@ try {
 // 3. /stats agrees with the vault. /stats is cached for a minute, so it may lag the chain but never lead it.
 try {
   const s = (await (await fetch(`${api}/stats`, { signal: AbortSignal.timeout(15_000) })).json()) as Record<string, string | boolean | number>;
-  const v = await rpc("query", { request_type: "call_function", finality: "final", account_id: fx.vault, method_name: "get_totals", args_base64: "e30=" }, ["https://test.rpc.fastnear.com", ...fx.rpc]);
-  const t = JSON.parse(Buffer.from(v.result).toString()) as { paid_to_pets: string; compute_budgets: string; compute_charged: string };
+  const v = await rpc("query", { request_type: "call_function", finality: "final", account_id: fx.vault, method_name: "get_totals", args_base64: "e30=" }, live);
+  const t = JSON.parse(Buffer.from(v.result).toString()) as Record<"total_deposited" | "paid_to_pets" | "compute_budgets" | "compute_charged" | "remaining" | "refunded", string>;
+  const out = (["paid_to_pets", "compute_budgets", "compute_charged", "remaining", "refunded"] as const).reduce((a, k) => a + BigInt(t[k]), 0n);
+  check(out === BigInt(t.total_deposited), `the vault's books balance: paid + budgets + charged + remaining + refunded = deposited (${near(BigInt(t.total_deposited))})`);
   const chainPaid = BigInt(t.paid_to_pets) + BigInt(t.compute_budgets) + BigInt(t.compute_charged);
   const paid = BigInt(s.paidWei as string), charged = BigInt(s.computeChargedWei as string);
   check(s.vault === fx.vault && s.network === fx.network && s.seeded === false, `/stats names ${s.vault} on ${s.network}, seeded=${s.seeded}`);
