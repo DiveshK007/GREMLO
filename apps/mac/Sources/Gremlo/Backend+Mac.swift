@@ -74,6 +74,7 @@ final class Backend: NSObject {
     lazy var phone: PhoneController = PhoneController(backend: self)
     lazy var purse: PurseController = PurseController(backend: self)
     lazy var github: GitHubController = GitHubController(backend: self)
+    lazy var setup: SetupWindow = SetupWindow(backend: self)
     var teamFields: (NSTextField, NSTextField)?
     var visitFields: (NSTextField, NSTextField)?
     lazy var commandSocket: CommandSocket = CommandSocket { [unowned self] in self.handle($0) }

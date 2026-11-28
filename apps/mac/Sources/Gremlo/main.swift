@@ -165,6 +165,8 @@ let server: HookServer
 do {
     let secret = try HookAuth.loadOrCreate(in: ClaudeHooks.scriptURL.deletingLastPathComponent())
     server = try HookServer(port: 47474, secret: secret) { hook in
+        // the setup's test event proves the hook path works; it isn't an agent run, so nothing counts it
+        if hook["session_id"] as? String == Setup.testSession { backend.setup.heardTest(); return }
         backend.run.event(hook, approvalsAnswered: backend.broker.approvalsAnswered)
         backend.growth.hook(hook)
         backend.hunt.hook(hook)
@@ -196,6 +198,6 @@ _ = Updates.shared  // release builds only: Sparkle checks once a day
 NSAppleEventManager.shared().setEventHandler(backend, andSelector: #selector(Backend.handleURL(_:withReplyEvent:)),
                                              forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 print("\(productName) running, hooks on 127.0.0.1:47474, home after \(Int(homeAfter))s")
-DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.askSponsoredOnce() }
+DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { backend.firstRun() }  // the setup, or the sponsored-lines question
 ClaudeHooks.refreshScriptIfStale()
 app.run()

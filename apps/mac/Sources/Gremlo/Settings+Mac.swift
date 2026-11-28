@@ -157,13 +157,16 @@ extension Backend {
             UI.row("Send the pet home", nil, Btn("Send home", target: self, action: #selector(sendHome)), width: w),
         ], width: w)
 
+        let setupGroup = UI.group("Setup", [
+            UI.row("First-run setup", "Your pet, pairing this Mac, Claude Code and a test, in about two minutes.", Btn("Run setup", target: self, action: #selector(runSetup)), width: w),
+        ], width: w)
         let cli = UI.group("Command line", [
             UI.row("gremlo", "Talk to the pet from any terminal.", Btn("Install", target: self, action: #selector(installCommand)), width: w),
         ], width: w)
         let quit = UI.group("Gremlo", [
             UI.row("Quit Gremlo", "The pet and its hook server stop until you open Gremlo again.", Btn("Quit", target: self, action: #selector(quitApp)), width: w),
         ], width: w)
-        return [claude, screen, cli, updatesGroup(), quit]
+        return [claude, setupGroup, screen, cli, updatesGroup(), quit]
     }
 
     // MARK: Pet
@@ -218,9 +221,14 @@ extension Backend {
             settings.reload()
             return
         }
+        relaunch()
+    }
+
+    /// Opens a fresh copy once this one has quit and let go of the hook port. Needs a bundle (not `swift run`).
+    func relaunch() {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundleURL.path] // after this copy has let go of the hook port
+        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundleURL.path]
         try? p.run()
         NSApp.terminate(nil)
     }
