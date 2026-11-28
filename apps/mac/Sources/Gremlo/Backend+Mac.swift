@@ -26,6 +26,10 @@ final class Backend: NSObject {
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
     /// The last view this Mac sent and why it didn't count (nil when it did), so a refusal shows in the panel, not only in the log.
     var lastView: (at: Date, refused: String?)?
+    /// The stuck-settlement message already counted for diagnostics: one count per episode, not per reload.
+    var countedSettleError: String?
+    /// This Mac's pairing as the server last answered it; a failed poll leaves it alone.
+    var knownPaired: Bool?
     var waited = WaitClock()
     // Hook rotation: the next hook on each new appearance of the sign, and every 45s while it stays up.
     var hookIndex = 0
@@ -300,7 +304,11 @@ final class Backend: NSObject {
                 self.goLocal(LocalLife.why(error: err))
             }
             if let data, let new = try? JSONDecoder().decode(PetInfo.self, from: data) {
-                if new.views?.settleError != nil && self.info?.views?.settleError == nil { self.diagnostics.count(.settleStuck) }
+                if let e = new.views?.settleError, e != self.countedSettleError { self.diagnostics.count(.settleStuck) }
+                self.countedSettleError = new.views?.settleError
+                // a view refused while this Mac was unpaired says "pair this Mac"; once it is paired that is old news
+                if new.thisDevicePaired == true && self.knownPaired == false { self.lastView = nil }
+                if let p = new.thisDevicePaired { self.knownPaired = p }
                 // it eats when a settlement refills its onchain compute budget (real tx), or when its payout grows
                 if self.info?.seeded == new.seeded, let gain = nearGain(self.info?.computeBalance, new.computeBalance) {
                     self.pet.eat(gain + " food" + (new.seeded ? " [seeded]" : ""))
@@ -453,7 +461,9 @@ final class Backend: NSObject {
         // the line it holds right now, drawn as the plate with its AD tab
         let off = !sponsoredOn ? "Sponsored lines are off" : inQuietHours() ? "Quiet hours: no lines until 08:00"
             : (info?.impressionsToday ?? 0) >= dailyViewCap ? "Daily limit reached: no more lines today"
-            : campaign == nil ? "No campaign is running right now. The pet still works; lines come back when a brand funds one." : nil
+            : campaign == nil ? "No campaign is running right now. The pet still works; lines come back when a brand funds one."
+            : SocialController.blockedBrands.contains(campaign!.brand) ? "You hid \(campaign!.brand) with Not for me. Settings, Earning brings it back."
+            : !campaign!.allHooks.isEmpty && pickedHook == nil ? "Every line of this campaign is paused after reports." : nil
         var showing: [NSView] = [UI.caption("Now showing")]
         if let off { showing.append(UI.label(off, UI.body(13), UI.text2, width: w)) }
         else if let c = campaign {
@@ -506,6 +516,8 @@ final class Backend: NSObject {
         g.egg = pet.egg; g.demo = demoMode; g.paused = paused; g.focus = privacy.focus != nil; g.stream = PrivacyController.streamOn
         g.sponsored = sponsoredOn; g.quietHours = inQuietHours(); g.capped = (info?.impressionsToday ?? 0) >= dailyViewCap
         g.campaign = campaign != nil; g.silenced = silence.silent || privacy.duck != .none
+        g.brandHidden = campaign.map { SocialController.blockedBrands.contains($0.brand) } ?? false
+        g.linesPaused = campaign.map { !$0.allHooks.isEmpty } == true && pickedHook == nil
         let blocker = Health.blocker(g)
         let server = localWhy == .unregistered ? "doesn't know \(petName)" : g.server == nil ? "reachable" : "can't reach it"
         let mac = devicePublicKey == nil ? "no Secure Enclave" : thisMacPaired == true ? "paired"

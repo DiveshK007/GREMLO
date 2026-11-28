@@ -2,7 +2,7 @@
 
 import { type IncomingMessage } from "node:http";
 import { accountExists, seeded, send, view } from "../chain.ts";
-import { allow, cooldown, markSettled, planSettlement, workFor } from "../batch.ts";
+import { allow, canStillPay, cooldown, markSettled, planSettlement, workFor } from "../batch.ts";
 import { bad, HttpError } from "../register.ts";
 import { pruneHits, pruneStamps } from "../prune.ts";
 import { WEB_ORIGIN } from "../web.ts";
@@ -74,9 +74,10 @@ async function settle(id: string) {
         if (e.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
         saveNow();
         error ??= errMsg(e);
-        settleErrors.set(s.pet, errMsg(e));
-        // an unconfirmed tx means the RPC is in doubt: stop. Any other failure is this pet's; the pets after it still get paid.
+        // an unconfirmed tx means the RPC is in doubt: its views are already off the queue, so it isn't this pet's problem; stop.
+        // Any other failure is this pet's: it shows in its panel, and the pets after it still get paid.
         if (e.unconfirmedTx) break;
+        settleErrors.set(s.pet, errMsg(e));
       }
     }
     // one tx per pet; txHash is the first so a one-pet demo gets a single link
@@ -127,8 +128,15 @@ async function workerPass() {
         const job = workFor({ closed: c.closed, endTime, remaining }, pending, now);
         const held = (store.held[String(id)] ?? []).reduce((a, h) => a + h.n, 0);
         if (!c.closed && (job !== "none" || pending || held)) console.log(`worker: campaign ${id}: ${pending} payable, ${held} held, job ${job}`);
-        if (job === "refund" && pending) {
-          worker.expiredUnpaid += pending;
+        // the vault can't pay these any more: show the brand why and stop calling them payable. Not while a settlement
+        // for this campaign is in flight (it still reads them); the next pass sweeps.
+        if (pending && !canStillPay({ closed: c.closed, endTime }, now) && !settling.has(String(id))) {
+          // only views that expire now need a person (/health); ones on a campaign already closed were lost before this start
+          if (!c.closed) worker.expiredUnpaid += pending;
+          const v = (store.voided[String(id)] ??= {});
+          v["the campaign ended before they could be paid"] = (v["the campaign ended before they could be paid"] ?? 0) + pending;
+          delete store.pending[String(id)];
+          saveNow();
           console.error(`worker: campaign ${id}: ${pending} views expired unpaid (the vault pays only until 1h after the end)`);
         }
         if (job === "settle") {

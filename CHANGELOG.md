@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.2 (28 Nov 2026)
+
+Fixes from two independent reviews of 1.1 (each finding checked by two skeptics before it counted). Delivered by the updater.
+
+- **Screen recording, detected properly.** 1.1.1 stopped the pet hiding for hours after a screenshot, but by accident: it also stopped noticing real recordings. The pet now hides while the menu bar's privacy indicator shows a recording. With the microphone or camera on, that looks like a call, and the pet sleeps instead. A new switch, Settings, Privacy, "Hide when the screen is shared or recorded" (on), is for apps that record all day, such as a DisplayLink dock. Any microphone counts as a call now, not only the default one.
+- **Payments (server).** Views the vault can no longer pay (the campaign closed, or it ended over an hour ago) leave the queue. The brand sees them as "voided, not charged: the campaign ended before they could be paid", and the panel no longer counts them as "to pay". A stuck-payment message goes away once nothing is left to pay. The expiry never touches a campaign while one of its settlements is in flight.
+- **Setup.** Closing the last step keeps the pet you chose, like Done. A slow reply from an earlier attempt can't move a reopened setup. GREMLO_PET is shown and locked. A Skip on the pet step connects Claude Code even with no pet or no server.
+- **Panel.** Health says why views stop when you hid a brand or every line is paused. A "pair this Mac" refusal clears once the Mac is paired. A stuck payment counts once in diagnostics.
+- **Diagnostics.** A crash signal with extra words ("SIGKILL (Code Signature Invalid)") is sent as its name, and a report the server rejects is dropped instead of retried every day.
+- **Releases.** A release goes public only once its update feed is attached, and re-running an old release can't make it Latest again. Source builds report their real version, not 0.2.0.
+
 ## v1.1.1 (28 Nov 2026)
 
 Fixes from an on-screen pass over 1.1.0. The first update delivered by the 1.1.0 updater.

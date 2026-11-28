@@ -8,7 +8,7 @@ public enum Health {
         public var secureEnclave = true
         public var egg = false, demo = false, paused = false, focus = false, stream = false
         public var sponsored = true, quietHours = false, capped = false, silenced = false
-        public var campaign = true
+        public var campaign = true, brandHidden = false, linesPaused = false
         public init(server: LocalLife.Why?, thisMacPaired: Bool?) { self.server = server; self.thisMacPaired = thisMacPaired }
     }
 
@@ -32,6 +32,8 @@ public enum Health {
         if g.quietHours { return "quiet hours" }
         if g.capped { return "daily limit reached" }
         if !g.campaign { return "no campaign running" }
+        if g.brandHidden { return "brand hidden by you" }
+        if g.linesPaused { return "all lines paused" }
         if g.silenced { return "screen shared or in a call" }
         return nil
     }

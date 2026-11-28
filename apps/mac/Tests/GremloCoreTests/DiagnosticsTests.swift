@@ -19,6 +19,11 @@ struct DiagnosticsTests {
         #expect(c?.frames == ["Gremlo: Backend.render()", "AppKit: -[NSApplication run]"], "the crashed thread only, cut before any path")
         #expect(!(c?.frames.joined().contains("someone") ?? true))
         #expect(Diagnostics.crash(ips: "not a report") == nil)
+        // a code-signing kill carries extra words; the server takes only the signal's name
+        let kill = ips.replacingOccurrences(of: #""signal":"SIGTRAP""#, with: #""signal":"SIGKILL (Code Signature Invalid)""#)
+        #expect(Diagnostics.crash(ips: kill)?.signal == "SIGKILL")
+        #expect(Diagnostics.word("EXC_BAD_ACCESS (SIGSEGV)", prefix: "", max: 40) == "EXC_BAD_ACCESS")
+        #expect(Diagnostics.word("sigkill", prefix: "SIG", max: 13) == nil, "not the expected form: left out, not sent")
     }
 
     @Test func reportHasOnlyTheKnownFields() {

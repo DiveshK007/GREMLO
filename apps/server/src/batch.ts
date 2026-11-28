@@ -96,6 +96,9 @@ export function allow(hits: Map<string, number[]>, key: string, now: number, lim
 
 export const SETTLE_GRACE_S = 3600n; // CampaignVault.SETTLE_GRACE
 
+/** Whether the vault can still pay a campaign's views: not closed, and no later than 1 hour after its end. */
+export const canStillPay = (c: { closed: boolean; endTime: bigint }, now: bigint) => !c.closed && now <= c.endTime + SETTLE_GRACE_S;
+
 /** What the background worker should do for one campaign right now. Pure, so it is tested without a chain. */
 export function workFor(c: { closed: boolean; endTime: bigint; remaining: bigint }, pendingViews: number, now: bigint) {
   if (c.closed) return "none" as const;

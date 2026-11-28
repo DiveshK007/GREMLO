@@ -209,12 +209,12 @@ async function getPet(key: string, device: string | null = null) {
     paired: !!rec.devices?.length, // whether a Mac is paired (views count only from one); never the keys themselves
     // whether the asking Mac's own key is paired: a reinstall makes a new key, so `paired` alone can say yes while every view gets a 401
     thisDevicePaired: device ? !!rec.devices?.includes(device) : null,
-    views: {
-      ...queuedViews(store.held, store.pending, petKey),
+    views: ((q) => ({
+      ...q,
       holdbackHours: HOLDBACK_HOURS,
       settledToday: store.payouts.filter((x) => x.pet === petKey && x.at >= Date.parse(utcDay())).reduce((n, x) => n + x.views, 0),
-      settleError: settleErrors.get(petKey) ?? null,
-    },
+      settleError: q.payable > 0 ? (settleErrors.get(petKey) ?? null) : null, // nothing left to pay, nothing stuck
+    }))(queuedViews(store.held, store.pending, petKey)),
     stage: rec.stage ?? null,
     // settlement txs that fed this pet's compute budget: each is one meal (a receipt) for growth on the Mac
     meals: store.payouts

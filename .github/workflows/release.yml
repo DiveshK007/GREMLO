@@ -99,8 +99,10 @@ jobs:
           EOF
           )"
           fi
+          # a draft first: installed apps read releases/latest/download/appcast.xml, so the release goes public only once
+          # the dmg and the appcast are both attached (a failed upload leaves a draft, never a latest release without a feed)
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag --title "Gremlo $GITHUB_REF_NAME" --notes "Gremlo for macOS 13 or later (Apple silicon and Intel).
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Gremlo $GITHUB_REF_NAME" --notes "Gremlo for macOS 13 or later (Apple silicon and Intel).
 
           $first
 
@@ -108,6 +110,10 @@ jobs:
           fi
           # the app's feed is releases/latest/download/appcast.xml, so publishing the release publishes the update
           gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" apps/mac/dist/appcast.xml --clobber
+          # publish (and make Latest) only a draft: a re-run for an older, published tag must not move Latest back to it
+          if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft)" = true ]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          fi
       - name: Remove the keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

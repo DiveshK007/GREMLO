@@ -18,7 +18,7 @@ struct HealthTests {
         #expect(Health.blocker(h) == "no campaign running", "unknown pairing isn't reported as unpaired")
         // every reason fits one panel row next to "Counting views" (about 30 characters with the "no: ")
         var all = Health.Gate(server: nil, thisMacPaired: true)
-        for set in [{ all.silenced = true }, { all.campaign = false }, { all.capped = true }, { all.quietHours = true }, { all.sponsored = false },
+        for set in [{ all.silenced = true }, { all.linesPaused = true }, { all.brandHidden = true }, { all.campaign = false }, { all.capped = true }, { all.quietHours = true }, { all.sponsored = false },
                     { all.stream = true }, { all.focus = true }, { all.paused = true }, { all.demo = true }, { all.egg = true },
                     { all.thisMacPaired = false }, { all.secureEnclave = false }, { all.server = .unregistered }] as [() -> Void] {
             set()

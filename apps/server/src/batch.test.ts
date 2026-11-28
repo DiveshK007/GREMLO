@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { review } from "./fraud.ts";
-import { allow, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
+import { allow, canStillPay, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -108,4 +108,11 @@ test("the worker settles before it closes: views held back are released at the e
   for (const t of [1000n, 1001n, 1000n + 3600n]) assert.equal(workFor(c, released, t), "settle", `at ${t} it pays, never closes`);
   assert.equal(workFor(c, 0, 1001n), "none", "ended but inside the grace hour with nothing queued: it waits, no early close");
   assert.equal(workFor(c, 0, 1000n + 3601n), "refund", "only after the grace hour does it close and refund");
+});
+
+test("canStillPay: open until 1 hour after the end, never once closed (then queued views expire)", () => {
+  const c = { closed: false, endTime: 1000n };
+  assert.equal(canStillPay(c, 1000n + 3600n), true); // last second of grace
+  assert.equal(canStillPay(c, 1000n + 3601n), false);
+  assert.equal(canStillPay({ ...c, closed: true }, 500n), false); // closed early: refunded, nothing more can be paid
 });

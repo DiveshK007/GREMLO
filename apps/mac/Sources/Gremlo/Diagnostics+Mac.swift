@@ -60,12 +60,16 @@ final class DiagnosticsController {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = body
         URLSession.shared.dataTask(with: req) { _, resp, _ in
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }  // kept for the next try
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            // 200: sent. 400: the server will never take this report, so it's dropped rather than resent every day.
+            // Anything else (offline, 429, 5xx) is kept for the next try.
+            guard code == 200 || code == 400 else { return }
+            if code == 400 { print("diagnostics: the server refused the report; dropped") }
             DispatchQueue.main.async {
                 defaults.removeObject(forKey: "diag.counts")
                 defaults.set(Date(), forKey: "diag.sent")
                 defaults.set(Date(), forKey: "diag.since")
-                defaults.set(String(decoding: body, as: UTF8.self), forKey: "diag.last")
+                if code == 200 { defaults.set(String(decoding: body, as: UTF8.self), forKey: "diag.last") }
             }
         }.resume()
     }

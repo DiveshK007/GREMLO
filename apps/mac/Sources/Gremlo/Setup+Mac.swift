@@ -12,12 +12,15 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
     private var busy = false
     private var heard = false
     private var paired: Bool?
+    private var epoch = 0  // bumped on every show(): a reply from an earlier run of the setup is dropped
     private let field: Field
+    /// GREMLO_PET wins over any name typed here, so the field shows it and can't be changed.
+    private let envName = Legacy.env("PET").flatMap(PetName.clean)
     private let width: CGFloat = 440
 
     init(backend: Backend) {
         self.backend = backend
-        name = defaults.string(forKey: PetName.defaultsKey) ?? ""
+        name = Legacy.env("PET").flatMap(PetName.clean) ?? defaults.string(forKey: PetName.defaultsKey) ?? ""
         field = Field(name, placeholder: "your pet's name", width: 260)
         super.init(contentRect: NSRect(x: 0, y: 0, width: 520, height: 400), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "Set up \(productName)"
@@ -27,17 +30,29 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
         field.target = self
         field.action = #selector(usePet)
         field.setAccessibilityLabel("Pet name")
+        field.isEnabled = envName == nil
     }
 
     func show() {
-        step = .welcome; problem = nil
+        epoch += 1
+        step = .welcome; problem = nil; busy = false; heard = false
         render()
         center()
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)
     }
 
-    func windowWillClose(_ notification: Notification) { defaults.set(true, forKey: "setupDone") }
+    /// Closing ends the setup like Later; on the last step it does what Done does, so a checked and paired name is kept.
+    func windowWillClose(_ notification: Notification) {
+        defaults.set(true, forKey: "setupDone")
+        guard step == .done else { return }
+        let switching = switchesPet && Bundle.main.bundleIdentifier != nil
+        if switchesPet { defaults.set(name, forKey: PetName.defaultsKey) }
+        // after the window is gone: relaunching (the name is read once at launch), or the sponsored-lines question
+        DispatchQueue.main.async { [backend] in if switching { backend.relaunch() } else { backend.askSponsoredOnce() } }
+    }
+    /// The setup ends on a pet other than the one running now, and nothing (GREMLO_PET) overrides the choice.
+    private var switchesPet: Bool { !name.isEmpty && name != backend.petName && envName == nil }
 
     /// The test event arrived at the hook server: the pet comes out, then celebrates.
     func heardTest() {
@@ -89,6 +104,8 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc func skipPair() { go(.claude) }
+    /// No pet yet, or the server is down: the local steps (Claude Code and the hook test) still work without one.
+    @objc func skipPet() { name = backend.petName; go(.claude) }
 
     @objc func connect() {
         do {
@@ -101,6 +118,7 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc func runTest() {
+        let e = epoch
         heard = false
         busy = true
         problem = nil
@@ -109,7 +127,7 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
         let header = script.deletingLastPathComponent().appendingPathComponent("hook-header")
         let ready = (ClaudeHooks.isConnected, fm.fileExists(atPath: script.path), fm.fileExists(atPath: header.path))
         let finish = { [weak self] (code: Int32?) in
-            guard let self else { return }
+            guard let self, self.epoch == e else { return }
             self.busy = false
             self.problem = Setup.testProblem(connected: ready.0, scriptExists: ready.1, headerExists: ready.2, heard: self.heard, exitCode: code)
             if self.problem == nil { self.go(.done) } else { self.render() }
@@ -132,24 +150,18 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
         try? input.fileHandleForWriting.close()
     }
 
-    @objc func finish() {
-        defaults.set(true, forKey: "setupDone")
-        close()
-        guard name != backend.petName, !name.isEmpty, Legacy.env("PET") == nil else { return backend.askSponsoredOnce() }
-        defaults.set(name, forKey: PetName.defaultsKey)
-        // the pet name is read once at launch; the fresh copy asks about sponsored lines
-        if Bundle.main.bundleIdentifier != nil { backend.relaunch() }
-    }
+    @objc func finish() { close() }  // windowWillClose keeps the name and relaunches when it must
 
     private func go(_ s: Setup.Step) { step = s; problem = nil; render() }
 
     /// GET /pets/<name> for this Mac's key: nil error when the server knows the pet; `paired` from its answer.
     private func lookUp(_ done: @escaping (String?) -> Void) {
+        let e = epoch
         busy = true
         render()
         let path = "/pets/" + (name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name) + (devicePublicKey.map { "?device=\($0)" } ?? "")
         backend.request(path) { [weak self] data, err in
-            guard let self else { return }
+            guard let self, self.epoch == e else { return }
             self.busy = false
             let o = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             self.paired = o?["thisDevicePaired"] as? Bool ?? o?["paired"] as? Bool
@@ -177,9 +189,11 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
             buttons = [l, primary("Start", #selector(start))]
         case .pet:
             heading = "Your pet"
-            text("Type your pet's name. No pet yet? Get one on the web, then come back and type its name here.")
+            text(envName.map { "GREMLO_PET sets the pet to \($0), so this field can't change it." }
+                 ?? "Type your pet's name. No pet yet? Get one on the web, then come back and type its name here.")
             body.append(field)
-            buttons = [other("Get a pet", #selector(getPet)), primary(problem == nil ? "Use this pet" : "Retry", #selector(usePet))]
+            buttons = [Btn("Skip", style: .ghost, target: self, action: #selector(skipPet)), other("Get a pet", #selector(getPet)),
+                       primary(problem == nil ? "Use this pet" : "Retry", #selector(usePet))]
         case .pair:
             heading = "Pair this Mac"
             if devicePublicKey == nil {
@@ -200,8 +214,9 @@ final class SetupWindow: NSWindow, NSWindowDelegate {
             buttons = [primary(problem == nil ? "Run the test" : "Retry", #selector(runTest))]
         case .done:
             heading = "All set"
-            text("Start Claude Code in any project and \(name.isEmpty ? "your pet" : name) comes out while it works."
-                 + (name != backend.petName && !name.isEmpty ? " \(productName) restarts once to switch to \(name)." : ""))
+            let next = !switchesPet ? "" : Bundle.main.bundleIdentifier != nil ? " \(productName) restarts once to switch to \(name)."
+                : " Press Done, then quit and start \(productName) again to switch to \(name)."
+            text("Start Claude Code in any project and \(name.isEmpty ? "your pet" : name) comes out while it works." + next)
             buttons = [primary("Done", #selector(finish))]
         }
         if let problem { body.append(UI.notice(problem, UI.amber, width: w)) }

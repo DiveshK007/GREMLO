@@ -22,6 +22,8 @@ final class PrivacyController {
 
     static var streamOn: Bool { defaults.bool(forKey: "streamMode") }
     static var visitsOn: Bool { defaults.bool(forKey: "visits") }  // the host allows visits; off by default
+    /// On by default: the pet hides while the screen is shared or recorded. Off for an app that records all day (a DisplayLink dock).
+    static var hideOnCapture: Bool { defaults.object(forKey: "hideOnCapture") as? Bool ?? true }
 
     init(backend: Backend) {
         self.backend = backend
@@ -36,7 +38,7 @@ final class PrivacyController {
     // MARK: Detectors (always on, no setting)
 
     func detect() {
-        silence.screenShared = Detect.screenShared()
+        silence.screenShared = Self.hideOnCapture && Detect.screenShared()
         silence.fullScreenVideo = Detect.fullScreen()
         let micMeeting = Detect.micInUse() || Detect.cameraInUse()
         silence.inMeeting = micMeeting || backend.hunt.inMeeting
@@ -276,23 +278,28 @@ enum Detect {
         for pid in pids.prefix(Int(max(0, count))) where pid > 0 {
             if proc_name(pid, &name, UInt32(name.count)) > 0, sharing.contains(String(cString: name)) { return true }
         }
-        // screencaptureui stays running for hours after a screenshot; it means a capture only while it shows a window
-        // (the toolbar, the thumbnail, the recording's stop button)
+        // any app recording or sharing the screen lights the menu bar's privacy indicator; the mic and camera light it too
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-        return windows.contains { $0[kCGWindowOwnerName as String] as? String == "screencaptureui" }
+        return ScreenShare.indicatorShowing(windows, screenWidth: Double(mainScreen.frame.width)) && !micInUse() && !cameraInUse()
     }
 
-    /// The default microphone is in use by some app: treat as a call.
+    /// Any microphone (any input device, not only the default: a USB mic, a dictation app's choice) is in use: a call.
     static func micInUse() -> Bool {
-        var dev = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr, dev != 0 else { return false }
-        var running: UInt32 = 0
-        size = UInt32(MemoryLayout<UInt32>.size)
-        addr.mSelector = kAudioDevicePropertyDeviceIsRunningSomewhere
-        guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &running) == noErr else { return false }
-        return running != 0
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr, size > 0 else { return false }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return false }
+        for id in ids {
+            var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+            var n: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &n) == noErr, n > 0 else { continue }  // no input streams: a speaker
+            var run = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            var running: UInt32 = 0
+            var rs = UInt32(MemoryLayout<UInt32>.size)
+            if AudioObjectGetPropertyData(id, &run, 0, nil, &rs, &running) == noErr, running != 0 { return true }
+        }
+        return false
     }
 
     /// Any camera is in use by some app: a call.
@@ -506,6 +513,8 @@ extension Backend {
         let sharing = UI.group("Sharing", [
             UI.row("Stream mode", "An OBS overlay on 127.0.0.1:\(StreamServer.port)/overlay. Lines off, views not counted.",
                    Toggle(on: PrivacyController.streamOn, target: self, action: #selector(toggleStream(_:)), label: "Stream mode"), width: w),
+            UI.row("Hide when the screen is shared or recorded", "The pet goes into the notch while any app shares or records the screen. With the microphone or camera on that looks like a call, so the pet sleeps instead. Turn this off if an app records all the time (a DisplayLink dock does).",
+                   Toggle(on: PrivacyController.hideOnCapture, target: self, action: #selector(toggleHideOnCapture(_:)), label: "Hide when the screen is shared or recorded"), width: w),
             UI.row("Allow visits", "Other pets can visit your room and sign the guestbook.",
                    Toggle(on: PrivacyController.visitsOn, target: self, action: #selector(toggleVisits(_:)), label: "Allow visits"), width: w),
         ], width: w)
@@ -518,6 +527,7 @@ extension Backend {
     @objc func exportData() { privacy.export() }
     @objc func deleteData() { privacy.deleteAll() }
     @objc func toggleStream(_ b: NSButton) { privacy.setStream(b.state == .on) }
+    @objc func toggleHideOnCapture(_ b: NSButton) { defaults.set(b.state == .on, forKey: "hideOnCapture"); privacy.detect(); settings.reload() }
     @objc func toggleVisits(_ b: NSButton) { defaults.set(b.state == .on, forKey: "visits") }
     @objc func startFocus(_ s: Seg) {
         if privacy.focus != nil { privacy.endFocus(finished: false) }

@@ -12,7 +12,9 @@
 #   NO_DMG=1        stop after Gremlo.app (install.sh)
 set -euo pipefail
 cd "$(dirname "$0")/../apps/mac"
-VERSION="${VERSION:-0.2.0}"
+# without VERSION (install.sh), the newest release named in CHANGELOG.md, so a source build reports a real number
+VERSION="${VERSION:-$(sed -n 's/^## v\([0-9][0-9.]*\) .*/\1/p' ../../CHANGELOG.md | head -1)}"
+VERSION="${VERSION:-0.0.0}"
 BUNDLE_ID="${BUNDLE_ID:-app.gremlo.mac}"
 OUT="$PWD/dist"
 SCRATCH="${TMPDIR:-/tmp}/gremlo-release-build" # never the .build a running `swift run` uses

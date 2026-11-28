@@ -41,7 +41,16 @@ public enum Diagnostics {
             let i = f["imageIndex"] as? Int ?? -1
             return clean("\(images.indices.contains(i) ? images[i] : "?"): \(sym)")
         }
-        return Crash(type: clean(type, max: 40), signal: (exc["signal"] as? String).map { clean($0, max: 13) }, frames: Array(frames.prefix(12)))
+        // a type or signal can carry extra words ("SIGKILL (Code Signature Invalid)"): keep the leading name only, as the server expects
+        guard let t = word(type, prefix: "", max: 40) else { return nil }
+        return Crash(type: t, signal: (exc["signal"] as? String).flatMap { word($0, prefix: "SIG", max: 13) }, frames: Array(frames.prefix(12)))
+    }
+
+    /// The first word if it is only A-Z, 0-9 and _, starts with `prefix` and fits `max`; nil otherwise.
+    static func word(_ s: String, prefix: String, max: Int) -> String? {
+        let w = String(s.prefix { $0 != " " && $0 != "(" })
+        let ok = !w.isEmpty && w.count <= max && w.hasPrefix(prefix) && w.count > prefix.count && w.allSatisfy { ($0.isASCII && ($0.isUppercase || $0.isNumber)) || $0 == "_" }
+        return ok ? w : nil
     }
 
     /// Only the characters the server accepts; anything else becomes "_".
