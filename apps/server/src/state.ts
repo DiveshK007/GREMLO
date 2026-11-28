@@ -133,11 +133,16 @@ export const clientIp = (req: IncomingMessage) => {
   }
   return req.socket.remoteAddress ?? "unknown";
 };
+// World ID is on when both are set (testnet). Without them (mainnet: World ID is off) registration is invite-only and
+// owner-signed instead (routes/pets.ts registerByOwner); a half-set pair is a config mistake, so it stops the start.
 const rpId = process.env.RP_ID,
   rpSigningKey = process.env.RP_SIGNING_KEY;
-if (!rpId || !rpSigningKey) throw new Error("missing env RP_ID or RP_SIGNING_KEY");
-export const RP_ID: string = rpId;
-export const RP_SIGNING_KEY: string = rpSigningKey;
+if (!rpId !== !rpSigningKey) throw new Error("set both RP_ID and RP_SIGNING_KEY, or neither (World ID off)");
+export const WORLD_ON = !!rpId;
+export const RP_ID: string = rpId ?? "";
+export const RP_SIGNING_KEY: string = rpSigningKey ?? "";
+/** Owner accounts allowed to register a pet while World ID is off; empty means registration is closed. */
+export const REGISTER_OWNERS = (process.env.REGISTER_OWNERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 if (process.env.WORLD_API_BASE && !seeded) throw new Error("WORLD_API_BASE (a stub World verifier) is allowed on a local sandbox only");
 
 const yocto = (name: string) => {

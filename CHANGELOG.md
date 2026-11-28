@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.3 (28 Nov 2026)
+
+Groundwork for the mainnet instance. Nothing changes on testnet.
+
+- **Server: World ID can be off.** Without RP_ID and RP_SIGNING_KEY the API starts with World ID off. Registration is then invite-only: an owner listed in REGISTER_OWNERS signs a short message with their wallet (NEP-413). "Verified" onchain then means "registered by an invited owner", never "a human was checked". With World ID configured, as on testnet, nothing changes.
+- **Mac: `gremlo status --json` shows this Mac's device public key and server**, so a Mac can be paired from a terminal.
+
 ## v1.1.2 (28 Nov 2026)
 
 Fixes from two independent reviews of 1.1 (each finding checked by two skeptics before it counted). Delivered by the updater.

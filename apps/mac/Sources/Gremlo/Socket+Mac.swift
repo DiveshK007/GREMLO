@@ -15,7 +15,9 @@ extension Backend {
             let earner = growth.isEgg ? "egg" : paused ? "paused" : privacy.focus != nil ? "focus" : pet.plate != nil ? "holding the line" : "not holding a line"
             let d: [String: String] = ["pet": growth.petDisplayName, "species": pet.skin.name, "stage": growth.isEgg ? "egg" : "\(g.stage)",
                                        "mood": pet.mood, "earner": earner, "agents": "\((pet.sessionLive ? 1 : 0) + companions.pets.count)",
-                                       "approvals": "\(broker.queue.waiting.count)", "tools": "\(run.tools)", "running": run.started != nil && run.endedAt == nil ? "1" : "0", "elapsed": "\(Int(run.elapsed))", "stars": "\(g.stars)", "meals": "\(g.meals.count)"]
+                                       "approvals": "\(broker.queue.waiting.count)", "tools": "\(run.tools)", "running": run.started != nil && run.endedAt == nil ? "1" : "0", "elapsed": "\(Int(run.elapsed))", "stars": "\(g.stars)", "meals": "\(g.meals.count)",
+                                       // public half of this Mac's Secure Enclave key, for pairing from a terminal (scripts/mainnet)
+                                       "device": devicePublicKey ?? "", "server": base]
             let text = "\(d["pet"]!) the \(Roster.species(pet.skin.name)?.kind ?? "pet") \u{00B7} \(d["stage"]!) \u{00B7} \(d["mood"]!) \u{00B7} \(earner) \u{00B7} \(d["agents"]!) agent(s) \u{00B7} \(d["approvals"]!) waiting"
             return Reply(ok: true, text: text, data: d)
         case "say":

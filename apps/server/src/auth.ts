@@ -49,6 +49,9 @@ export function checkSigned(opts: { key: string; time: string; sig: string; mess
 export const pairMessage = (petName: string, deviceKeyId: string) =>
   `Pair this device to my pet.\nPet: ${petName}\nDevice: ${deviceKeyId}`;
 
+/** What a pet's owner signs (NEP-413) to register it while World ID is off. Not a check that a human is behind it. */
+export const registerMessage = (petName: string, payout: string) => `Register my pet.\nPet: ${petName}\nPayout: ${payout}`;
+
 /**
  * A NEP-413 signed message from `owner`: the exact message, our recipient, a 32-byte nonce never seen before, and a
  * key that is a full-access key of the owner account (near-api-js checks that against the chain). Throws 400/401/403.

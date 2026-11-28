@@ -4,13 +4,13 @@
 import { type IncomingMessage } from "node:http";
 import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "../chain.ts";
 import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "../purse.ts";
-import { countImpression, level, markDay, streak, underDailyCap } from "../batch.ts";
+import { allow, countImpression, level, markDay, streak, underDailyCap } from "../batch.ts";
 import { petView, queuedViews, type Compute } from "../views.ts";
-import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "../register.ts";
-import { capSet } from "../prune.ts";
+import { accountId, bad, HttpError, makeRegister, validPetName, verifyWorldProof, type PetRecord } from "../register.ts";
+import { capSet, pruneHits } from "../prune.ts";
 import { addThought } from "../thoughts.ts";
 import { worldSign } from "../web.ts";
-import { checkOwnerSignature, deviceKey, keyId, mustBeFrom, pairMessage } from "../auth.ts";
+import { checkOwnerSignature, deviceKey, keyId, mustBeFrom, pairMessage, registerMessage } from "../auth.ts";
 import { createHash } from "node:crypto";
 import { addMoment, anonPet } from "../trust.ts";
 import { hold } from "../fraud.ts";
@@ -22,6 +22,7 @@ import {
   HOLDBACK_HOURS,
   NOT_HANDLED,
   type OnchainPet,
+  REGISTER_OWNERS,
   REQUIRE_SIGNED,
   RP_ID,
   RP_SIGNING_KEY,
@@ -42,6 +43,7 @@ import {
   store,
   str,
   utcDay,
+  WORLD_ON,
 } from "../state.ts";
 
 // Impressions are client-reported; this window plus one-human-one-pet is the defence. Mac app uses the same value.
@@ -63,20 +65,40 @@ async function payoutBalance(payout: string) {
   }
 }
 
-const registerPet = makeRegister({
-  verify: (result) => verifyWorldProof(result, RP_ID),
-  // idempotent, so a retry after a failed set_verified finishes the job instead of hitting "already registered"
-  registerOnChain: async (pet, owner, payout) => {
-    const existing = await view<OnchainPet | null>("get_pet", { pet_id: pet });
-    if (existing && existing.owner !== owner) throw new HttpError(409, "pet already registered");
-    const registerTx = existing ? "" : await send("register_pet", { pet_id: pet, owner, payout }, PET_STORAGE_DEPOSIT);
-    const verifyTx = existing?.verified ? "" : await send("set_verified", { pet_id: pet, verified: true });
-    return { registerTx, verifyTx };
-  },
-  accountExists,
-  store,
-  save: saveNow,
-});
+// idempotent, so a retry after a failed set_verified finishes the job instead of hitting "already registered"
+async function registerOnChain(pet: string, owner: string, payout: string) {
+  const existing = await view<OnchainPet | null>("get_pet", { pet_id: pet });
+  if (existing && existing.owner !== owner) throw new HttpError(409, "pet already registered");
+  const registerTx = existing ? "" : await send("register_pet", { pet_id: pet, owner, payout }, PET_STORAGE_DEPOSIT);
+  const verifyTx = existing?.verified ? "" : await send("set_verified", { pet_id: pet, verified: true });
+  return { registerTx, verifyTx };
+}
+const registerPet = makeRegister({ verify: (result) => verifyWorldProof(result, RP_ID), registerOnChain, accountExists, store, save: saveNow });
+
+/**
+ * World ID off (mainnet): an invited owner registers by signing registerMessage with their wallet (NEP-413). The
+ * operator still pays the storage deposit, so only REGISTER_OWNERS may, one pet each. `verified` onchain then means
+ * "registered by an invited owner", never "a human was checked".
+ */
+const registerHits = new Map<string, number[]>();
+async function registerByOwner(req: IncomingMessage, body: Body) {
+  if (!allow(registerHits, clientIp(req), Date.now(), 10, 3_600_000)) throw new HttpError(429, "slow down");
+  if (!REGISTER_OWNERS.length) throw new HttpError(503, "registration is closed on this server");
+  const owner = accountId(body.owner, "owner");
+  if (!REGISTER_OWNERS.includes(owner)) throw new HttpError(403, "registration is invite-only on this server while World ID is off");
+  const payout = accountId(body.payout ?? owner, "payout");
+  const name = body.name;
+  if (!validPetName(name)) throw bad("name must be 2-24 characters of a-z, 0-9 or -, not starting or ending with -");
+  if (store.pets[name] || Object.values(store.pets).some((p) => p.owner === owner)) throw new HttpError(409, "this owner already has a pet, or the name is taken");
+  await checkOwnerSignature(body, owner, registerMessage(name, payout), vault, provider, usedPairNonces);
+  for (const [field, id] of [["owner", owner], ["payout", payout]] as const) {
+    if (!(await accountExists(id))) throw bad(`${field} account ${id} does not exist on NEAR yet; create it first`);
+  }
+  const { registerTx, verifyTx } = await registerOnChain(name, owner, payout);
+  store.pets[name] = { name, petKey: name, owner, payout, registerTx, verifyTx };
+  saveNow();
+  return { ok: true, txHash: registerTx, verifyTx, name };
+}
 
 const usedPairNonces = new Set<string>();
 /**
@@ -444,8 +466,11 @@ async function charge(petKey: string, fee: bigint, completionId: string) {
 /** The pet routes, or NOT_HANDLED. */
 export async function handle(req: IncomingMessage, { pathname, searchParams }: Url): Promise<Loose> {
   const m = req.method;
-  if (m === "GET" && pathname === "/world/sign") return worldSign(searchParams.get("action"), RP_SIGNING_KEY);
-  if (m === "POST" && pathname === "/pets/register") return registerPet(await readBody(req));
+  if (m === "GET" && pathname === "/world/sign") {
+    if (!WORLD_ON) throw new HttpError(503, "World ID is off on this server");
+    return worldSign(searchParams.get("action"), RP_SIGNING_KEY);
+  }
+  if (m === "POST" && pathname === "/pets/register") return WORLD_ON ? registerPet(await readBody(req)) : registerByOwner(req, await readBody(req));
   if (m === "POST" && pathname === "/impressions") return addImpressions(req, await readRaw(req));
   const pair = pathname.match(/^\/pets\/([^/]+)\/device$/);
   if (m === "POST" && pair) return pairDevice(decodeURIComponent(pair[1]), await readBody(req));
@@ -472,6 +497,7 @@ export async function handle(req: IncomingMessage, { pathname, searchParams }: U
 }
 
 export function housekeeping() {
+  pruneHits(registerHits, Date.now(), 86_400_000);
   for (const [k, d] of diaryDays) if (d !== utcDay()) diaryDays.delete(k);
   capSet(usedPairNonces, 5_000);
 }
