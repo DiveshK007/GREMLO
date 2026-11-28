@@ -68,9 +68,10 @@ curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh |
 
 That builds Gremlo from source on your Mac (a few minutes the first time), puts it in `~/Applications/Gremlo.app` and starts it. Then:
 
-1. Click the Gremlo icon in the menu bar.
-2. Open **Settings → General → Claude Code → Connect**.
-3. Start a Claude Code run and watch the notch.
+1. The **Set up Gremlo** window opens: your pet, pairing this Mac, connecting Claude Code, and a test the pet answers.
+2. Start a Claude Code run and watch the notch.
+
+Missed the setup? Run it from **Settings → General → Setup**.
 
 Run the same line again to update. To quit, use the bottom of the menu bar panel.
 
@@ -79,7 +80,7 @@ Run the same line again to update. To quit, use the bottom of the menu bar panel
 <details>
 <summary>Why build from source, and what about a download?</summary>
 
-There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. The `.dmg` is on [Releases](https://github.com/DiveshK007/GREMLO/releases/tag/v1.0.2): [Gremlo-1.0.2.dmg](https://github.com/DiveshK007/GREMLO/releases/download/v1.0.2/Gremlo-1.0.2.dmg), sha256 `3907de71e6bd8c8f2c1f50ea2358a9e1e6b840984447206595fbfd70b7d7a04d` (the same hash is in `Gremlo-1.0.2.dmg.sha256` next to it; check with `shasum -a 256`). It is ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`.
+There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. The `.dmg` is on [Releases](https://github.com/DiveshK007/GREMLO/releases/tag/v1.1.0): [Gremlo-1.1.0.dmg](https://github.com/DiveshK007/GREMLO/releases/download/v1.1.0/Gremlo-1.1.0.dmg), sha256 `0eb01a54f7b638dd835930a2b129e8ba425d26c4847bc082653e2ac61e83d230` (the same hash is in `Gremlo-1.1.0.dmg.sha256` next to it; check with `shasum -a 256`). It is ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`. After that it updates itself: each update is checked against the signing key built into the app.
 </details>
 
 ## How it works

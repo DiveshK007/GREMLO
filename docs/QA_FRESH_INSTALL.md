@@ -35,35 +35,42 @@ Write down as you go: the pet name, the time of the first counted view, and ever
 4. Check the server: `curl -s https://16-4-100-95.sslip.io/health | jq .ok` prints `true`. If not, read `reasons` first.
    Every step below depends on the server being healthy.
 
-## 1. Install
+## 1. Install v1.1.0
 
-The **Health** rows, the per-Mac pairing note and the view-refusal notes are newer than v1.0.2. Until a release after
-1.0.2 ships, test the install path with the v1.0.2 dmg, then run steps 2 to 12 on a build from `main`
-(`curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash`, which installs to
-`~/Applications/Gremlo.app`). On 1.0.2 itself, use the server-state `curl` and the server log in place of the Health rows.
-The server side of these fixes is live once it deploys from `main`.
-
-**Do:** download `Gremlo-1.0.2.dmg` from the v1.0.2 release (the README link points there), check it, then drag it to Applications:
+**Do:** download `Gremlo-1.1.0.dmg` from the v1.1.0 release (the README links it), check it against the hash in
+`Gremlo-1.1.0.dmg.sha256` next to it, then drag it to Applications:
 ```bash
-shasum -a 256 ~/Downloads/Gremlo-1.0.2.dmg   # 3907de71e6bd8c8f2c1f50ea2358a9e1e6b840984447206595fbfd70b7d7a04d
+shasum -a 256 ~/Downloads/Gremlo-1.1.0.dmg   # must equal the hash in Gremlo-1.1.0.dmg.sha256 on the release
 ```
-Open it. The first time: **System Settings → Privacy & Security → Open Anyway**.
+Open it. It is ad hoc signed (no Developer ID yet), so the first time: **System Settings → Privacy & Security → Open Anyway**.
 
-**See:** the menu bar icon, then within 2 s the alert "Show sponsored lines and earn while you wait?". Press
-**Turn on**. A pet appears as an egg.
+**See:** the menu bar icon, then within 2 s the **Set up Gremlo** window. It walks steps 2 to 4 below and ends with a
+test event the pet answers. After **Done** (and a restart if you typed a new name) comes the alert "Show sponsored
+lines and earn while you wait?". Press **Turn on**. A pet appears as an egg.
 
-| Failure | Meaning |
+The setup's own failures, with Retry on each:
+
+| Setup says | Meaning |
 |---|---|
+| "No pet called <name> yet…" | The name isn't registered. Step 2: get one on the web, then Retry. |
+| "Can't reach the server: …" | Network or server down (`/health`). |
+| "Not paired yet. Sign the message in the browser…" | Step 4 isn't finished: sign on the pair page with the owner's wallet, then Check. |
+| "Couldn't update ~/.claude/settings.json: …" | The file isn't valid JSON. Nothing was changed. Fix it, Retry. |
+| "The hook's key file ~/.gremlo/hook-header is missing…" | The app couldn't write its hook key. Quit and reopen Gremlo. |
+| "The test didn't reach the app…" | Something else is on port 47474 (`lsof -i :47474`). |
+
+If you press **Later**, run it again from Settings → General → Setup.
+
 | Hash differs | Wrong file or a bad download. Stop. |
 | "Gremlo is damaged" | Quarantine on an ad hoc build. Use Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`. |
-| No sponsored-lines alert | Old settings survived step 0 (`defaults read app.gremlo.mac sponsored`). Lines stay off until Settings → Earning → Show sponsored lines. |
+| No setup window, no sponsored-lines alert | Old settings survived step 0 (`defaults read app.gremlo.mac`). Run the setup from Settings → General; lines stay off until Settings → Earning → Show sponsored lines. |
 | Pressed **Not now** | Health shows `Counting views: no: sponsored lines are off`. Turn it on in Settings → Earning. |
 
 ## 2. Get a pet (register)
 
 **Do:** go to `https://gremlo.vercel.app/pet`. **Connect wallet** (the owner account), type a pet name, enter a payout
-account that already exists, press verify and finish World ID. Then in the Mac app: **Settings → Pet → Pet name**, type
-the same name and press Return. Gremlo restarts.
+account that already exists, press verify and finish World ID. Then type the same name in the setup window's **Your
+pet** step (or later in **Settings → Pet → Pet name**, then Return). Gremlo restarts once at the end of the setup.
 
 **See:** the web page says "<name> is moving into your notch." After the restart, the popover header shows the name.
 Health shows `Server: reachable`.
@@ -78,7 +85,7 @@ Health shows `Server: reachable`.
 
 ## 3. Connect Claude Code
 
-**Do:** **Settings → General → Claude Code → Connect**.
+**Do:** the setup's **Connect Claude Code** step (or **Settings → General → Claude Code → Connect**).
 
 **See:** the button changes to show it's connected. `~/.claude/settings.json` has `~/.gremlo/gremlo-hook.sh` entries.
 
