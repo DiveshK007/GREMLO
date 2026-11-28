@@ -18,7 +18,7 @@ The full walkthrough video (4:40) is at [gremlo.vercel.app/walkthrough.mp4](http
 
 ## What is simulated
 
-- **World ID.** The final run used the World ID simulator (the staging environment), not a real Orb or World App proof. No real person was verified.
+- **World ID.** The testnet final run used the World ID simulator (the staging environment), not a real Orb or World App proof. No real person was verified. On mainnet World ID is off: registration is invite-only and signed by the owner's wallet, so a mainnet pet is "registered by an invited owner", not a checked human.
 - **Seeded data.** Anything seeded is labelled as seeded on screen. `/stats` reports `seeded: false` for the live numbers.
 
 Everything else in the final run is real: the transactions are on NEAR testnet, and the NEAR AI completions carry TEE signatures (`npm run verify <completion_id>` in `apps/server` checks one, and needs a NEAR AI key).
@@ -31,10 +31,10 @@ Everything else in the final run is real: the transactions are on NEAR testnet, 
 
 ## Known limits
 
-- **Testnet only.** Nothing is on mainnet. The money is testnet NEAR.
+- **Mainnet is one real run, not a product launch.** On 28 Nov 2026 a view settled on NEAR mainnet and paid for one TEE-signed AI thought (links in the README, Proof). The campaign was funded by the pet's owner to prove the loop with real NEAR; it is not self-funded. The rest of the history is on testnet.
 - **The app is Mac-only.** The notch pet runs on macOS 13+. The server, web app, brain and contracts build on Linux and macOS.
 - **Views are settled by the operator.** The server's operator key calls `settle_impressions` and `charge_compute`. The contract limits what it can pay (a campaign's budget, a pet's daily compute cap), but you are trusting the operator to report views honestly. See [SECURITY.md](SECURITY.md).
-- **The vault has a full-access key.** The deployer still holds it on `vault.gremlo.testnet`. Whoever holds it can replace the contract code. The plan is to remove it before mainnet; see [SECURITY.md](SECURITY.md).
+- **The vaults have a full-access key.** The deployer holds it on `vault.gremlo.testnet`, and the admin `divzzz007.near` holds it on `vault.divzzz007.near` (mainnet). Whoever holds it can replace the contract code. A keyless v2 vault is planned; see [SECURITY.md](SECURITY.md) and [docs/MAINNET_PLAN.md](docs/MAINNET_PLAN.md).
 - **AI is billed at a fixed NEAR rate per tier**, not the real USD cost, and the operator holds the NEAR AI credits.
 
 The README's [What's real](README.md#whats-real) table has the rest.

@@ -2,7 +2,10 @@
 // pay gas for settlements and charges, or views that expired unpaid. GET /health answers 503 with the reasons, so
 // any uptime monitor can page on it. Pure; index.ts feeds it.
 
-export const OPERATOR_LOW = 5n * 10n ** 23n; // 0.5 NEAR: below this, settlements and charges start failing for gas
+// below this the operator runs out of gas for settlements and charges. 0.5 NEAR by default; a small instance (the
+// mainnet run's operator holds ~0.1 NEAR) sets OPERATOR_LOW_YOCTO so /health warns at a level that fits it.
+export const OPERATOR_LOW = /^[0-9]+$/.test(process.env.OPERATOR_LOW_YOCTO ?? "") ? BigInt(process.env.OPERATOR_LOW_YOCTO!) : 5n * 10n ** 23n;
+const near = (y: bigint) => `${Number(y / 10n ** 20n) / 10_000} NEAR`;
 
 export type HealthInput = {
   workerOn: boolean;
@@ -19,7 +22,7 @@ export function health(h: HealthInput, now = Date.now()) {
   // three missed passes in a row means the worker is stuck or failing, not just slow (a fresh start gets the same grace)
   if (h.workerOn && now - (h.lastOk ?? h.startedAt) > 3 * h.everyMs) reasons.push(`settlement worker: no good pass in ${Math.round((now - (h.lastOk ?? h.startedAt)) / 60_000)} min${h.lastError ? ` (last error: ${h.lastError})` : ""}`);
   if (h.operatorBalance === null) reasons.push("operator balance: can't be read");
-  else if (h.operatorBalance < OPERATOR_LOW) reasons.push("operator balance: under 0.5 NEAR, settlements and charges will fail for gas");
+  else if (h.operatorBalance < OPERATOR_LOW) reasons.push(`operator balance: under ${near(OPERATOR_LOW)}, settlements and charges will fail for gas`);
   if (h.expiredUnpaid > 0) reasons.push(`${h.expiredUnpaid} view${h.expiredUnpaid === 1 ? "" : "s"} expired unpaid since start`);
   return { ok: reasons.length === 0, reasons };
 }

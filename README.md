@@ -172,12 +172,12 @@ Accounts, the deploy transaction, the vault state after the run and the earlier 
 | Vault on NEAR testnet | **Live** | `vault.gremlo.testnet`, operator `operator.gremlo.testnet`; the code hash matches a local build of `contracts-near` |
 | The full loop | **Live on testnet** | register, verify, fund, two views settled, four NEAR AI calls charged, each with its completion id |
 | TEE-signed inference | **Live** | one completion verified with `npm run verify` |
-| World ID | **Simulator** | the final run used the World ID simulator, not a real Orb or app proof |
+| World ID | **Simulator (testnet), off (mainnet)** | the testnet run used the World ID simulator, not a real Orb or app proof. On mainnet World ID is off and registration is invite-only, signed by the owner's wallet |
 | iPhone and Watch apps | **Simulator only** | `apps/ios` builds and launches in the simulators; signing and TestFlight need an Apple Developer account |
 | The pet's own purse | **Built, not deployed** | factory and purse contracts in `contracts-accounts` (14 tests); pets use the vault's compute budget for now |
 | Hosted server and website | **Live** | [gremlo.vercel.app](https://gremlo.vercel.app) on Vercel, API on AWS EC2 behind HTTPS ([/health](https://16-4-100-95.sslip.io/health)) |
-| Signed Mac download | **Not yet** | build from source with the install line |
-| Mainnet | **Not yet** | nothing is on mainnet |
+| Mac download and updates | **Live, not notarized** | the dmg is ad hoc signed (Open Anyway once) and updates itself through Sparkle, each update checked against the app's EdDSA key |
+| Mainnet | **One real run** | a view settled on NEAR mainnet and paid for one TEE-signed AI thought ([Proof](#near-mainnet-run-28-nov-2026)); vault `vault.divzzz007.near`, API [mainnet.16-4-100-95.sslip.io](https://mainnet.16-4-100-95.sslip.io/health). The vault isn't locked yet, the campaign was funded by the pet's owner, and views are settled by the operator |
 
 Known limits:
 
@@ -186,7 +186,7 @@ Known limits:
 - A system Focus can't be read without an Apple entitlement, and browser screen sharing isn't detected (mic and Zoom or system recording are).
 - Community species can't be installed from the gallery yet.
 - The notch app is macOS only. The server, web app, brain and contracts build and test on Linux and macOS; on Windows use WSL2.
-- The vault account still has a full-access key held by the deployer (testnet). The mainnet plan is to lock it after deploy.
+- Both vaults still have a full-access key: the deployer's on testnet, the admin `divzzz007.near`'s on mainnet. Whoever holds it can replace the contract code. A v2 vault with no keys, that checks the Mac's Secure Enclave signature onchain, is planned ([docs/MAINNET_PLAN.md](docs/MAINNET_PLAN.md)).
 
 ## Run the full loop from source
 
