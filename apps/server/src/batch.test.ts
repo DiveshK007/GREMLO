@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { review } from "./fraud.ts";
-import { allow, canStillPay, countImpression, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
+import { allow, canStillPay, countImpression, expiryReason, hookOrder, level, markDay, markSettled, planSettlement, streak, underDailyCap, workFor } from "./batch.ts";
 
 test("settles everything when the budget covers it", () => {
   const r = planSettlement({ "0xb": 3, "0xa": 2 }, 10n, 1000n);
@@ -115,4 +115,6 @@ test("canStillPay: open until 1 hour after the end, never once closed (then queu
   assert.equal(canStillPay(c, 1000n + 3600n), true); // last second of grace
   assert.equal(canStillPay(c, 1000n + 3601n), false);
   assert.equal(canStillPay({ ...c, closed: true }, 500n), false); // closed early: refunded, nothing more can be paid
+  assert.equal(expiryReason(99n, 100n), "the campaign's budget ran out"); // less than one view left: over budget, not lost
+  assert.equal(expiryReason(100n, 100n), "the campaign ended before they could be paid");
 });

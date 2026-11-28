@@ -2,7 +2,7 @@
 
 import { type IncomingMessage } from "node:http";
 import { accountExists, seeded, send, view } from "../chain.ts";
-import { allow, canStillPay, cooldown, markSettled, planSettlement, workFor } from "../batch.ts";
+import { allow, canStillPay, cooldown, expiryReason, markSettled, planSettlement, SETTLE_GRACE_S, workFor } from "../batch.ts";
 import { bad, HttpError } from "../register.ts";
 import { pruneHits, pruneStamps } from "../prune.ts";
 import { WEB_ORIGIN } from "../web.ts";
@@ -131,10 +131,13 @@ async function workerPass() {
         // the vault can't pay these any more: show the brand why and stop calling them payable. Not while a settlement
         // for this campaign is in flight (it still reads them); the next pass sweeps.
         if (pending && !canStillPay({ closed: c.closed, endTime }, now) && !settling.has(String(id))) {
-          // only views that expire now need a person (/health); ones on a campaign already closed were lost before this start
-          if (!c.closed) worker.expiredUnpaid += pending;
+          // a person is needed (/health) only when budget was left and the views expired during this run; an exhausted
+          // budget is the brand's limit, and expiries from before this start were already lost then
+          const reason = expiryReason(BigInt(c.budget) - BigInt(c.spent), BigInt(c.rate));
+          const thisRun = !c.closed || endTime + SETTLE_GRACE_S >= BigInt(Math.floor(worker.startedAt / 1000));
+          if (thisRun && reason !== "the campaign's budget ran out") worker.expiredUnpaid += pending;
           const v = (store.voided[String(id)] ??= {});
-          v["the campaign ended before they could be paid"] = (v["the campaign ended before they could be paid"] ?? 0) + pending;
+          v[reason] = (v[reason] ?? 0) + pending;
           delete store.pending[String(id)];
           saveNow();
           console.error(`worker: campaign ${id}: ${pending} views expired unpaid (the vault pays only until 1h after the end)`);

@@ -96,6 +96,9 @@ export function allow(hits: Map<string, number[]>, key: string, now: number, lim
 
 export const SETTLE_GRACE_S = 3600n; // CampaignVault.SETTLE_GRACE
 
+/** Why queued views of a campaign that can't pay any more go unpaid: its budget (what's left can't pay one view) or its end. */
+export const expiryReason = (left: bigint, rate: bigint) => (left < rate ? "the campaign's budget ran out" : "the campaign ended before they could be paid");
+
 /** Whether the vault can still pay a campaign's views: not closed, and no later than 1 hour after its end. */
 export const canStillPay = (c: { closed: boolean; endTime: bigint }, now: bigint) => !c.closed && now <= c.endTime + SETTLE_GRACE_S;
 

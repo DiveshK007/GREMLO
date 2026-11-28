@@ -283,23 +283,35 @@ enum Detect {
         return ScreenShare.indicatorShowing(windows, screenWidth: Double(mainScreen.frame.width)) && !micInUse() && !cameraInUse()
     }
 
-    /// Any microphone (any input device, not only the default: a USB mic, a dictation app's choice) is in use: a call.
+    /// Some app is recording from a microphone (any one, not only the default): a call. macOS 14 says so per process;
+    /// a device's "running" flag can't, since it is also set while it only plays audio (a USB interface, a headset).
     static func micInUse() -> Bool {
-        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard #available(macOS 14.0, *) else { return defaultInputRunning() }
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr, size > 0 else { return false }
-        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return false }
         for id in ids {
-            var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-            var n: UInt32 = 0
-            guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &n) == noErr, n > 0 else { continue }  // no input streams: a speaker
-            var run = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            var input = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyIsRunningInput, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
             var running: UInt32 = 0
             var rs = UInt32(MemoryLayout<UInt32>.size)
-            if AudioObjectGetPropertyData(id, &run, 0, nil, &rs, &running) == noErr, running != 0 { return true }
+            if AudioObjectGetPropertyData(id, &input, 0, nil, &rs, &running) == noErr, running != 0 { return true }
         }
         return false
+    }
+
+    /// macOS 13: the default microphone is running (it can't tell recording from playback on a duplex device).
+    private static func defaultInputRunning() -> Bool {
+        var dev = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr, dev != 0 else { return false }
+        var running: UInt32 = 0
+        size = UInt32(MemoryLayout<UInt32>.size)
+        addr.mSelector = kAudioDevicePropertyDeviceIsRunningSomewhere
+        guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &running) == noErr else { return false }
+        return running != 0
     }
 
     /// Any camera is in use by some app: a call.
@@ -503,7 +515,8 @@ extension Backend {
                     ("Tool names and counts", "only for the diary, if on"), ("Impression counts", "a signed number per campaign"),
                     ("Identity", "one anonymous proof of personhood"), ("Diagnostics", DiagnosticsController.on ? "on: counts and crash types, below" : "off")]
         let ledger = UI.group("What leaves this Mac", rows.map { UI.kv($0.0, $0.1, width: w, valueColor: UI.text) },
-                              note: "Always on: pets duck when the screen is shared or recorded, sleep in meetings and hide in full screen. \u{2325}\u{2318}P pauses everything.", width: w)
+                              note: (PrivacyController.hideOnCapture ? "Always on: pets duck when the screen is shared or recorded, sleep in meetings and hide in full screen."
+                                     : "Pets sleep in meetings and hide in full screen. Hiding during screen shares and recordings is off (below).") + " \u{2325}\u{2318}P pauses everything.", width: w)
         let focus = UI.group("Focus", [
             UI.row("Start a focus session", "Lines off and no earning while it runs. \u{2325}\u{2318}F starts 25 minutes.",
                    Seg(FocusSession.durations.map { "\($0)m" }, selected: -1, momentary: true, target: self, action: #selector(startFocus(_:))), width: w),

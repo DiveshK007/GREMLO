@@ -111,9 +111,8 @@ jobs:
           # the app's feed is releases/latest/download/appcast.xml, so publishing the release publishes the update
           gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" apps/mac/dist/appcast.xml --clobber
           # publish (and make Latest) only a draft: a re-run for an older, published tag must not move Latest back to it
-          if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft)" = true ]; then
-            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
-          fi
+          draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft)" || { echo "couldn't read the release state; re-run to publish"; exit 1; }
+          if [ "$draft" = true ]; then gh release edit "$GITHUB_REF_NAME" --draft=false --latest; fi
       - name: Remove the keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
