@@ -42,7 +42,7 @@
 3. Open any "charged on chain" link on [/live](https://gremlo.vercel.app/live). Each is a `charge_compute` call on `vault.gremlo.testnet` carrying the NEAR AI completion id.
 4. Every transaction from the final run is linked in [PROOF.md](PROOF.md), and the vault's code hash matches a `cargo near build` of `contracts-near` (Rust 1.95, pinned in `contracts-near/rust-toolchain.toml`).
 
-Last verified: 23 Nov 2026. `npm run verify:public` (in `apps/server`) passed all 15 checks, and the API's `/health` answered 200.
+Last verified: 28 Nov 2026. In `apps/server`, `npm run verify:public` (testnet) passed all 16 checks and `npm run verify:public:mainnet` (the mainnet run) passed all 13. CI runs both.
 
 Gremlo was built for the NEAR Hackathon (Nov 2026) and is now in active development as a product. The submission snapshot is the [`hackathon-submission`](https://github.com/DiveshK007/GREMLO/tree/hackathon-submission) tag.
 

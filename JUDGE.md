@@ -3,16 +3,16 @@
 Two minutes. No Mac, no wallet, no API key.
 
 1. **The tour.** Open [gremlo.vercel.app/experience](https://gremlo.vercel.app/experience). It shows the pet, the money loop and live testnet numbers read from the API.
-2. **The live page.** Open [gremlo.vercel.app/live](https://gremlo.vercel.app/live). It has the line the pet holds right now and every "charged on chain" link. Each link is a `charge_compute` call on `vault.gremlo.testnet` that carries a NEAR AI completion id.
+2. **The live page.** Open [gremlo.vercel.app/live](https://gremlo.vercel.app/live). It has the line the pet holds right now and every "charged on chain" link. Each link is a `charge_compute` call on `vault.gremlo.testnet` that carries a NEAR AI completion id. Near the bottom, "The NEAR mainnet run" links the mainnet settle and charge and reads the mainnet vault's totals live.
 3. **The API.** `curl https://16-4-100-95.sslip.io/stats` returns campaigns, settled views, NEAR paid and NEAR charged for AI. `curl https://16-4-100-95.sslip.io/health` says whether the server and its worker are healthy.
 4. **The proof, checked by a script.** Needs Node 22.9 or newer.
 
    ```bash
    git clone https://github.com/DiveshK007/GREMLO.git && cd GREMLO/apps/server
-   npm ci && npm run verify:public
+   npm ci && npm run verify:public && npm run verify:public:mainnet
    ```
 
-   It reads public NEAR testnet RPC only. It checks that each of the ten transactions in the final run succeeded, that the vault's code hash is the one that ran, and that `/stats` agrees with the vault's own totals. It exits 0 when all 15 checks pass and 1 when any fails. The inputs are in [`apps/server/fixtures/public-proof.json`](apps/server/fixtures/public-proof.json); the same hashes, with what each one did, are in [PROOF.md](PROOF.md).
+   It reads public NEAR RPC only. For each run it checks that every transaction succeeded on the vault with the expected signer and method, that the vault's code hash is the one that ran, that the vault's books balance (paid + budgets + charged + remaining + refunded = deposited), and that `/stats` agrees with the vault's own totals. On mainnet it also checks that the `charge_compute` event carries the NEAR AI completion id. It exits 0 when all checks pass (16 on testnet, 13 on mainnet) and 1 when any fails. The inputs are in [`apps/server/fixtures/public-proof.json`](apps/server/fixtures/public-proof.json) and [`public-proof.mainnet.json`](apps/server/fixtures/public-proof.mainnet.json); the same hashes, with what each one did, are in [PROOF.md](PROOF.md).
 
 The full walkthrough video (4:40) is at [gremlo.vercel.app/walkthrough.mp4](https://gremlo.vercel.app/walkthrough.mp4).
 
