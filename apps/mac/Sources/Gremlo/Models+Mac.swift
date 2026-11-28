@@ -21,8 +21,10 @@ struct PetInfo: Decodable {
     let paired: Bool? // a Mac is paired to this pet; nil from an older server
     let thisDevicePaired: Bool? // this Mac's own key is paired (a reinstall makes a new one); nil from an older server
     let views: PetViews? // what the server holds for this pet; nil from an older server
+    let compute: ComputeShare? // nil while the chain can't be read
     let purse: PurseInfo? // the pet's own purse, when it has one; it pays for each thought itself
 }
+struct ComputeShare: Decodable { let shareBps: Int? } // the share of each paid view that feeds the compute budget
 /// Counted views wait `holdbackHours` (held), then queue for the worker (payable) until a settlement pays them.
 struct PetViews: Decodable { let held: Int; let payable: Int; let holdbackHours: Double; let settledToday: Int; let settleError: String? }
 

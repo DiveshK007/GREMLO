@@ -350,7 +350,7 @@ final class Backend: NSObject {
         }
         if showingDemo { return }
         let tick = privacy.pomodoro?.fast == true ? 1.0 : 60.0  // the fast test timing counts seconds
-        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))|\(lastView?.refused ?? "")"
+        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))|\(lastView.map { "\($0.at)\($0.refused ?? "")" } ?? "")|\(social.parkStatus ?? "")|\(silence.silent)"
         if key == shown { return }
         shown = key
         UI.setAccent(pet.skin.species)
@@ -427,6 +427,7 @@ final class Backend: NSObject {
         if let i = info, let views = i.paidViews { facts.append(UI.kv("Paid by brands", "\(near4(i.earnedWei)) for \(views) views" + tag, width: w)) }
         facts.append(UI.kv(growth.isEgg ? "Egg" : stage.capitalized, growth.isEgg ? "\(growth.egg.calls) of 50 tool calls" : "\(gp.meals.count) meals \u{00B7} \(gp.stars) \u{2605}", width: w))
         stack.addArrangedSubview(UI.group(nil, facts, width: w))
+        stack.addArrangedSubview(healthGroup(width: w))
 
         // the line it holds right now, drawn as the plate with its AD tab
         let off = !sponsoredOn ? "Sponsored lines are off" : inQuietHours() ? "Quiet hours: no lines until 08:00"
@@ -468,6 +469,30 @@ final class Backend: NSObject {
         foot.widthAnchor.constraint(equalToConstant: w).isActive = true
         stack.addArrangedSubview(foot)
         resizeMenu()
+    }
+
+    /// Why nothing is happening, one row each: the server, this Mac's pairing, whether views count, the queue, the budget.
+    func healthGroup(width w: CGFloat) -> NSView {
+        var g = Health.Gate(server: localWhy ?? (serverError != nil ? .serverDown : nil), thisMacPaired: thisMacPaired)
+        g.secureEnclave = devicePublicKey != nil
+        g.egg = pet.egg; g.demo = demoMode; g.paused = paused; g.focus = privacy.focus != nil; g.stream = PrivacyController.streamOn
+        g.sponsored = sponsoredOn; g.quietHours = inQuietHours(); g.capped = (info?.impressionsToday ?? 0) >= dailyViewCap
+        g.campaign = campaign != nil; g.silenced = silence.silent || privacy.duck != .none
+        let blocker = Health.blocker(g)
+        let server = localWhy == .unregistered ? "doesn't know \(petName)" : g.server == nil ? "reachable" : "can't reach it"
+        let mac = devicePublicKey == nil ? "no Secure Enclave" : thisMacPaired == true ? "paired"
+            : thisMacPaired == false ? (info?.paired == true ? "not paired (another Mac is)" : "not paired") : "\u{2014}"
+        let v = info?.views
+        let t = DateFormatter(); t.timeStyle = .short; t.dateStyle = .none
+        let share = info?.compute?.shareBps.map { " \u{00B7} \($0 / 100)% of each paid view" } ?? ""
+        var rows = [UI.kv("Server", server, width: w, valueColor: g.server == nil ? UI.fg : UI.amber),
+                    UI.kv("This Mac", mac, width: w, valueColor: thisMacPaired == false ? UI.amber : UI.fg),
+                    UI.kv("Counting views", blocker.map { "no: \($0)" } ?? "yes, while the agent works", width: w, valueColor: blocker == nil ? UI.fg : UI.amber),
+                    UI.kv("Views", info.map { Health.views(today: $0.impressionsToday, held: v?.held, payable: v?.payable, settledToday: v?.settledToday, holdbackHours: v?.holdbackHours) } ?? "\u{2014}", width: w)]
+        if let l = lastView { rows.append(UI.kv("Last view", "\(l.refused == nil ? "counted" : "not counted") at \(t.string(from: l.at))", width: w, valueColor: l.refused == nil ? UI.fg : UI.amber)) }
+        rows.append(UI.kv("Compute budget", near4(info?.computeBalance) + share, width: w, valueColor: info?.compute?.shareBps == 0 ? UI.amber : UI.fg))
+        if SocialController.parkOn { rows.append(UI.kv("Park", social.parkStatus ?? "joining\u{2026}", width: w)) }
+        return UI.group("Health", rows, width: w)
     }
 
     @objc func quitApp() { NSApp.terminate(nil) }
