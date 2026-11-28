@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.0 (28 Nov 2026)
+
+A Mac app you can download and open like any other. The vault and the testnet deployment are unchanged.
+
+- **Signed and notarized.** The dmg is signed with a Developer ID, uses the hardened runtime with two entitlements (calendars for the meeting check, Apple Events for Bops to music), and is notarized and stapled by Apple. It opens without the Open Anyway step. The release job refuses to publish an unsigned build. Setup: [docs/RELEASE.md](docs/RELEASE.md).
+- **Updates itself.** Sparkle 2.10.1, pinned by checksum. Each release carries an EdDSA-signed `appcast.xml`. The app checks once a day and installs on the next restart. Turn it off in Settings, General, Updates. "Check for updates" is in the menu bar panel. Builds from source have no updater and update with `install.sh`.
+- **First-run setup.** Five steps: welcome, your pet, pair this Mac, connect Claude Code, and a test event sent through the real hook that the pet answers. Each failure says why and has a Retry. Run it again from Settings, General.
+- **Opt-in diagnostics.** Off by default (Settings, Privacy). When on: failure counts and crash signatures, at most once a day, unsigned and with no pet name, path or agent content. The server keeps no IP. "Show" displays the exact report.
+- **Health in the panel.** It shows whether the server is reachable, whether this Mac is paired, whether views are counting (and if not, the first thing to fix), views on hold, to pay and paid today, and the compute budget with its share of each view.
+- **Silent failures fixed.** A reinstalled or renamed Mac is now told it isn't paired; before, it looked paired while every view was refused. View refusals and stuck payments show in the panel. A pet whose payout account is missing no longer stops payments to the pets after it (server). Park joins say why they failed.
+- **Polish.** The menu bar icon turns orange while an approval waits and dims when the server can't be reached, paused or in focus, and says so to VoiceOver. Plainer empty states. Every keyboard shortcut is listed in Settings, General.
+
 ## v1.0.2 (23 Nov 2026)
 
 Mac app polish. Nothing changed in the web app, the API or the contract.
