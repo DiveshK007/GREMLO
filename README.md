@@ -122,6 +122,26 @@ In the final run each view paid 0.003 NEAR: 0.0024 to the owner's payout account
 
 ## Proof
 
+### NEAR mainnet run (28 Nov 2026)
+
+One real view settled on NEAR mainnet and paid for one AI thought signed inside a NEAR AI enclave.
+
+| Step | Transaction |
+|---|---|
+| Vault deployed and initialised (`vault.divzzz007.near`, code hash `5pu1xBnBucsruBkTV4jg5j9WBMk2w95nNySpz9E58RSZ`) | [GNXUhMtk…](https://nearblocks.io/txns/GNXUhMtkQaqCAk6gspC6xiGZaUHywn7WcFTcjnvUDvtP) |
+| Pet `mochi` registered and marked registered by the operator | [FFRc8bah…](https://nearblocks.io/txns/FFRc8bahstnTHpBHo3ATBZMN4W9wuGG3TU8oMuDt4REH), [FVvqeJwL…](https://nearblocks.io/txns/FVvqeJwLSnpSF6GNnmB8T3qkTvvwphKYbiyVXdz4WqTY) |
+| Campaign #1 funded with 0.02 NEAR (0.003 NEAR a view) | [GHV83PKm…](https://nearblocks.io/txns/GHV83PKm31hQsi7LRVvw3AXyDvbu4JcrY3zQBt4KeLEv) |
+| A signed view from a paired Mac settled: 0.0024 NEAR to the owner, 0.0006 NEAR to the pet's compute budget | [8deWGCfc…](https://nearblocks.io/txns/8deWGCfcZkw6X6iAMwkbJGZSBpDkKffNEBbkrke8v3VJ) |
+| The pet's next thought paid 0.0005 NEAR from that budget; completion `chatcmpl-30c8f76f-e514-44ab-96d8-3295700a9523`, signature verified against NEAR AI's attestation (`npm run verify`) | [BiQ5xUEW…](https://nearblocks.io/txns/BiQ5xUEWLR3i9TS3pquvqzaSkT6RYwLZp2ky4pzt8yjk) |
+
+What this is and isn't, plainly:
+- The campaign was funded by the same person who owns the pet, to prove the loop with real NEAR. It is not "self-funded".
+- The mainnet vault still has a full-access key (its admin can redeploy it); it is not locked yet. Views are settled by the operator, as on testnet. A v2 vault that checks the Mac's Secure Enclave signature onchain and has no keys is planned ([docs/MAINNET_PLAN.md](docs/MAINNET_PLAN.md)).
+- World ID is off on mainnet. Registration there is invite-only and signed by the owner's wallet, so "registered" means an invited owner, not a checked human.
+- Mainnet API: https://mainnet.16-4-100-95.sslip.io (separate from the testnet API, which is unchanged). Steps: [docs/MAINNET_RUNBOOK.md](docs/MAINNET_RUNBOOK.md).
+
+### NEAR testnet final run (15 Nov 2026)
+
 <p align="center"><img src="docs/media/readme/ledger.png" width="100%" alt="The final run: ten transactions on NEAR testnet and the compute budget they moved"></p>
 
 The final run on `vault.gremlo.testnet`, 15 Nov 2026. Every hash was checked on testnet RPC: each ended in `SuccessValue`.

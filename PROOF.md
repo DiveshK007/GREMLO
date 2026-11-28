@@ -2,6 +2,22 @@
 
 Every value here comes from a real run on NEAR testnet or NEAR AI Cloud. Blank rows are filled from the demo run; nothing is estimated or made up. Explorer: https://testnet.nearblocks.io
 
+## Mainnet run (28 Nov 2026)
+
+Accounts: admin `divzzz007.near`, vault `vault.divzzz007.near` (code hash `5pu1xBnBucsruBkTV4jg5j9WBMk2w95nNySpz9E58RSZ`, wasm sha256 `47b3dc61deceda91aa1620047f5832000a3a1f9dfd56f9f827fe2d541e279f22`), operator `operator.divzzz007.near`.
+
+- create vault account `CypRsqok4sXycjHokKjncusvbFQMAHbeazmMGySb9CCW`, operator account `H6u7tDVASkxaGyMKhvpdh635YLFmYKmft3YrJnCxmNFB`
+- deploy + init `GNXUhMtkQaqCAk6gspC6xiGZaUHywn7WcFTcjnvUDvtP`
+- register `mochi` `FFRc8bahstnTHpBHo3ATBZMN4W9wuGG3TU8oMuDt4REH`, set_verified `FVvqeJwLSnpSF6GNnmB8T3qkTvvwphKYbiyVXdz4WqTY`
+- campaign #1 (0.02 NEAR) `GHV83PKm31hQsi7LRVvw3AXyDvbu4JcrY3zQBt4KeLEv`
+- settle 1 view `8deWGCfcZkw6X6iAMwkbJGZSBpDkKffNEBbkrke8v3VJ` (event impressions_settled: paid 0.0024, compute 0.0006)
+- charge_compute 0.0005 NEAR `BiQ5xUEWLR3i9TS3pquvqzaSkT6RYwLZp2ky4pzt8yjk`, completion `chatcmpl-30c8f76f-e514-44ab-96d8-3295700a9523`
+- `npm run verify chatcmpl-30c8f76f-e514-44ab-96d8-3295700a9523`: SIGNED, signer 0xfe0071895500a9755c18044948ab4f4e1a7f337e (deepseek-ai/DeepSeek-V4.1-Flash-1017), verified against NEAR's attestation report
+- second view settled `8BzX62XxcWEJzSXmgFkh2hY6uPt9Cv8RkagXyFQib2h1`
+- get_totals after: deposited 0.01812, paid to pets 0.0048, compute budgets 0.0007, charged 0.0005, remaining 0.01212 (they add up)
+
+Not locked (full-access key on the vault), operator-settled, World ID off, funded by the owner: see the README.
+
 ## Final run accounts (gremlo.testnet)
 
 The final run uses new accounts; the deploy, init and loop rows are filled from that run.

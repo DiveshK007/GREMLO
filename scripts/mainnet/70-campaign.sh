@@ -3,7 +3,7 @@
 #   BRAND=you.near LINE="Your line here" [BUDGET_NEAR=0.2 RATE_NEAR=0.003 HOURS=24] bash scripts/mainnet/70-campaign.sh
 . "$(dirname "$0")/lib.sh"
 need BRAND; need LINE
-BUDGET_NEAR="${BUDGET_NEAR:-0.2}"; RATE_NEAR="${RATE_NEAR:-0.003}"; HOURS="${HOURS:-24}"
+BUDGET_NEAR="${BUDGET_NEAR:-0.02}"; RATE_NEAR="${RATE_NEAR:-0.003}"; HOURS="${HOURS:-24}"
 RATE="$(python3 -I -c 'import sys; from decimal import Decimal; print(int(Decimal(sys.argv[1]) * 10**24))' "$RATE_NEAR")"
 END="$(( $(date +%s) + HOURS * 3600 ))"
 HASH="$(cd "$REPO_DIR/apps/server" && L="$LINE" node --input-type=module -e 'import { keccak256, toHex } from "viem"; console.log(keccak256(toHex(process.env.L)).slice(2))')"

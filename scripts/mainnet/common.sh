@@ -4,7 +4,7 @@
 set -euo pipefail
 NETWORK="${NETWORK:-mainnet}"
 case "$NETWORK" in mainnet | testnet) ;; *) echo "NETWORK must be mainnet or testnet" >&2; exit 1 ;; esac
-ROOT="${ROOT:-gremlo.near}"            # the admin; the vault and the operator are its sub-accounts
+ROOT="${ROOT:-divzzz007.near}"         # the admin (your wallet account); the vault and the operator are its sub-accounts
 VAULT="vault.$ROOT"
 OPERATOR="operator.$ROOT"
 API="${API:-https://mainnet.16-4-100-95.sslip.io}"
