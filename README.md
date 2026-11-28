@@ -80,7 +80,7 @@ Run the same line again to update. To quit, use the bottom of the menu bar panel
 <details>
 <summary>Why build from source, and what about a download?</summary>
 
-There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. The `.dmg` is on [Releases](https://github.com/DiveshK007/GREMLO/releases/tag/v1.1.0): [Gremlo-1.1.0.dmg](https://github.com/DiveshK007/GREMLO/releases/download/v1.1.0/Gremlo-1.1.0.dmg), sha256 `0eb01a54f7b638dd835930a2b129e8ba425d26c4847bc082653e2ac61e83d230` (the same hash is in `Gremlo-1.1.0.dmg.sha256` next to it; check with `shasum -a 256`). It is ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`. After that it updates itself: each update is checked against the signing key built into the app.
+There is no Apple Developer account behind Gremlo yet, so the app isn't notarized. Built on your own Mac, macOS opens it without a warning. The `.dmg` is on [Releases](https://github.com/DiveshK007/GREMLO/releases/tag/v1.1.2): [Gremlo-1.1.2.dmg](https://github.com/DiveshK007/GREMLO/releases/download/v1.1.2/Gremlo-1.1.2.dmg), sha256 `c138edb82b37802f13001614065e652758d3979bcc27d31ac816f8bcc8e55a46` (the same hash is in `Gremlo-1.1.2.dmg.sha256` next to it; check with `shasum -a 256`). It is ad hoc signed, so you'll need **System Settings → Privacy & Security → Open Anyway** the first time, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`. After that it updates itself: each update is checked against the signing key built into the app.
 </details>
 
 ## How it works

@@ -3,7 +3,9 @@
 A tag `vX.Y.Z` pushed to GitHub runs `.github/workflows/release.yml`. It:
 1. Runs the Swift tests.
 2. Builds the universal app.
-3. Signs the dmg for Sparkle and attaches the dmg, its sha256 and `appcast.xml` to the release.
+3. Signs the dmg for Sparkle, attaches the dmg, its sha256 and `appcast.xml` to a draft release, and only then publishes
+   it as Latest, so installed apps never see a release without its feed. Re-running the job for an older tag doesn't
+   make it Latest again.
 
 **Today there is no Developer ID**, so the app is ad hoc signed, as in 1.0.x. The first launch needs Open Anyway (the
 release notes say how). Updates still install: Sparkle 2 accepts an update when its EdDSA signature checks out against
