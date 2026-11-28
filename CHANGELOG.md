@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.1 (28 Nov 2026)
+
+Fixes from an on-screen pass over 1.1.0. The first update delivered by the 1.1.0 updater.
+
+- **The pet hid for hours after a screenshot.** macOS keeps `screencaptureui` running long after a screenshot, and the app took that as screen sharing: the pet stayed in the notch and the sponsored line stayed off. It now counts only while that process shows a window (the toolbar, the thumbnail, a recording's stop button).
+- **Approval dot.** The menu bar icon shows an orange dot while an approval waits, for any agent. The 1.1.0 orange tint never showed: the menu bar draws icons in one colour.
+- **Panel rows.** A long value no longer cuts off its label ("Compute b..."); Health reasons are short enough for one row; amber text is darker in Light; "Last think" shows the server's words instead of raw JSON; the Closet and Pet page rows have their full height again.
+- **VoiceOver.** Theme, Go home after and Remind me are now radio groups VoiceOver can read and change; before, it couldn't see them at all.
+
 ## v1.1.0 (28 Nov 2026)
 
 A Mac app that sets itself up and keeps itself up to date. The vault and the testnet deployment are unchanged.

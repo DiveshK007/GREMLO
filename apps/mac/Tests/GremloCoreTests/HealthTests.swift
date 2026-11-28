@@ -12,10 +12,18 @@ struct HealthTests {
         g.thisMacPaired = false
         #expect(Health.blocker(g) == "this Mac isn't paired", "pairing comes before local switches")
         g.server = .serverDown
-        #expect(Health.blocker(g) == "the server can't be reached", "the server comes first")
+        #expect(Health.blocker(g) == "server unreachable", "the server comes first")
         var h = Health.Gate(server: nil, thisMacPaired: nil)
         h.campaign = false
-        #expect(Health.blocker(h) == "no campaign is running", "unknown pairing isn't reported as unpaired")
+        #expect(Health.blocker(h) == "no campaign running", "unknown pairing isn't reported as unpaired")
+        // every reason fits one panel row next to "Counting views" (about 30 characters with the "no: ")
+        var all = Health.Gate(server: nil, thisMacPaired: true)
+        for set in [{ all.silenced = true }, { all.campaign = false }, { all.capped = true }, { all.quietHours = true }, { all.sponsored = false },
+                    { all.stream = true }, { all.focus = true }, { all.paused = true }, { all.demo = true }, { all.egg = true },
+                    { all.thisMacPaired = false }, { all.secureEnclave = false }, { all.server = .unregistered }] as [() -> Void] {
+            set()
+            #expect((Health.blocker(all)?.count ?? 0) <= 26, "\(Health.blocker(all) ?? "")")
+        }
     }
 
     @Test func viewsLineLeavesOutZeros() {

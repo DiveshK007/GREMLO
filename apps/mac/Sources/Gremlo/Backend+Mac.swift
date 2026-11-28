@@ -241,12 +241,18 @@ final class Backend: NSObject {
     }
     func resizeMenu() { if menu.isVisible { menu.fit(stack, under: item.button) } }
 
-    /// The icon's state: orange while an approval waits, dimmed while away or quiet; VoiceOver and the tooltip say why.
+    /// The icon's state: an orange dot while an approval waits (any agent's), dimmed while away or quiet; VoiceOver and
+    /// the tooltip say why. A dot, not a tint: the menu bar draws template icons in one colour and ignores contentTintColor.
     func menuBarState() {
-        let s = MenuBarState.of(approvalWaiting: pet.waiting || !broker.queue.waiting.isEmpty, server: localWhy ?? (serverError != nil ? .serverDown : nil),
+        let waiting = pet.waiting || !broker.queue.waiting.isEmpty || companions.pets.values.contains { $0.waiting }
+        let s = MenuBarState.of(approvalWaiting: waiting, server: localWhy ?? (serverError != nil ? .serverDown : nil),
                                 paused: paused, focus: privacy.focus != nil)
         guard let b = item.button else { return }
-        b.contentTintColor = s == .approval ? .systemOrange : nil
+        let dot = s == .approval
+        if dot != (b.attributedTitle.length > 0) {
+            b.imagePosition = .imageLeft
+            b.attributedTitle = dot ? NSAttributedString(string: "\u{25CF}", attributes: [.foregroundColor: NSColor.systemOrange, .font: NSFont.systemFont(ofSize: 9)]) : NSAttributedString()
+        }
         switch s { case .away, .quiet: b.appearsDisabled = true; case .normal, .approval: b.appearsDisabled = false }
         b.setAccessibilityLabel(s.label(productName))
         b.toolTip = s.label(productName)
@@ -323,7 +329,7 @@ final class Backend: NSObject {
                                    "species": pet.skin.name, "stage": growth.isEgg ? "egg" : "\(growth.p.stage)"]
         request(petPath + "/think", body: body) { data, err in
             self.thinking = false
-            if let err { self.lastThink = "think failed: \(err)"; self.diagnostics.count(.thinkFailed) }
+            if let err { self.lastThink = "think failed: \(ServerError.text(err))"; self.diagnostics.count(.thinkFailed) }
             else if let data, let r = try? JSONDecoder().decode(ThinkResult.self, from: data) {
                 if let pay = r.payFor { self.purse.pay(pay) }  // a purse pet pays for this thought itself
                 let id = r.requestId.map { "completion \($0)" } ?? "no AI call"
@@ -506,13 +512,13 @@ final class Backend: NSObject {
             : thisMacPaired == false ? (info?.paired == true ? "not paired (another Mac is)" : "not paired") : "\u{2014}"
         let v = info?.views
         let t = DateFormatter(); t.timeStyle = .short; t.dateStyle = .none
-        let share = info?.compute?.shareBps.map { " \u{00B7} \($0 / 100)% of each paid view" } ?? ""
-        var rows = [UI.kv("Server", server, width: w, valueColor: g.server == nil ? UI.fg : UI.amber),
-                    UI.kv("This Mac", mac, width: w, valueColor: thisMacPaired == false ? UI.amber : UI.fg),
-                    UI.kv("Counting views", blocker.map { "no: \($0)" } ?? "yes, while the agent works", width: w, valueColor: blocker == nil ? UI.fg : UI.amber),
+        let share = info?.compute?.shareBps.map { " \u{00B7} \($0 / 100)% of earnings" } ?? ""
+        var rows = [UI.kv("Server", server, width: w, valueColor: g.server == nil ? UI.fg : UI.amberText),
+                    UI.kv("This Mac", mac, width: w, valueColor: thisMacPaired == false ? UI.amberText : UI.fg),
+                    UI.kv("Counting views", blocker.map { "no: \($0)" } ?? "yes, while the agent works", width: w, valueColor: blocker == nil ? UI.fg : UI.amberText),
                     UI.kv("Views", info.map { Health.views(today: $0.impressionsToday, held: v?.held, payable: v?.payable, settledToday: v?.settledToday, holdbackHours: v?.holdbackHours) } ?? "\u{2014}", width: w)]
-        if let l = lastView { rows.append(UI.kv("Last view", "\(l.refused == nil ? "counted" : "not counted") at \(t.string(from: l.at))", width: w, valueColor: l.refused == nil ? UI.fg : UI.amber)) }
-        rows.append(UI.kv("Compute budget", near4(info?.computeBalance) + share, width: w, valueColor: info?.compute?.shareBps == 0 ? UI.amber : UI.fg))
+        if let l = lastView { rows.append(UI.kv("Last view", "\(l.refused == nil ? "counted" : "not counted") at \(t.string(from: l.at))", width: w, valueColor: l.refused == nil ? UI.fg : UI.amberText)) }
+        rows.append(UI.kv("Compute budget", near4(info?.computeBalance) + share, width: w, valueColor: info?.compute?.shareBps == 0 ? UI.amberText : UI.fg))
         if SocialController.parkOn { rows.append(UI.kv("Park", social.parkStatus ?? "joining\u{2026}", width: w)) }
         return UI.group("Health", rows, width: w)
     }

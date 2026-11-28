@@ -24,6 +24,7 @@ enum UI {
     static let rule = dyn(hex(Palette.paper, 0.14), hex(Palette.ink, 0.14))
     static let ink = hex(Palette.ink), paper = hex(Palette.paper)
     static let amber = NSColor.systemOrange
+    static let amberText = dyn(.systemOrange, hex("#A34700"))  // amber for words: system orange is too faint on the light surface
 
     /// The pet's colour for fills (switches, bars, the primary button) and its text shade (the paper-safe one on light).
     private(set) static var accent = hex("#FF5A3C")
@@ -86,6 +87,8 @@ enum UI {
     static func row(_ title: String, _ detail: String? = nil, _ control: NSView? = nil, width: CGFloat) -> NSView {
         let room = width - 40 - (control?.fittingSize.width ?? 0)  // the detail wraps beside the control, never under it
         let words = vstack([label(title, body(13, .medium), fg, wrap: false)] + (detail.map { [label($0, body(11), text2, width: room)] } ?? []), spacing: 2)
+        // VoiceOver names a control by its row when the control has no label of its own (a Seg, a slider)
+        if let control, (control.accessibilityLabel() ?? "").isEmpty { control.setAccessibilityLabel(title) }
         let r = hstack([words, spacer()] + (control.map { [$0] } ?? []), spacing: 12)
         r.edgeInsets = NSEdgeInsets(top: rowY, left: margin, bottom: rowY, right: margin)
         r.widthAnchor.constraint(equalToConstant: width).isActive = true
@@ -96,7 +99,10 @@ enum UI {
     static func kv(_ key: String, _ value: String, width: CGFloat, valueColor: NSColor = fg) -> NSView {
         let v = label(value, digits(12, .medium), valueColor, wrap: false)
         v.alignment = .right
-        let r = hstack([label(key, body(12), text2, wrap: false), spacer(), v], align: .firstBaseline)
+        v.toolTip = value
+        let k = label(key, body(12), text2, wrap: false)
+        k.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)  // a long value truncates (full text in its tooltip), never the key
+        let r = hstack([k, spacer(), v], align: .firstBaseline)
         r.edgeInsets = NSEdgeInsets(top: rowY, left: margin, bottom: rowY, right: margin)
         r.widthAnchor.constraint(equalToConstant: width).isActive = true
         return r
@@ -363,6 +369,10 @@ final class Seg: NSControl {
                                      row.leadingAnchor.constraint(equalTo: leadingAnchor), row.trailingAnchor.constraint(equalTo: trailingAnchor)])
         selectedSegment = momentary ? -1 : selected
         restyle()
+        // an NSControl with no cell hides its subviews from Accessibility: expose it as a radio group of its buttons
+        setAccessibilityElement(true)
+        setAccessibilityRole(momentary ? .group : .radioGroup)
+        setAccessibilityChildren(buttons)
     }
     required init?(coder: NSCoder) { fatalError() }
     override var wantsUpdateLayer: Bool { true }

@@ -265,7 +265,7 @@ final class PrivacyController {
 enum Detect {
     /// Processes that only run while the screen is shared or recorded.
     /// shortcut: a process-name list (Zoom's share host, the system recorder); browser-based sharing isn't seen.
-    static let sharing: Set<String> = ["CptHost", "screencaptureui"]
+    static let sharing: Set<String> = ["CptHost"]  // Zoom's screen-share host
 
     static func screenShared() -> Bool {
         let n = proc_listallpids(nil, 0)
@@ -276,7 +276,10 @@ enum Detect {
         for pid in pids.prefix(Int(max(0, count))) where pid > 0 {
             if proc_name(pid, &name, UInt32(name.count)) > 0, sharing.contains(String(cString: name)) { return true }
         }
-        return false
+        // screencaptureui stays running for hours after a screenshot; it means a capture only while it shows a window
+        // (the toolbar, the thumbnail, the recording's stop button)
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.contains { $0[kCGWindowOwnerName as String] as? String == "screencaptureui" }
     }
 
     /// The default microphone is in use by some app: treat as a call.

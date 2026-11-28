@@ -12,26 +12,27 @@ public enum Health {
         public init(server: LocalLife.Why?, thisMacPaired: Bool?) { self.server = server; self.thisMacPaired = thisMacPaired }
     }
 
-    /// The first thing stopping views from counting, in the order to fix them; nil when they count.
+    /// The first thing stopping views from counting, in the order to fix them; nil when they count. Short enough to
+    /// fit one panel row; the longer story is already in the panel (the egg row, Now showing, the stream note).
     public static func blocker(_ g: Gate) -> String? {
         switch g.server {
-        case .unregistered: return "the pet isn't registered yet"
-        case .serverDown: return "the server can't be reached"
+        case .unregistered: return "pet not registered"
+        case .serverDown: return "server unreachable"
         case .offline: return "this Mac is offline"
         case nil: break
         }
-        if !g.secureEnclave { return "this Mac has no Secure Enclave to sign views" }
+        if !g.secureEnclave { return "no Secure Enclave" }
         if g.thisMacPaired == false { return "this Mac isn't paired" }
-        if g.egg { return "still an egg: it hatches after 50 tool calls" }
+        if g.egg { return "still an egg" }
         if g.demo { return "demo mode is on" }
         if g.paused { return "paused" }
         if g.focus { return "focus is on" }
-        if g.stream { return "stream mode is on (it stays on after a restart)" }
-        if !g.sponsored { return "sponsored lines are off (Settings, Earning)" }
-        if g.quietHours { return "quiet hours, until 08:00" }
-        if g.capped { return "the daily limit is reached" }
-        if !g.campaign { return "no campaign is running" }
-        if g.silenced { return "hidden during a screen share, meeting or full-screen video" }
+        if g.stream { return "stream mode is on" }
+        if !g.sponsored { return "sponsored lines off" }
+        if g.quietHours { return "quiet hours" }
+        if g.capped { return "daily limit reached" }
+        if !g.campaign { return "no campaign running" }
+        if g.silenced { return "screen shared or in a call" }
         return nil
     }
 

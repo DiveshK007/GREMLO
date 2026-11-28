@@ -64,7 +64,7 @@ If you press **Later**, run it again from Settings → General → Setup.
 | Hash differs | Wrong file or a bad download. Stop. |
 | "Gremlo is damaged" | Quarantine on an ad hoc build. Use Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Gremlo.app`. |
 | No setup window, no sponsored-lines alert | Old settings survived step 0 (`defaults read app.gremlo.mac`). Run the setup from Settings → General; lines stay off until Settings → Earning → Show sponsored lines. |
-| Pressed **Not now** | Health shows `Counting views: no: sponsored lines are off`. Turn it on in Settings → Earning. |
+| Pressed **Not now** | Health shows `Counting views: no: sponsored lines off`. Turn it on in Settings → Earning. |
 
 ## 2. Get a pet (register)
 
@@ -111,7 +111,7 @@ it, connect the **owner's** wallet on the page that opens, and sign.
 ## 5. Hatch
 
 A fresh pet is an egg, and **an egg shows no lines, so no views count.** Health says
-`Counting views: no: still an egg: it hatches after 50 tool calls`.
+`Counting views: no: still an egg`.
 
 **Do:** either run Claude Code until 50 tool calls, or **option-click the egg** to hatch it now.
 
@@ -126,13 +126,13 @@ line. The popover's "Now showing" has the same line and "by <brand>". Health: `C
 
 | Failure (Health `Counting views: no: …`) | Meaning |
 |---|---|
-| `no campaign is running` | No active campaign on the server. `curl …/campaigns/active` returns `null`. Fund one at `/brand`. |
-| `stream mode is on (it stays on after a restart)` | Settings → Privacy → Stream mode. It is saved, so it stays on after a reinstall that kept settings. |
+| `no campaign running` | No active campaign on the server. `curl …/campaigns/active` returns `null`. Fund one at `/brand`. |
+| `stream mode is on` | Settings → Privacy → Stream mode. It is saved, so it stays on after a restart, so it stays on after a reinstall that kept settings. |
 | `focus is on` / `paused` | Focus (⌥⌘F) or pause (⌥⌘P, or a long press on the notch). End it from the popover. |
-| `quiet hours, until 08:00` | Settings → Earning → Quiet hours, between 22:00 and 08:00. |
-| `the daily limit is reached` | 120 views today already. |
+| `quiet hours` | Settings → Earning → Quiet hours, between 22:00 and 08:00. |
+| `daily limit reached` | 120 views today already. |
 | `demo mode is on` | The play icon in the popover header is red. Turn demo mode off. |
-| `hidden during a screen share, meeting or full-screen video` | Expected. Stop the share or the call, or leave full screen. |
+| `screen shared or in a call` | Expected while sharing, recording or in a call, and in full screen. Stop it and the pet comes back. (Before 1.1.1 a screenshot could cause this for hours.) |
 | No pet reaction at all | The hooks aren't firing. Check step 3, and that nothing else is on port 47474 (`lsof -i :47474`). |
 
 ## 7. View signed and counted
@@ -184,12 +184,12 @@ brands" shows the views. Record the tx hash and open it on testnet.nearblocks.io
 
 ## 10. Compute budget > 0
 
-**See:** Health `Compute budget: <amount> · 20% of each paid view` (20% is the default share), and the amount is above 0.
+**See:** Health `Compute budget: <amount> · 20% of earnings` (20% is the default share), and the amount is above 0.
 `curl …/pets/<pet> | jq .compute` shows `budget` above 0. The mood in the popover header is `thriving` or `stable`.
 
 | Failure | Meaning |
 |---|---|
-| `Compute budget: 0.0000 · 0% of each paid view` (amber) | The owner set the compute share to 0. Every payment goes to the payout account, and the pet can never think. Set a share above 0. |
+| `Compute budget: 0.0000 · 0% of earnings` (amber) | The owner set the compute share to 0. Every payment goes to the payout account, and the pet can never think. Set a share above 0. |
 | Budget above 0 but mood `hungry` / "sleeping: daily compute cap reached" | The budget is there, but today's cap is used up. It resets at UTC midnight. |
 | "sleeping: compute budget empty" | The settlement paid too little for one thought at the cheap fee. More views, or a higher rate. |
 

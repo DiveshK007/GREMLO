@@ -369,7 +369,8 @@ final class LinkRow: NSButton {
                                      bg.leadingAnchor.constraint(equalTo: leadingAnchor), bg.trailingAnchor.constraint(equalTo: trailingAnchor),
                                      r.topAnchor.constraint(equalTo: topAnchor), r.bottomAnchor.constraint(equalTo: bottomAnchor),
                                      r.leadingAnchor.constraint(equalTo: leadingAnchor), r.trailingAnchor.constraint(equalTo: trailingAnchor),
-                                     widthAnchor.constraint(equalToConstant: width)])
+                                     widthAnchor.constraint(equalToConstant: width),
+                                     heightAnchor.constraint(greaterThanOrEqualToConstant: detail == nil ? 40 : 48)])  // NSButton's own short height won otherwise
         setAccessibilityLabel(title)
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
