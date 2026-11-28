@@ -36,3 +36,6 @@ apps/server/logs/
 # Playwright
 test-results/
 playwright-report/
+
+# the mainnet spec is a private planning document (strategy, people); it stays local
+docs/MAINNET_UPGRADE_SPEC.md
