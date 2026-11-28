@@ -59,3 +59,11 @@ export function petView(p: {
     seeded: p.seeded,
   };
 }
+
+/** One pet's views the server holds: waiting out the holdback, and released but not yet settled. */
+export function queuedViews(held: Record<string, { pet: string; n: number }[]>, pending: Record<string, Record<string, number>>, pet: string) {
+  let h = 0, p = 0;
+  for (const list of Object.values(held)) for (const x of list) if (x.pet === pet) h += x.n;
+  for (const q of Object.values(pending)) p += q[pet] ?? 0;
+  return { held: h, payable: p };
+}

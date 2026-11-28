@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campaignView, CAPPED, computeMood, EMPTY, petView } from "./views.ts";
+import { campaignView, CAPPED, computeMood, EMPTY, petView, queuedViews } from "./views.ts";
 
 const fees = { smart: 500n, cheap: 100n };
 const c = (budget: bigint, chargedToday = 0n, dailyCap = 2000n) => ({ budget, chargedToday, dailyCap });
@@ -48,4 +48,11 @@ test("pet shape: earnings and compute budget come straight from the chain, never
   assert.equal(v.computeBalance, "0");
   const dark = petView({ name: "m", walletBalance: null, compute: null, fees, impressionsToday: 0, seeded: false });
   assert.deepEqual([dark.mood, dark.walletBalance, dark.computeBalance], ["asleep", null, null]);
+});
+
+test("queued views: one pet's held and payable views across campaigns, nobody else's", () => {
+  const held = { "1": [{ pet: "a", n: 2 }, { pet: "b", n: 9 }, { pet: "a", n: 1 }], "2": [{ pet: "a", n: 4 }] };
+  const pending = { "1": { a: 5, b: 1 }, "3": { a: 2 } };
+  assert.deepEqual(queuedViews(held, pending, "a"), { held: 7, payable: 7 });
+  assert.deepEqual(queuedViews(held, pending, "c"), { held: 0, payable: 0 });
 });

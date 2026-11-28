@@ -11,7 +11,7 @@ import { alertDue, mailOn, sendMail, usedPct, WEEK_MS, weeklyReport } from "../m
 import { PRODUCT } from "../../../../packages/brain/product.js";
 import { coded, type Loose } from "../json.ts";
 import { campaigns } from "./campaigns.ts";
-import { HOLDBACK_HOURS, NOT_HANDLED, type OnchainCampaign, type OnchainPet, type Url, clientIp, errMsg, nowS, save, saveNow, store } from "../state.ts";
+import { HOLDBACK_HOURS, NOT_HANDLED, type OnchainCampaign, type OnchainPet, type Url, clientIp, errMsg, nowS, save, saveNow, settleErrors, store } from "../state.ts";
 
 const settling = new Set<string>(); // campaigns with a settlement in flight
 
@@ -57,6 +57,8 @@ async function settle(id: string) {
         if (pet && !(await accountExists(pet.payout))) {
           throw new Error(`pet ${s.pet}'s payout account ${pet.payout} does not exist; its owner must set one that does (set_payout)`);
         }
+        // the vault refuses unverified pets; saying so here saves a failing tx's gas every worker pass
+        if (pet && !pet.verified) throw new Error(`pet ${s.pet} isn't verified onchain; register it again on the web to finish verification`);
         const txHash = await send("settle_impressions", { id: Number(id), pet_id: s.pet, count: s.count });
         // deduct only what was paid, one pet at a time, so a failure mid-batch loses nothing
         markSettled(store.pending[id], s.pet, s.count, "paid");
@@ -64,14 +66,17 @@ async function settle(id: string) {
         store.payouts = [...store.payouts, { at: Date.now(), id, pet: s.pet, views: s.count, wei: s.amount.toString(), tx: txHash }].slice(-5000);
         saveNow();
         settled.push({ petKey: s.pet, count: s.count, amount: s.amount.toString(), txHash });
+        settleErrors.delete(s.pet);
         console.log(`settle: campaign ${id} paid ${s.pet} for ${s.count} views (${s.amount} yoctoNEAR), tx ${txHash}`);
       } catch (err) {
         const e = coded(err);
         markSettled(store.pending[id], s.pet, s.count, e.unconfirmedTx ? "unconfirmed" : "failed");
         if (e.unconfirmedTx) console.error(`settle: campaign ${id} ${s.pet} unconfirmed, tx ${e.unconfirmedTx}; held back, not resent (check it on the explorer)`);
         saveNow();
-        error = errMsg(e);
-        break;
+        error ??= errMsg(e);
+        settleErrors.set(s.pet, errMsg(e));
+        // an unconfirmed tx means the RPC is in doubt: stop. Any other failure is this pet's; the pets after it still get paid.
+        if (e.unconfirmedTx) break;
       }
     }
     // one tx per pet; txHash is the first so a one-pet demo gets a single link
@@ -128,7 +133,7 @@ async function workerPass() {
         }
         if (job === "settle") {
           const r = await settle(String(id));
-          console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, stopped: ${r.error}` : ""}`);
+          console.log(`worker: settled campaign ${id}: ${r.count} views, txs ${r.settled.map((x) => x.txHash).join(", ") || "none"}${r.error ? `, failed: ${r.error}` : ""}`);
         } else if (job === "refund") {
           console.log(`worker: closed campaign ${id}, refund tx ${await send("close", { id })}`);
         }

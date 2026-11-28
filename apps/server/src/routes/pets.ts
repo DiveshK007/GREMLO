@@ -5,7 +5,7 @@ import { type IncomingMessage } from "node:http";
 import { accountExists, accountInfo, balanceOf, explorer, isMissingAccount, operatorId, provider, seeded, send, txOutcome, vault, view, viewOn } from "../chain.ts";
 import { overdue, owed, paymentMatches, purseAccount, purseFits, spendable, type PurseView } from "../purse.ts";
 import { countImpression, level, markDay, streak, underDailyCap } from "../batch.ts";
-import { petView, type Compute } from "../views.ts";
+import { petView, queuedViews, type Compute } from "../views.ts";
 import { bad, HttpError, makeRegister, verifyWorldProof, type PetRecord } from "../register.ts";
 import { capSet } from "../prune.ts";
 import { addThought } from "../thoughts.ts";
@@ -37,6 +37,7 @@ import {
   reserve,
   save,
   saveNow,
+  settleErrors,
   signer,
   store,
   str,
@@ -169,7 +170,7 @@ function addImpressions(req: IncomingMessage, raw: string) {
 }
 
 /** A registered pet as the Mac and web read it: mood from its onchain compute budget, earnings from the vault. */
-async function getPet(key: string) {
+async function getPet(key: string, device: string | null = null) {
   const rec = findPet(key);
   if (!rec) throw new HttpError(404, "unknown pet");
   const petKey = rec.petKey;
@@ -206,6 +207,14 @@ async function getPet(key: string) {
     petKey,
     species: rec.species ? rec.species.replace(/^gremlo-/, "") : null, // as the Mac last reported it; null until then
     paired: !!rec.devices?.length, // whether a Mac is paired (views count only from one); never the keys themselves
+    // whether the asking Mac's own key is paired: a reinstall makes a new key, so `paired` alone can say yes while every view gets a 401
+    thisDevicePaired: device ? !!rec.devices?.includes(device) : null,
+    views: {
+      ...queuedViews(store.held, store.pending, petKey),
+      holdbackHours: HOLDBACK_HOURS,
+      settledToday: store.payouts.filter((x) => x.pet === petKey && x.at >= Date.parse(utcDay())).reduce((n, x) => n + x.views, 0),
+      settleError: settleErrors.get(petKey) ?? null,
+    },
     stage: rec.stage ?? null,
     // settlement txs that fed this pet's compute budget: each is one meal (a receipt) for growth on the Mac
     meals: store.payouts
@@ -458,7 +467,7 @@ export async function handle(req: IncomingMessage, { pathname, searchParams }: U
     if (pet) mustBeFrom(pet, signed, REQUIRE_SIGNED);
     return petDiary(decodeURIComponent(diaryPath[1]), parse(raw));
   }
-  if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)));
+  if (m === "GET" && pathname.startsWith("/pets/")) return getPet(decodeURIComponent(pathname.slice(6)), searchParams.get("device"));
   return NOT_HANDLED;
 }
 

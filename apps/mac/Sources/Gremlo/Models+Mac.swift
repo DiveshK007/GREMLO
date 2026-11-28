@@ -19,8 +19,12 @@ struct PetInfo: Decodable {
     let explorer: String? // nearblocks for the server's network
     let meals: [String]? // settlement txs that fed the compute budget: one meal each, for growth
     let paired: Bool? // a Mac is paired to this pet; nil from an older server
+    let thisDevicePaired: Bool? // this Mac's own key is paired (a reinstall makes a new one); nil from an older server
+    let views: PetViews? // what the server holds for this pet; nil from an older server
     let purse: PurseInfo? // the pet's own purse, when it has one; it pays for each thought itself
 }
+/// Counted views wait `holdbackHours` (held), then queue for the worker (payable) until a settlement pays them.
+struct PetViews: Decodable { let held: Int; let payable: Int; let holdbackHours: Double; let settledToday: Int; let settleError: String? }
 
 /// Species are earned, never bought (spec D §2): starters are open; the rest show what unlocks them.
 func speciesLock(_ id: String) -> String? { backend.growth.lockReason(id) }

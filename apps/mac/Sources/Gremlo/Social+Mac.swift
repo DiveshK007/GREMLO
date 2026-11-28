@@ -102,6 +102,7 @@ final class SocialController {
     func setPark(_ on: Bool) {
         defaults.set(on, forKey: "park")
         if on { parkHeartbeat(); return }
+        parkStatus = nil
         guard let id = defaults.string(forKey: "park.id"), let token = defaults.string(forKey: "park.token"),
               let url = URL(string: "\(backend.base)/park/\(id)?token=\(token)") else { return }
         var req = URLRequest(url: url); req.httpMethod = "DELETE"
@@ -113,13 +114,22 @@ final class SocialController {
         return ["name": g.petDisplayName, "species": pet.skin.name, "stage": g.isEgg ? "hatchling" : "\(g.p.stage)", "outfit": g.p.worn, "tricks": g.tricks.map(\.rawValue)]
     }
 
+    /// Why the pet is or isn't in the park, for Settings and the panel's Health rows; nil while the park is off.
+    var parkStatus: String?
     private func parkHeartbeat() {
-        guard Self.parkOn, !backend.growth.isEgg else { return }
+        guard Self.parkOn else { parkStatus = nil; return }
+        guard !backend.growth.isEgg else { parkStatus = "joins once it hatches"; return }
         var body = parkPayload
         if let id = defaults.string(forKey: "park.id") { body["id"] = id; body["token"] = defaults.string(forKey: "park.token") ?? "" }
-        backend.request("/park", body: body) { data, _ in
-            guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let id = o["id"] as? String, let t = o["token"] as? String else { return }
+        backend.request("/park", body: body) { [weak self] data, err in
+            guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let id = o["id"] as? String, let t = o["token"] as? String else {
+                // a 403 means the saved park id isn't ours any more: forget it so the next heartbeat joins fresh
+                if err?.hasPrefix("HTTP 403") == true { defaults.removeObject(forKey: "park.id"); defaults.removeObject(forKey: "park.token") }
+                self?.parkStatus = "couldn't join: \(err.map(ServerError.text) ?? "no answer")"
+                return
+            }
             defaults.set(id, forKey: "park.id"); defaults.set(t, forKey: "park.token")
+            self?.parkStatus = "in the park while the app runs (gone 15 min after it quits)"
         }
     }
 
@@ -172,7 +182,7 @@ extension Backend {
                 UI.row("", nil, Btn("Send", target: self, action: #selector(sendCompanion)), width: w),
             ], width: w),
             UI.group("Park", [
-                UI.row("Show my pet in the park", "Name, species, stage and outfit only. No ranking, no counts.",
+                UI.row("Show my pet in the park", "Name, species, stage and outfit only. No ranking, no counts." + (social.parkStatus.map { " Now: \($0)." } ?? ""),
                        Toggle(on: SocialController.parkOn, target: self, action: #selector(togglePark(_:)), label: "Show my pet in the park"), width: w),
             ], width: w),
         ]

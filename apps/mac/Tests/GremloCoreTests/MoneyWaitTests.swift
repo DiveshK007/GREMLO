@@ -31,4 +31,11 @@ import Testing
         w.handle("UserPromptSubmit", at: t0 + 200); w.handle("UserPromptSubmit", at: t0 + 200 + 7200)
         #expect(w.minutes(at: t0 + 200 + 7200) == 62)
     }
+
+    @Test func serverErrorTextIsTheServersOwnWords() {
+        #expect(ServerError.text(#"HTTP 400 {"error":"view not counted: the screen was locked"}"#) == "view not counted: the screen was locked")
+        #expect(ServerError.text(#"HTTP 401 {"error":"pair this Mac with your pet first (Gremlo menu \"Settings\")"}"#) == #"pair this Mac with your pet first (Gremlo menu "Settings")"#)
+        #expect(ServerError.text("The request timed out.") == "The request timed out.", "a network failure stays as it is")
+        #expect(ServerError.text(#"HTTP 502 {"error":"cut sho"#) == #"HTTP 502 {"error":"cut sho"#, "a cut-off body is shown raw, not guessed at")
+    }
 }

@@ -207,6 +207,8 @@ export function signer(req: IncomingMessage, path: string, raw: string) {
 }
 
 export const reserve = makeReserve(); // pet -> compute held for AI calls in flight and charges not landed yet
+/** pet key -> why its last settlement failed; cleared when one lands. In memory: the next worker pass refills it. */
+export const settleErrors = new Map<string, string>();
 
 export const str = (v: unknown, max = 64) => (typeof v === "string" ? v.slice(0, max) : undefined);
 

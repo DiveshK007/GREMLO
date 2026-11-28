@@ -26,3 +26,11 @@ public enum LocalLife {
         }
     }
 }
+
+public enum ServerError {
+    /// The server's own words from a failed request ("HTTP 400 {"error":"..."}", maybe cut short), else the failure as given.
+    public static func text(_ err: String) -> String {
+        guard let r = err.range(of: #""error":"((?:[^"\\]|\\.)*)""#, options: .regularExpression) else { return err }
+        return String(err[r].dropFirst(9).dropLast()).replacingOccurrences(of: "\\\"", with: "\"")
+    }
+}

@@ -24,6 +24,8 @@ final class Backend: NSObject {
     private var hinted: LocalLife.Why?
     var thinking = false
     var lastImpression: [String: Date] = [:] // campaign id -> last report; server enforces the same window
+    /// The last view this Mac sent and why it didn't count (nil when it did), so a refusal shows in the panel, not only in the log.
+    var lastView: (at: Date, refused: String?)?
     var waited = WaitClock()
     // Hook rotation: the next hook on each new appearance of the sign, and every 45s while it stays up.
     var hookIndex = 0
@@ -201,6 +203,8 @@ final class Backend: NSObject {
         request("/impressions", body: ["impressions": [view]]) { data, err in
             if let err { print("view: not sent: \(err)") }
             else { print("view: server answered \(String(decoding: data ?? Data(), as: UTF8.self).prefix(120))") }
+            let accepted = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["accepted"] as? Int
+            self.lastView = (Date(), err.map(ServerError.text) ?? (accepted == 0 ? "one a minute per campaign, at most \(dailyViewCap) a day" : nil))
             self.refresh()
         }
     }
@@ -267,7 +271,7 @@ final class Backend: NSObject {
         }
         petSent += 1
         let seq = petSent
-        request(petPath) { data, err in
+        request(petPath + (devicePublicKey.map { "?device=\($0)" } ?? "")) { data, err in
             guard seq > self.petApplied else { return }
             self.petApplied = seq
             if let err {
@@ -346,7 +350,7 @@ final class Backend: NSObject {
         }
         if showingDemo { return }
         let tick = privacy.pomodoro?.fast == true ? 1.0 : 60.0  // the fast test timing counts seconds
-        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))"
+        let key = "\(privacy.focus.map { Int($0.remaining(Date()) / tick) } ?? -1)|\(privacy.pomodoro.map { "\($0.cycle)\(Int($0.breakRemaining(Date()) / tick))" } ?? "-")|\(PrivacyController.streamOn)|\(growth.p.meals.count)|\(growth.p.stars)|\(growth.isEgg)|\(String(describing: info))|\(String(describing: campaign))|\(serverError ?? "")|\(lastThink)|\(pet.waiting)|\(pet.skin.name)|\(demoMode)|\(hookIndex)|\(sponsoredOn)|\(String(describing: localWhy))|\(lastView?.refused ?? "")"
         if key == shown { return }
         shown = key
         UI.setAccent(pet.skin.species)
@@ -372,14 +376,19 @@ final class Backend: NSObject {
         if seeded { notes.append(UI.notice("Seeded data, not real money", UI.amber, width: w)) }
         if let why = localWhy { notes.append(UI.notice(LocalLife.panel(why, pet: petName), UI.text3, width: w)) }
         if let e = serverError, localWhy != .unregistered { notes.append(UI.notice("Server: \(e)", UI.text3, width: w)) }
-        // views count only from a paired Mac, so an unpaired one says so first and offers the one step that fixes it
-        if info?.paired == false && !seeded {
+        // views count only from this Mac's own paired key, so an unpaired one says so first and offers the one step that fixes it
+        if info != nil, thisMacPaired == false, !seeded {
             let pair = Btn("Pair", style: .primary, target: self, action: #selector(pairDevice)); pair.small = true
-            let text = devicePublicKey == nil ? "This Mac has no Secure Enclave, so its views can't count." : "Not paired yet: views from this Mac don't count."
+            let text = devicePublicKey == nil ? "This Mac has no Secure Enclave, so its views can't count."
+                : info?.paired == true ? "This Mac isn't the one paired to \(petName) (a reinstall or a new pet name needs a new pairing). Its views don't count."
+                : "Not paired yet: views from this Mac don't count."
             let r = UI.hstack([UI.notice(text, UI.amber, width: w - (devicePublicKey == nil ? 0 : 64)), UI.spacer()] + (devicePublicKey == nil ? [] : [pair]))
             r.widthAnchor.constraint(equalToConstant: w).isActive = true
             notes.append(r)
+        } else if let why = lastView?.refused, localWhy == nil, serverError == nil {
+            notes.append(UI.notice("Last view not counted: \(why.replacingOccurrences(of: "view not counted: ", with: ""))", UI.amber, width: w))
         }
+        if let e = info?.views?.settleError { notes.append(UI.notice("Views can't be paid right now: \(e)", UI.amber, width: w)) }
         if let f = privacy.focus {
             let end = Btn("End", style: .secondary, target: self, action: #selector(endFocusNow)); end.small = true
             let block = privacy.pomodoro.map { " Block \($0.cycle) of \(Pomodoro.cycles)." } ?? ""
@@ -548,6 +557,8 @@ final class Backend: NSObject {
         defaults.set(quietHours, forKey: "quietHours")
         render()
     }
+    /// This Mac's own key is paired to the pet. An older server only says whether any Mac is; nil until the pet loads.
+    var thisMacPaired: Bool? { devicePublicKey == nil ? false : info?.thisDevicePaired ?? info?.paired }
     /** Hooks show only once the server knows the pet (an unregistered pet's views are never paid), when opted in,
      *  outside quiet hours, and under the daily cap. */
     var showHooks: Bool { info != nil && sponsoredOn && !inQuietHours() && (info?.impressionsToday ?? 0) < dailyViewCap }
