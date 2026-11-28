@@ -1,6 +1,6 @@
 name: release
-# Pushing a tag like v0.3.0 builds the ad hoc signed, universal Gremlo dmg and attaches it to that tag's GitHub release.
-# Not notarized (no Apple Developer account yet): the release notes give the first-launch steps.
+# Pushing a tag like v1.1.0 builds the universal Gremlo dmg, signs it with the Developer ID, notarizes and staples it,
+# and attaches it to that tag's GitHub release. Without the signing secrets the job fails rather than ship an unsigned dmg.
 on:
   push:
     tags: ["v*"]
@@ -15,7 +15,30 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift build && swift test
         working-directory: apps/mac
-      - run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/release-mac.sh
+      - name: Import the Developer ID certificate into a throwaway keychain
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          for v in APPLE_CERT_P12 APPLE_CERT_PASSWORD; do [ -n "${!v}" ] || { echo "secret $v is not set"; exit 1; }; done
+          kc="$RUNNER_TEMP/signing.keychain-db"; kcpw="$(uuidgen)"
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          printf '%s' "$APPLE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kcpw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          id="$(security find-identity -v -p codesigning "$kc" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          [ -n "$id" ] || { echo "no Developer ID Application identity in APPLE_CERT_P12"; exit 1; }
+          echo "SIGN_ID=$id" >> "$GITHUB_ENV"
+      - name: Build, sign, notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/release-mac.sh
       - name: Attach the dmg to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -26,18 +49,13 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --verify-tag --title "Gremlo $GITHUB_REF_NAME" --notes "$(cat <<'EOF'
           Gremlo for macOS 13 or later (Apple silicon and Intel).
 
-          This build isn't notarized yet: there's no Apple Developer account behind it. It is ad hoc signed and built by
-          this repo's release workflow from the tagged source. macOS will say it can't check it for malware the first time.
+          Signed with a Developer ID and notarized by Apple. Open the dmg, drag Gremlo onto Applications, and open it.
 
-          First launch:
-          1. Open the dmg and drag Gremlo onto Applications.
-          2. Open Gremlo. When macOS says it was not opened, click Done.
-          3. Open System Settings, Privacy & Security, scroll to Security, and click Open Anyway next to Gremlo. Confirm with your password, then click Open.
-
-          Or, in Terminal, once: `xattr -dr com.apple.quarantine /Applications/Gremlo.app`
-
-          To skip all of this, build it on your Mac instead: `curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash`
+          Or build it on your Mac instead: `curl -fsSL https://raw.githubusercontent.com/DiveshK007/GREMLO/main/install.sh | bash`
           EOF
           )"
           fi
           gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" --clobber
+      - name: Remove the keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Builds Gremlo.app (universal), signs it with a Developer ID, wraps it in a dmg, notarizes and staples the dmg.
+# Builds Gremlo.app (universal), signs it with a Developer ID (hardened runtime, Gremlo.entitlements), wraps it in a
+# dmg, notarizes and staples the dmg.
 #   SIGN_ID         "Developer ID Application: Name (TEAMID)"   (security find-identity -v -p codesigning)
-#   NOTARY_PROFILE  a notarytool keychain profile, made once with:
+#   notarizing      either NOTARY_PROFILE, a notarytool keychain profile made once with
 #                   xcrun notarytool store-credentials gremlo --apple-id you@x.com --team-id TEAMID --password <app-specific password>
+#                   or APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD in the environment (release.yml)
 # Without SIGN_ID it signs ad hoc and skips notarization: fine for your own Mac, Gatekeeper blocks it elsewhere.
 #   ARCH=native     build for this Mac only (install.sh); default is universal (arm64 + x86_64)
 #   NO_DMG=1        stop after Gremlo.app (install.sh)
@@ -54,7 +56,7 @@ PLIST
 if [ -n "${SIGN_ID:-}" ]; then
   # nested code first (the CLI), then the bundle
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/gremlo-cli"
-  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+  codesign --force --options runtime --timestamp --entitlements Gremlo.entitlements --sign "$SIGN_ID" "$APP"
 else
   echo "SIGN_ID not set: ad hoc signature, no notarization (runs on this Mac only)"
   codesign --force --sign - "$APP/Contents/MacOS/gremlo-cli"
@@ -71,8 +73,19 @@ hdiutil create -quiet -volname Gremlo -srcfolder "$STAGE" -ov -format UDZO "$DMG
 rm -rf "$STAGE"
 if [ -n "${SIGN_ID:-}" ]; then
   codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
-  xcrun notarytool submit "$DMG" --keychain-profile "${NOTARY_PROFILE:?set NOTARY_PROFILE (see the top of this script)}" --wait
+  if [ -n "${NOTARY_PROFILE:-}" ]; then AUTH=(--keychain-profile "$NOTARY_PROFILE")
+  else AUTH=(--apple-id "${APPLE_ID:?set NOTARY_PROFILE or APPLE_ID (see the top of this script)}" --team-id "${APPLE_TEAM_ID:?}" --password "${APPLE_APP_PASSWORD:?}"); fi
+  # --wait exits 0 whatever Apple decided, so read the status and print Apple's log when it isn't Accepted
+  xcrun notarytool submit "$DMG" "${AUTH[@]}" --wait --output-format json > "$OUT/notary.json"
+  if [ "$(plutil -extract status raw -o - "$OUT/notary.json")" != Accepted ]; then
+    cat "$OUT/notary.json"
+    xcrun notarytool log "$(plutil -extract id raw -o - "$OUT/notary.json")" "${AUTH[@]}" || true
+    exit 1
+  fi
   xcrun stapler staple "$DMG"
+  xcrun stapler validate "$DMG"
+  # what Gatekeeper decides for a downloaded copy: the dmg, then the app inside it
   spctl --assess --type open --context context:primary-signature -v "$DMG"
+  spctl --assess --type execute -v "$APP"
 fi
 echo "built $DMG"

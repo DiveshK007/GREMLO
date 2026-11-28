@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened runtime exceptions, one per feature that needs it. Not sandboxed: the hook server, ~/.claude and git hooks need the file system. -->
+<plist version="1.0"><dict>
+  <!-- Bops to music: asks Music and Spotify (through osascript) whether a track is playing -->
+  <key>com.apple.security.automation.apple-events</key><true/>
+  <!-- the meeting check: reads event start times with EventKit -->
+  <key>com.apple.security.personal-information.calendars</key><true/>
+</dict></plist>
