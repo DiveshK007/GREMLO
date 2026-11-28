@@ -68,9 +68,10 @@ class Pet {
   }
   draw(f) {
     const c = this.ctx, k = this.scale * this.d;
+    const src = rowSource(this.sp.id, this.row);
+    if (!src) { this.last = null; return; }  // its row isn't decoded yet: keep the last frame, try again next frame
     c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height); c.imageSmoothingEnabled = false;
-    const img = IMG[this.sp.id]; if (!img) return;
-    c.drawImage(img, f * 192, this.row * 208, 192, 208, 0, 0, 192 * k, 208 * k);
+    c.drawImage(src.img, f * 192, src.y, 192, 208, 0, 0, 192 * k, 208 * k);
     if (this.acc.length && this.row === R.idle && f < 4) {
       const a = ACCIMG[this.sp.id]; const [hx, hy] = this.sp.head[f]; const u = this.sp.u;
       const order = ['scarf','glasses','shades','beanie','crown','headphones','party','wizard','bow','flower','cap','star'];
@@ -82,6 +83,21 @@ class Pet {
   }
 }
 const IMG = {}, ACCIMG = {}, KIT = {};
+/* A sheet is a 20 KB file that decodes to 48 MB (every row of the pet). Chrome keeps only a small cache of decoded
+   images, so drawing eight of them straight from the sheets re-decoded whole sheets every few frames: seconds of jank
+   and frozen tabs. Each row a pet plays is decoded once into its own bitmap (about 1.3 MB) and drawn from that. */
+const ROWS_DECODED = new Map();
+function rowSource(id, row) {
+  const img = IMG[id]; if (!img) return null;
+  if (!window.createImageBitmap) return { img, y: row * 208 };
+  const k = id + '.' + row;
+  if (!ROWS_DECODED.has(k)) {
+    ROWS_DECODED.set(k, null);
+    createImageBitmap(img, 0, row * 208, img.naturalWidth, 208).then(b => ROWS_DECODED.set(k, b), () => ROWS_DECODED.set(k, false));
+  }
+  const b = ROWS_DECODED.get(k);
+  return b ? { img: b, y: 0 } : b === false ? { img, y: row * 208 } : null;
+}
 /* haptics: Android browsers only (iPhone Safari has no vibration API). Same names as the app's vocabulary. */
 const HAPT = { tick: 8, snap: 16, boop: 12, knock: [14, 106, 12], thud: [22, 30, 10], stomp: [18, 52, 18, 52, 18], hatch: [8, 142, 8, 142, 8, 292, 30] };
 let lastBuzz = 0;

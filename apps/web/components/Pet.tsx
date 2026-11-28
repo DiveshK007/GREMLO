@@ -8,6 +8,25 @@ import { FRAMES, ROW, sheetUrl, speciesOf, type RowName, type Species } from "@/
 
 const sheets = new Map<string, HTMLImageElement | null>();
 const waiting = new Map<string, Promise<void>>();
+/**
+ * A sheet is a 20 KB file that decodes to 48 MB (every row of the pet). Chrome keeps only a small cache of decoded
+ * images, so drawing several pets straight from their sheets re-decoded whole sheets over and over (seconds of jank).
+ * Each row a pet plays is decoded once into its own bitmap (about 1.3 MB) and drawn from that.
+ */
+const rows = new Map<string, ImageBitmap | null | false>(); // null: being decoded; false: couldn't, draw from the sheet
+function rowSource(url: string, row: number): { img: CanvasImageSource; y: number } | null {
+  const img = sheets.get(url);
+  if (!img) return null;
+  if (typeof createImageBitmap !== "function") return { img, y: row * 208 };
+  const k = `${url}.${row}`;
+  if (!rows.has(k)) {
+    rows.set(k, null);
+    createImageBitmap(img, 0, row * 208, img.naturalWidth, 208).then((b) => rows.set(k, b), () => rows.set(k, false));
+  }
+  const b = rows.get(k);
+  return b ? { img: b, y: 0 } : b === false ? { img, y: row * 208 } : null;
+}
+
 /** Loads a sheet once, keyed by its URL (a species' own sheet, or a community species' reviewed sheet). */
 function sheet(url: string) {
   if (!waiting.has(url)) {
@@ -57,15 +76,16 @@ class Sprite {
       }
       f = this.frames[i % this.frames.length];
     }
-    const img = sheets.get(this.url);
     const key = `${this.url}.${this.row}.${f}`;
-    if (!img || key === this.last) return;
+    if (key === this.last) return;
+    const src = rowSource(this.url, this.row);
+    if (!src) return; // not loaded or not decoded yet: keep the last frame, try again next frame
     this.last = key;
     const c = this.cv.getContext("2d")!;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, this.cv.width, this.cv.height);
     c.imageSmoothingEnabled = false;
-    c.drawImage(img, f * 192, this.row * 208, 192, 208, 0, 0, this.cv.width, this.cv.height);
+    c.drawImage(src.img, f * 192, src.y, 192, 208, 0, 0, this.cv.width, this.cv.height);
   }
 }
 
